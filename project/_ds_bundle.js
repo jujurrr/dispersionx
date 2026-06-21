@@ -4837,10 +4837,12 @@ function Nav() {
     }
   }, /*#__PURE__*/React.createElement(MktThemeToggle, null), /*#__PURE__*/React.createElement(Button, {
     variant: "ghost",
-    size: "md"
+    size: "md",
+    onClick: () => window.__dxNav && window.__dxNav('home')
   }, "Connexion"), /*#__PURE__*/React.createElement(Button, {
     variant: "primary",
-    size: "md"
+    size: "md",
+    onClick: () => window.__dxNav && window.__dxNav('builder')
   }, "Cr\xE9er une strat\xE9gie"))));
 }
 function Hero() {
@@ -4898,10 +4900,12 @@ function Hero() {
     }
   }, /*#__PURE__*/React.createElement(Button, {
     variant: "primary",
-    size: "lg"
+    size: "lg",
+    onClick: () => window.__dxNav && window.__dxNav('builder')
   }, "Cr\xE9er une strat\xE9gie"), /*#__PURE__*/React.createElement(Button, {
     variant: "outline",
-    size: "lg"
+    size: "lg",
+    onClick: () => window.__dxNav && window.__dxNav('docs')
   }, "Comprendre la dispersion")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
@@ -5409,7 +5413,8 @@ function FinalCTA() {
     }
   }, "Passez d'une id\xE9e de volatilit\xE9 \xE0 une strat\xE9gie construite et test\xE9e."), /*#__PURE__*/React.createElement(Button, {
     variant: "primary",
-    size: "lg"
+    size: "lg",
+    onClick: () => window.__dxNav && window.__dxNav('builder')
   }, "Lancer le Strategy Builder"));
 }
 function Footer() {
@@ -5475,6 +5480,7 @@ function Landing() {
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Nav, null), /*#__PURE__*/React.createElement(Hero, null), /*#__PURE__*/React.createElement(Problem, null), /*#__PURE__*/React.createElement(Capture, null), /*#__PURE__*/React.createElement(Workflow, null), /*#__PURE__*/React.createElement(Why, null), /*#__PURE__*/React.createElement(Boundaries, null), /*#__PURE__*/React.createElement(Execution, null), /*#__PURE__*/React.createElement(FinalCTA, null), /*#__PURE__*/React.createElement(Footer, null));
 }
 // Gate the mount until the DS bundle global is populated (avoids load race).
+window.Landing = Landing;
 (function mount() { /* disabled: Landing demo not mounted in app build */ })();
 })(); } catch (e) { __ds_ns.__errors.push({ path: "ui_kits/marketing/Landing.jsx", error: String((e && e.message) || e) }); }
 

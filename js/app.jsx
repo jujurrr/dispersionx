@@ -1,6 +1,6 @@
 /* ─── DispersionX App: router + global state ─────────────────────── */
 function App() {
-  const [screen, setScreen] = React.useState('home');
+  const [screen, setScreen] = React.useState('landing');
   const [params, setParams] = React.useState({});
   const [mode, setMode] = React.useState(() => localStorage.getItem('dx-mode') || 'Débutant');
   const [lists, setLists] = React.useState([]);
@@ -23,6 +23,9 @@ function App() {
     setParams(p);
     window.scrollTo && window.scrollTo(0, 0);
   }
+
+  // Expose navigation so the marketing Landing page CTAs (in _ds_bundle.js) can route into the app
+  window.__dxNav = onNav;
 
   function onScore(indexSymbol, stockTicker, duration) {
     setScoreModal({ indexSymbol, stockTicker, duration: duration || 30 });
@@ -104,6 +107,15 @@ function App() {
           </div>
         </div>
       );
+  }
+
+  // Landing / presentation page — full screen, no app shell (it has its own Nav)
+  if (screen === 'landing') {
+    return (
+      <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
+        {window.Landing ? <window.Landing /> : null}
+      </div>
+    );
   }
 
   return (
