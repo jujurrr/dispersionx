@@ -23,11 +23,13 @@ function blank(extra) {
   return { sector: null, score: null, iv: null, hv: null, rho: null, earnings: false, liq: null, beta: null, ...extra };
 }
 
-export default async (req) => {
+export const config = { path: '/api/indices/:symbol/components' };
+
+export default async (req, context) => {
   const key = process.env.FMP_API_KEY;
   if (!key) return Response.json({ error: 'no_keys' }, { status: 503 });
 
-  const symbol = (new URL(req.url).searchParams.get('symbol') || '').toUpperCase();
+  const symbol = ((context?.params?.symbol) || new URL(req.url).searchParams.get('symbol') || '').toUpperCase();
   const map = INDEX[symbol];
   if (!map || (!map.etf && !map.constituent)) {
     return Response.json({ error: 'unknown_symbol' }, { status: 404 });

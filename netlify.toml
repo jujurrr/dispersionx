@@ -16,15 +16,8 @@
   to = "/.netlify/functions/quotes-batch"
   status = 200
 
-[[redirects]]
-  from = "/api/indices/:symbol/snapshot"
-  to = "/.netlify/functions/index-snapshot?symbol=:symbol"
-  status = 200
-
-[[redirects]]
-  from = "/api/indices/:symbol/components"
-  to = "/.netlify/functions/index-components?symbol=:symbol"
-  status = 200
+# /api/indices/:symbol/snapshot et /components sont routés directement par les
+# fonctions via leur `export const config = { path }` (paramètre de chemin fiable).
 
 [[redirects]]
   from = "/api/options/atm"

@@ -32,11 +32,13 @@ function stdev(arr) {
 }
 const ann = 100 * Math.sqrt(252); // annualisation HV → %
 
-export default async (req) => {
+export const config = { path: '/api/indices/:symbol/snapshot' };
+
+export default async (req, context) => {
   if (!process.env.ALPACA_API_KEY_ID || !process.env.ALPACA_API_SECRET_KEY) {
     return Response.json({ error: 'no_keys' }, { status: 503 });
   }
-  const symbol = (new URL(req.url).searchParams.get('symbol') || '').toUpperCase();
+  const symbol = ((context?.params?.symbol) || new URL(req.url).searchParams.get('symbol') || '').toUpperCase();
   const map = PROXY[symbol];
   if (!map) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
 
