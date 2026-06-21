@@ -1342,11 +1342,7 @@ function App() {
 // Idempotent mount — reuse the root across re-evaluations so the React tree
 // is never torn down mid-animation (avoids the createRoot-twice warning and
 // stalled entrance/count-up animations in bundled/standalone builds).
-(function mountApp() {
-  var el = document.getElementById('root');
-  if (!window.__dxAppRoot) window.__dxAppRoot = ReactDOM.createRoot(el);
-  window.__dxAppRoot.render(/*#__PURE__*/React.createElement(App, null));
-})();
+(function mountApp() { /* disabled: real app shell mounts via js/app.jsx */ })();
 })(); } catch (e) { __ds_ns.__errors.push({ path: "ui_kits/app/App.jsx", error: String((e && e.message) || e) }); }
 
 // ui_kits/app/Builder.jsx
@@ -5479,13 +5475,7 @@ function Landing() {
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Nav, null), /*#__PURE__*/React.createElement(Hero, null), /*#__PURE__*/React.createElement(Problem, null), /*#__PURE__*/React.createElement(Capture, null), /*#__PURE__*/React.createElement(Workflow, null), /*#__PURE__*/React.createElement(Why, null), /*#__PURE__*/React.createElement(Boundaries, null), /*#__PURE__*/React.createElement(Execution, null), /*#__PURE__*/React.createElement(FinalCTA, null), /*#__PURE__*/React.createElement(Footer, null));
 }
 // Gate the mount until the DS bundle global is populated (avoids load race).
-(function mount() {
-  const ns = window.DispersionXDesignSystem_cb86be;
-  if (!ns || !ns.Button || !ns.Badge || !ns.MetricCard) {
-    return setTimeout(mount, 30);
-  }
-  ReactDOM.createRoot(document.getElementById('root')).render(/*#__PURE__*/React.createElement(Landing, null));
-})();
+(function mount() { /* disabled: Landing demo not mounted in app build */ })();
 })(); } catch (e) { __ds_ns.__errors.push({ path: "ui_kits/marketing/Landing.jsx", error: String((e && e.message) || e) }); }
 
 // ui_kits/theme.js
