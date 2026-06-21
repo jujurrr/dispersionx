@@ -21,6 +21,11 @@
   to = "/.netlify/functions/index-snapshot?symbol=:symbol"
   status = 200
 
+[[redirects]]
+  from = "/api/indices/:symbol/components"
+  to = "/.netlify/functions/index-components?symbol=:symbol"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
