@@ -1,6 +1,21 @@
 [build]
   publish = "."
 
+[functions]
+  directory = "netlify/functions"
+
+# ── API serverless (Phase 2) ── le frontend appelle /api/*, on redirige vers les functions.
+# status = 200 → rewrite (conserve la méthode POST et le corps de la requête).
+[[redirects]]
+  from = "/api/health"
+  to = "/.netlify/functions/health"
+  status = 200
+
+[[redirects]]
+  from = "/api/quotes/batch"
+  to = "/.netlify/functions/quotes-batch"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
