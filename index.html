@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DispersionX</title>
+  <meta name="description" content="Plateforme professionnelle d'analyse et de construction de stratégies de dispersion d'options." />
+
+  <!-- Design System CSS -->
+  <link rel="stylesheet" href="project/styles.css" />
+
+  <!-- App shell styles -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body, #root {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background: var(--bg-base);
+      color: var(--text);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Sidebar width token */
+    :root {
+      --sidebar-w: 220px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* Smooth focus */
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+    /* Table resets */
+    table { border-collapse: collapse; }
+
+    /* Input / select resets */
+    input, select, textarea { font-family: inherit; }
+
+    /* Loading placeholder */
+    #root:empty::after {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      margin: -16px 0 0 -16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Theme (must run before paint) -->
+  <script src="project/ui_kits/theme.js"></script>
+
+  <!-- React + Babel -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Design System bundle -->
+  <script src="project/_ds_bundle.js"></script>
+
+  <!-- Mock data + API client -->
+  <script src="js/data.js"></script>
+  <script src="js/api.js"></script>
+
+  <!-- Screens (JSX — transpiled by Babel standalone) -->
+  <script type="text/babel" src="js/screens/Shell.jsx"></script>
+  <script type="text/babel" src="js/screens/Home.jsx"></script>
+  <script type="text/babel" src="js/screens/IndexDetail.jsx"></script>
+  <script type="text/babel" src="js/screens/ScoreModal.jsx"></script>
+  <script type="text/babel" src="js/screens/Lists.jsx"></script>
+  <script type="text/babel" src="js/screens/ListDetail.jsx"></script>
+  <script type="text/babel" src="js/screens/Dashboard.jsx"></script>
+  <script type="text/babel" src="js/screens/CorrelationLab.jsx"></script>
+  <script type="text/babel" src="js/screens/VolatilityLab.jsx"></script>
+  <script type="text/babel" src="js/screens/RiskLab.jsx"></script>
+  <script type="text/babel" src="js/screens/Builder.jsx"></script>
+  <script type="text/babel" src="js/screens/StrategyMonitor.jsx"></script>
+  <script type="text/babel" src="js/screens/Checklist.jsx"></script>
+  <script type="text/babel" src="js/screens/MonitorList.jsx"></script>
+  <script type="text/babel" src="js/screens/PositionDetail.jsx"></script>
+  <script type="text/babel" src="js/screens/Docs.jsx"></script>
+
+  <!-- App entry (last, mounts React) -->
+  <script type="text/babel" src="js/app.jsx"></script>
+</body>
+</html>
