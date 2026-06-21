@@ -71,10 +71,10 @@
   <!-- Theme (must run before paint) -->
   <script src="project/ui_kits/theme.js"></script>
 
-  <!-- React + Babel -->
+  <!-- React + Babel (pinned versions) -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
 
   <!-- Design System bundle -->
   <script src="project/_ds_bundle.js"></script>
@@ -83,25 +83,25 @@
   <script src="js/data.js"></script>
   <script src="js/api.js"></script>
 
-  <!-- Screens (JSX — transpiled by Babel standalone) -->
-  <script type="text/babel" src="js/screens/Shell.jsx"></script>
-  <script type="text/babel" src="js/screens/Home.jsx"></script>
-  <script type="text/babel" src="js/screens/IndexDetail.jsx"></script>
-  <script type="text/babel" src="js/screens/ScoreModal.jsx"></script>
-  <script type="text/babel" src="js/screens/Lists.jsx"></script>
-  <script type="text/babel" src="js/screens/ListDetail.jsx"></script>
-  <script type="text/babel" src="js/screens/Dashboard.jsx"></script>
-  <script type="text/babel" src="js/screens/CorrelationLab.jsx"></script>
-  <script type="text/babel" src="js/screens/VolatilityLab.jsx"></script>
-  <script type="text/babel" src="js/screens/RiskLab.jsx"></script>
-  <script type="text/babel" src="js/screens/Builder.jsx"></script>
-  <script type="text/babel" src="js/screens/StrategyMonitor.jsx"></script>
-  <script type="text/babel" src="js/screens/Checklist.jsx"></script>
-  <script type="text/babel" src="js/screens/MonitorList.jsx"></script>
-  <script type="text/babel" src="js/screens/PositionDetail.jsx"></script>
-  <script type="text/babel" src="js/screens/Docs.jsx"></script>
+  <!-- Screens (JSX — transpiled by Babel standalone, preset=react only) -->
+  <script type="text/babel" data-presets="react" src="js/screens/Shell.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Home.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/IndexDetail.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/ScoreModal.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Lists.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/ListDetail.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Dashboard.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/CorrelationLab.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/VolatilityLab.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/RiskLab.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Builder.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/StrategyMonitor.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Checklist.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/MonitorList.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/PositionDetail.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Docs.jsx"></script>
 
   <!-- App entry (last, mounts React) -->
-  <script type="text/babel" src="js/app.jsx"></script>
+  <script type="text/babel" data-presets="react" src="js/app.jsx"></script>
 </body>
 </html>
