@@ -16,6 +16,11 @@
   to = "/.netlify/functions/quotes-batch"
   status = 200
 
+[[redirects]]
+  from = "/api/indices/:symbol/snapshot"
+  to = "/.netlify/functions/index-snapshot?symbol=:symbol"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]

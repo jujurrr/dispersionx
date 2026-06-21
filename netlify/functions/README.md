@@ -6,10 +6,15 @@ erreur 5xx, le client (`js/api.js`) bascule automatiquement sur les données moc
 
 ## Fonctions actuelles
 
-| Endpoint frontend        | Fonction            | Source        |
-|--------------------------|---------------------|---------------|
-| `GET  /api/health`       | `health.mjs`        | Alpaca /clock |
-| `POST /api/quotes/batch` | `quotes-batch.mjs`  | Alpaca data   |
+| Endpoint frontend                  | Fonction             | Source        |
+|------------------------------------|----------------------|---------------|
+| `GET  /api/health`                 | `health.mjs`         | Alpaca /clock |
+| `POST /api/quotes/batch`           | `quotes-batch.mjs`   | Alpaca data   |
+| `GET  /api/indices/:sym/snapshot`  | `index-snapshot.mjs` | Alpaca (ETF proxy) |
+
+> Les snapshots d'indices passent par l'ETF proxy (SPX→SPY, NDX→QQQ, DJI→DIA,
+> CAC→EWQ, DAX→EWG). Variation %, HV et perfs sont fiables ; le niveau absolu est
+> reconstitué via un facteur d'échelle (bon pour US, approximatif pour CAC/DAX).
 
 ## Clés API — à définir dans Netlify (jamais dans le code)
 
