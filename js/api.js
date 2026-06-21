@@ -125,15 +125,15 @@
   }
   async function deleteList(id) {
     try { return await _delete('/lists/' + id); }
-    catch { return { success: true }; }
+    catch { return window.DXMock.deleteList(id); }
   }
   async function addListItem(id, ticker, score_data, notes = '') {
     try { return await _post('/lists/' + id + '/items', { ticker, score_data, notes }); }
-    catch { return { success: true }; }
+    catch { return window.DXMock.addListItem(id, ticker, score_data); }
   }
   async function removeListItem(id, ticker) {
     try { return await _delete('/lists/' + id + '/items/' + ticker); }
-    catch { return { success: true }; }
+    catch { return window.DXMock.removeListItem(id, ticker); }
   }
   async function getListAnalysis(id) {
     try { return await _get('/lists/' + id + '/analysis'); }
@@ -164,9 +164,10 @@
       fd.append('file', file);
       const r = await fetch(BASE + '/lists/import', { method: 'POST', body: fd });
       if (!r.ok) throw new Error(r.statusText);
-      return r.json();
+      return await r.json();
     } catch {
-      return { imported: 1, message: 'Importé (mode démo)' };
+      const parsed = JSON.parse(await file.text());
+      return window.DXMock.importLists(parsed);
     }
   }
 

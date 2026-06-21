@@ -115,37 +115,80 @@
     },
   ];
 
-  const MOCK_SCORE = (ticker) => ({
-    scoring: {
-      score: 82, signal: 'FORT', signal_color: 'green',
-      comp_a_edge: 13.2, comp_b_vol_premium: 8.4, comp_c_costs: -4.1,
-      rho_implicit_final: 0.61, rho_real_expected: 0.48,
-      cost_source: 'real_bidask', spread_pct_real: 0.22, cost_spread: 2.8, cost_earnings: 1.3,
-      subscores: {
-        liquidity: { score: 92, reason: 'Options très liquides, bid-ask spread < 0.3%' },
-        vol_attractive: { score: 78, reason: 'IV > HV de +4.4 pts, prime positive' },
-        dispersion_contrib: { score: 84, reason: 'β et corrélation favorables à la dispersion' },
-        execution: { score: 88, reason: 'Spread réel mesuré, exécution facile sur IBKR' },
-        event_risk: { score: 62, reason: 'Aucun earnings dans la durée (OK)' },
+  // ── Score déterministe par ticker (identique dans la table ET le ScoreModal) ──
+  function scoreFor(ticker) {
+    for (const arr of Object.values(COMPONENTS)) {
+      const c = arr.find(x => x.ticker === ticker);
+      if (c && c.score != null) return c.score;
+    }
+    let h = 0; const t = String(ticker || '');
+    for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+    return 48 + (h % 45); // 48..92, stable par ticker
+  }
+  function compOf(ticker) {
+    for (const arr of Object.values(COMPONENTS)) {
+      const c = arr.find(x => x.ticker === ticker);
+      if (c) return c;
+    }
+    return null;
+  }
+  function compWeight(ticker) { return compOf(ticker)?.weight ?? null; }
+
+  // ── Stockage persistant des listes (localStorage) ──
+  const LS_LISTS = 'dx-lists';
+  function _loadLists() {
+    try { const s = localStorage.getItem(LS_LISTS); if (s) return JSON.parse(s); } catch {}
+    return JSON.parse(JSON.stringify(MOCK_LISTS));
+  }
+  let LISTS = _loadLists();
+  function _saveLists() { try { localStorage.setItem(LS_LISTS, JSON.stringify(LISTS)); } catch {} }
+  function _findList(id) { return LISTS.find(l => l.id === id); }
+  function _recompute(l) {
+    l.n_items = (l.items || []).length;
+    const sc = (l.items || []).map(i => i.score).filter(s => s != null);
+    l.avg_score = sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : 0;
+    l.updated_at = new Date().toISOString().slice(0, 10);
+  }
+
+  const MOCK_SCORE = (ticker) => {
+    const score = scoreFor(ticker);
+    const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
+    const comp = compOf(ticker);
+    const iv = comp?.iv ?? 30, hv = comp?.hv ?? 27, beta = comp?.beta ?? 1.1, weight = comp?.weight ?? 2.0, rho = comp?.rho ?? 0.5;
+    return {
+      scoring: {
+        score, signal, signal_color,
+        comp_a_edge: Number(((0.61 - rho) * 40).toFixed(1)),
+        comp_b_vol_premium: Number((iv - hv).toFixed(1)),
+        comp_c_costs: -4.1,
+        rho_implicit_final: 0.61, rho_real_expected: rho,
+        cost_source: 'estimated', spread_pct_real: 0.22, cost_spread: 2.8, cost_earnings: 1.3,
+        subscores: {
+          liquidity: { score: Math.min(99, score + 8), reason: 'Liquidité estimée à partir du profil du composant' },
+          vol_attractive: { score, reason: `IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}%` },
+          dispersion_contrib: { score: Math.max(20, score - 6), reason: 'β et corrélation favorables à la dispersion' },
+          execution: { score: Math.min(99, score + 4), reason: 'Exécution estimée' },
+          event_risk: { score: comp?.earnings ? 45 : 80, reason: comp?.earnings ? 'Earnings possibles dans la durée' : "Pas d'earnings dans la durée" },
+        },
+        composite_score: { score, missing: [] },
+        pipeline: {
+          rho_per_window: { 20: rho + 0.03, 60: rho, 120: rho - 0.02 },
+          weights_normalized: { 20: 0.25, 60: 0.50, 120: 0.25 },
+          blend: rho, regime_factor: 1.0, rho_hat_final: rho,
+        },
+        recommendation: score >= 75 ? 'Score favorable : prime de corrélation positive et profil attractif.' : score >= 55 ? 'Score modéré : composant utilisable, surveiller les coûts et la liquidité.' : 'Score faible : apport à la dispersion limité dans ce contexte.',
       },
-      composite_score: { score: 81, missing: [] },
-      pipeline: {
-        rho_per_window: { 20: 0.51, 60: 0.48, 120: 0.46 },
-        weights_normalized: { 20: 0.25, 60: 0.50, 120: 0.25 },
-        blend: 0.48, regime_factor: 1.0, rho_hat_final: 0.48,
+      stock: {
+        symbol: ticker, weight, iv, hv, beta,
+        last_price: null, iv_source: 'estimated_from_hv',
+        earnings_in_strategy: !!comp?.earnings, days_to_earnings: comp?.earnings ? 6 : 48, earnings_date: '—',
+        iv_rank: { iv_rank: Math.round(score * 0.7), iv_percentile: Math.round(score * 0.66), iv_min: Math.max(5, hv - 12), iv_max: hv + 30, note: 'Estimation à partir du profil de volatilité.' },
+        greeks: { delta: 0.02, gamma: 0.0008, vega: 148.2, theta: -44.1, strike: 0, expiry: '—' },
       },
-      recommendation: "Score favorable. La prime de corrélation est positive et la liquidité est élevée. Surveiller le coût d'exécution bid/ask lors de l'ouverture.",
-    },
-    stock: {
-      symbol: ticker, weight: 7.3, iv: 46.2, hv: 41.8, beta: 1.62,
-      last_price: 942.80, iv_source: 'thetadata',
-      earnings_in_strategy: false, days_to_earnings: 48, earnings_date: '2026-08-07',
-      iv_rank: { iv_rank: 62, iv_percentile: 58, iv_min: 28.4, iv_max: 78.6, note: 'IV dans la moitié haute du range annuel.' },
-      greeks: { delta: 0.02, gamma: 0.0008, vega: 148.2, theta: -44.1, strike: 940, expiry: '2026-07-18' },
-    },
-    index: { symbol: 'SPX', name: 'S&P 500', iv: 18.2 },
-    metadata: { duration_days: 30 },
-  });
+      index: { symbol: 'SPX', name: 'S&P 500', iv: 18.2 },
+      metadata: { duration_days: 30 },
+    };
+  };
 
   const MOCK_POSITIONS = [
     { id: 'pos-1', name: 'SPX 30j · dispersion', idx: 'SPX', dte: 24, opened: '2026-06-12', primeIn: 5.8, primeNow: 6.4, pnl: 1240, vega: -48, theta: 96, status: 'sain', alert: null },
@@ -169,11 +212,38 @@
     getComponents: (s) => (COMPONENTS[s] || COMPONENTS.SPX).map(c => ({ ...c })),
     batchQuotes: (symbols) => symbols.map(fakeQuote),
     autoScore: (ticker) => ({ ...MOCK_SCORE(ticker), stock: { ...MOCK_SCORE(ticker).stock, symbol: ticker } }),
-    lists: MOCK_LISTS,
-    createList: (name, index_symbol, description) => ({
-      id: 'list-' + Date.now(), name, index_symbol, description, n_items: 0, avg_score: 0,
-      created_at: new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString().slice(0, 10), items: [],
-    }),
+    get lists() { return LISTS; },
+    scoreFor,
+    createList: (name, index_symbol, description) => {
+      const l = { id: 'list-' + Date.now(), name, index_symbol, description, n_items: 0, avg_score: 0,
+        created_at: new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString().slice(0, 10), items: [] };
+      LISTS.push(l); _saveLists(); return l;
+    },
+    deleteList: (id) => { LISTS = LISTS.filter(l => l.id !== id); _saveLists(); return { success: true }; },
+    addListItem: (id, ticker, score_data) => {
+      const l = _findList(id); if (!l) return { success: false };
+      l.items = l.items || [];
+      if (!l.items.some(i => i.ticker === ticker)) {
+        l.items.push({ ticker, weight: compWeight(ticker), score: scoreFor(ticker), score_data: score_data || null, added: new Date().toISOString().slice(0, 10) });
+        _recompute(l); _saveLists();
+      }
+      return { success: true };
+    },
+    removeListItem: (id, ticker) => {
+      const l = _findList(id); if (!l) return { success: false };
+      l.items = (l.items || []).filter(i => i.ticker !== ticker);
+      _recompute(l); _saveLists(); return { success: true };
+    },
+    importLists: (parsed) => {
+      const arr = Array.isArray(parsed) ? parsed : [parsed];
+      let n = 0;
+      arr.forEach(raw => {
+        if (!raw || !raw.name) return;
+        const l = { ...raw, id: 'list-' + Date.now() + '-' + (n++), updated_at: new Date().toISOString().slice(0, 10), items: raw.items || [] };
+        _recompute(l); LISTS.push(l);
+      });
+      _saveLists(); return { imported: n, message: n + ' liste(s) importée(s)' };
+    },
     getListAnalysis: () => ({
       avg_score: 78.4, avg_edge: 11.2, rho_impl: 0.61, rho_real: 0.48, dispersion: 0.000418, n_items: 5,
       signal: 'FAVORABLE', recommendations: [

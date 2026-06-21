@@ -40,11 +40,14 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
     !q || c.ticker.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
   );
 
+  // Score effectif (déterministe) — identique à celui du ScoreModal
+  const effScore = (c) => c.score != null ? c.score : (window.DXMock && window.DXMock.scoreFor ? window.DXMock.scoreFor(c.ticker) : null);
+
   // Sort
-  const SORT_KEYS = { ticker: 'ticker', weight: 'weight', score: 'score', sector: 'sector' };
+  const getSortVal = (c) => sort.key === 'score' ? effScore(c) : c[sort.key];
   const sorted = sort.dir === 0 ? filtered : [...filtered].sort((a, b) => {
-    const av = a[sort.key] ?? (sort.dir > 0 ? Infinity : -Infinity);
-    const bv = b[sort.key] ?? (sort.dir > 0 ? Infinity : -Infinity);
+    const av = getSortVal(a) ?? (sort.dir > 0 ? Infinity : -Infinity);
+    const bv = getSortVal(b) ?? (sort.dir > 0 ? Infinity : -Infinity);
     return typeof av === 'string' ? av.localeCompare(bv) * sort.dir : (av - bv) * sort.dir;
   });
 
@@ -222,14 +225,18 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
                   </td>
                   {/* Score */}
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                    {c.score != null && (
-                      <span style={{
-                        font: '700 12px/1 var(--font-mono)', padding: '4px 8px', borderRadius: 'var(--radius)',
-                        background: c.score >= 75 ? 'var(--pos-soft)' : c.score >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)',
-                        color: c.score >= 75 ? 'var(--pos-bright)' : c.score >= 55 ? 'var(--warn)' : 'var(--neg-bright)',
-                        border: `1px solid ${c.score >= 75 ? 'var(--pos)' : c.score >= 55 ? 'var(--warn)' : 'var(--neg)'}`,
-                      }}>{c.score}</span>
-                    )}
+                    {(() => {
+                      const sc = effScore(c);
+                      if (sc == null) return null;
+                      return (
+                        <span style={{
+                          font: '700 12px/1 var(--font-mono)', padding: '4px 8px', borderRadius: 'var(--radius)',
+                          background: sc >= 75 ? 'var(--pos-soft)' : sc >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)',
+                          color: sc >= 75 ? 'var(--pos-bright)' : sc >= 55 ? 'var(--warn)' : 'var(--neg-bright)',
+                          border: `1px solid ${sc >= 75 ? 'var(--pos)' : sc >= 55 ? 'var(--warn)' : 'var(--neg)'}`,
+                        }}>{sc}</span>
+                      );
+                    })()}
                   </td>
                   {/* Action */}
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>

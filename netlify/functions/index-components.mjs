@@ -7,7 +7,7 @@
 // Les champs score/iv/hv/beta restent null (calculés ailleurs) → le frontend affiche « — ».
 
 const BASE = 'https://financialmodelingprep.com/api/v3';
-const MAX = 60; // on garde les principales lignes par poids
+const MAX = 600; // toutes les actions de l'indice (S&P 500 ≈ 503)
 
 const INDEX = {
   SPX: { etf: 'SPY', constituent: 'sp500_constituent' },
