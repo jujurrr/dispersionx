@@ -1,0 +1,71 @@
+/* ─────────────────────────────────────────────────────────────
+   COLORS — DispersionX
+   Deep graphite/blue-black canvas, anthracite cards, cool hairlines.
+   Single structural accent (institutional blue). Semantics carry meaning,
+   never decoration. Refined from the production trading theme.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* ── Surfaces (darkest → lightest) — warm green-black graphite ── */
+  --bg-base:      #0c1310;   /* app canvas — deep warm green-black */
+  --bg-surface:   #0f1714;   /* sidebar / topbar chrome */
+  --bg-elevated:  #14201b;   /* raised wells, inputs-at-rest */
+  --bg-card:      #16241e;   /* the workhorse card surface */
+  --bg-input:     #1a2a23;   /* form fields */
+  --bg-hover:     #1d2f27;   /* row / item hover */
+  --bg-active:    #22362c;   /* pressed / selected */
+
+  /* ── Borders (subtle → strong) — green-tinted hairlines ── */
+  --border-subtle: #1b2922;  /* internal dividers, table rows */
+  --border:        #2a3d34;  /* default card / control border */
+  --border-strong: #3b5347;  /* hover, focus rings, modal edge */
+
+  /* ── Text — warm off-white ── */
+  --text:       #e8efe9;     /* primary — warm off-white */
+  --text-soft:  #b0c2b8;     /* secondary body */
+  --text-muted: #7c9388;     /* labels, captions, metadata */
+  --text-dim:   #4a5b52;     /* placeholders, disabled */
+
+  /* ── Accent (the one structural color) — café emerald green ── */
+  --accent:       #1f9d63;   /* deep café / emerald green */
+  --accent-hover: #2bb877;
+  --accent-soft:  rgba(31, 157, 99, 0.15);
+  --accent-border: rgba(31, 157, 99, 0.35);
+
+  /* ── Semantics — meaning only ── */
+  --pos:        #26a69a;     /* positive / vol cheap / favorable */
+  --pos-bright: #4ecdc1;
+  --pos-soft:   rgba(38, 166, 154, 0.14);
+
+  --neg:        #ef5350;     /* negative / loss / risk */
+  --neg-bright: #ff6b6b;
+  --neg-soft:   rgba(239, 83, 80, 0.14);
+
+  --warn:       #f0a830;     /* warning — warm amber/gold */
+  --warn-soft:  rgba(240, 168, 48, 0.16);
+
+  --info:       #ab68d9;     /* neutral analytic accent (pipeline / formula) */
+  --info-soft:  rgba(171, 104, 217, 0.14);
+
+  --lime:       #66bb6a;     /* secondary positive (score tiers) */
+  --lime-soft:  rgba(102, 187, 106, 0.14);
+
+  --gold:       #cba258;     /* highlight ceremony (reserved) */
+  --gold-soft:  rgba(203, 162, 88, 0.16);
+
+  /* ── Semantic aliases (use these in product) ── */
+  --surface-app:      var(--bg-base);
+  --surface-chrome:   var(--bg-surface);
+  --surface-card:     var(--bg-card);
+  --surface-raised:   var(--bg-elevated);
+  --surface-field:    var(--bg-input);
+
+  --text-primary:     var(--text);
+  --text-secondary:   var(--text-soft);
+  --text-label:       var(--text-muted);
+  --text-disabled:    var(--text-dim);
+
+  --action-primary:   var(--accent);
+  --signal-up:        var(--pos-bright);
+  --signal-down:      var(--neg-bright);
+  --signal-warning:   var(--warn);
+}

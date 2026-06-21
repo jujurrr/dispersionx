@@ -1,0 +1,8 @@
+<svg width="196" height="32" viewBox="0 0 196 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="32" height="32" rx="7" fill="#14201b"></rect>
+  <rect x="0.5" y="0.5" width="31" height="31" rx="6.5" stroke="#2a3d34"></rect>
+  <path d="M16 25 A9 9 0 0 1 16 7" stroke="#4ecdc1" stroke-width="2.2" stroke-linecap="round"></path>
+  <path d="M16 27 A11 11 0 0 0 16 5" stroke="#2bb877" stroke-width="2.2" stroke-linecap="round"></path>
+  <circle cx="16" cy="16" r="2.8" fill="#e8efe9"></circle>
+  <text x="44" y="21" font-family="Inter, sans-serif" font-size="17" font-weight="800" letter-spacing="-0.02em" fill="#e8efe9">Dispersion<tspan fill="#2bb877">X</tspan></text>
+</svg>

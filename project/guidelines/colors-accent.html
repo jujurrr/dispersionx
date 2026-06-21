@@ -1,0 +1,23 @@
+<!-- @dsCard group="Colors" viewport="700x150" name="Accent & Semantics" subtitle="One structural accent; semantics carry meaning only" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;background:var(--bg-base);font-family:var(--font-sans);padding:18px;}
+  .row{display:flex;gap:10px;flex-wrap:wrap;}
+  .sw{flex:1;min-width:96px;border-radius:var(--radius);border:1px solid var(--border);overflow:hidden;}
+  .chip{height:44px;display:flex;align-items:flex-end;padding:6px;}
+  .dot{width:14px;height:14px;border-radius:var(--radius-pill);}
+  .meta{padding:7px 9px;background:var(--bg-card);}
+  .name{font:var(--type-label);text-transform:uppercase;letter-spacing:var(--track-label);color:var(--text-soft);}
+  .use{font:var(--type-caption);color:var(--text-muted);margin-top:2px;}
+  .hex{font:var(--type-data-sm);color:var(--text-dim);}
+</style></head>
+<body>
+  <div class="row">
+    <div class="sw"><div class="chip" style="background:var(--accent)"></div><div class="meta"><div class="name">Accent</div><div class="use">actions, active, focus</div><div class="hex">#1f9d63</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--pos)"></div><div class="meta"><div class="name">Positive</div><div class="use">vol cheap · favorable</div><div class="hex">#26a69a</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--neg)"></div><div class="meta"><div class="name">Negative</div><div class="use">loss · risk</div><div class="hex">#ef5350</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--warn)"></div><div class="meta"><div class="name">Warning</div><div class="use">caution</div><div class="hex">#ff9800</div></div></div>
+    <div class="sw"><div class="chip" style="background:var(--info)"></div><div class="meta"><div class="name">Info</div><div class="use">pipeline · formula</div><div class="hex">#ab68d9</div></div></div>
+  </div>
+</body></html>

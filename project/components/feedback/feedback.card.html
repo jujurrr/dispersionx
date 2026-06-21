@@ -1,0 +1,28 @@
+<!-- @dsCard group="Components" viewport="700x300" name="Feedback — Panels & States" subtitle="WarningPanel, BeginnerExplanationBox, EmptyState" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../../styles.css">
+<style>body{margin:0;background:var(--bg-base);padding:22px;font-family:var(--font-sans);}
+.col{display:flex;flex-direction:column;gap:12px;}</style></head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script type="text/babel">
+const { WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <div className="col">
+    <WarningPanel tone="neg" title="Risque principal">
+      Le scénario le plus défavorable est un sell-off corrélé : l'indice baisse, sa volatilité monte, et les composants se déplacent dans la même direction.
+    </WarningPanel>
+    <WarningPanel tone="info" title="Recommandation">
+      Une maturité 30–45 jours est souvent plus lisible pour apprendre une stratégie de dispersion.
+    </WarningPanel>
+    <BeginnerExplanationBox>
+      Si les actions bougent beaucoup mais pas toutes dans le même sens, la jambe single-name peut gagner tandis que l'indice reste contenu.
+    </BeginnerExplanationBox>
+  </div>
+);
+</script>
+</body></html>

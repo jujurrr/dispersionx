@@ -1,0 +1,41 @@
+/* ─────────────────────────────────────────────────────────────
+   SPACING, RADII, ELEVATION — DispersionX
+   4px base grid. Tight, terminal-grade radii. Quiet layered shadows.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  /* ── Spacing scale (4px base) ── */
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  /* ── Radii — restrained, financial ── */
+  --radius-sm:   4px;   /* chips, tags, score badges */
+  --radius:      6px;   /* buttons, inputs, cards */
+  --radius-lg:   8px;   /* large cards, modals */
+  --radius-xl:   14px;  /* hero / feature panels */
+  --radius-pill: 9999px;
+
+  /* ── Elevation — quiet, layered ── */
+  --shadow-sm:  0 1px 2px rgba(0,0,0,0.3);
+  --shadow:     0 8px 24px rgba(0,0,0,0.4);
+  --shadow-lg:  0 12px 40px rgba(0,0,0,0.5);
+
+  /* ── Focus ring ── */
+  --ring: 0 0 0 3px var(--accent-soft);
+
+  /* ── Layout dims ── */
+  --sidebar-w: 240px;
+  --topbar-h:  52px;
+
+  /* ── Motion ── */
+  --ease:      cubic-bezier(0.4, 0, 0.2, 1); /* @kind other */
+  --dur-fast:  0.12s; /* @kind other */
+  --dur:       0.2s; /* @kind other */
+}

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="fr"><head>
+<meta charset="utf-8">
+<title>DispersionX · directions artistiques</title>
+<link rel="stylesheet" href="../styles.css">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;background:#07090d;font-family:var(--font-sans);color:#e6edf3;padding:36px;}
+  h1{font:800 24px/1.2 var(--font-sans);letter-spacing:-0.02em;margin:0 0 4px;}
+  .sub{font:14px/1.5 var(--font-sans);color:#7d8590;margin:0 0 28px;max-width:760px;}
+  .row{display:flex;gap:24px;align-items:flex-start;width:max-content;}
+  .col{display:flex;flex-direction:column;gap:10px;width:380px;}
+  .clabel{display:flex;align-items:baseline;gap:8px;}
+  .cname{font:700 14px/1 var(--font-sans);}
+  .ctag{font:11px/1 var(--font-mono);color:#5b6470;}
+  .cdesc{font:12px/1.5 var(--font-sans);color:#8b94a0;margin:0 0 2px;min-height:34px;}
+
+  /* ── Frame = a themed app slice. Each theme overrides these vars. ── */
+  .frame{
+    --f-bg:#0a0e14; --f-card:#161b22; --f-elev:#131722; --f-bd:#2a3142; --f-bd2:#3a4456;
+    --f-text:#e6edf3; --f-soft:#b1bac4; --f-muted:#7d8590;
+    --f-accent:#2962ff; --f-accent2:#4178ff; --f-pos:#4ecdc1; --f-neg:#ff6b6b; --f-warn:#ff9800;
+    --f-mono:'JetBrains Mono',monospace; --f-sans:'Inter',sans-serif; --f-radius:8px;
+    --f-cardbd:1px solid var(--f-bd); --f-cardbg:var(--f-card); --f-wash:none;
+    border-radius:12px;overflow:hidden;border:1px solid #1c2230;
+    background:var(--f-bg);background-image:var(--f-wash);
+  }
+  .frame *{font-family:var(--f-sans);}
+  .topbar{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--f-bd);}
+  .dot{width:26px;height:26px;border-radius:7px;background:var(--f-elev);border:1px solid var(--f-bd);display:flex;align-items:center;justify-content:center;}
+  .brand{font:800 14px/1 var(--f-sans);letter-spacing:-0.01em;color:var(--f-text);}
+  .brand b{color:var(--f-accent2);}
+  .pill{margin-left:auto;font:600 10px/1 var(--f-sans);text-transform:uppercase;letter-spacing:.05em;padding:4px 9px;border-radius:999px;background:color-mix(in srgb,var(--f-accent) 16%,transparent);color:var(--f-accent2);border:1px solid color-mix(in srgb,var(--f-accent) 35%,transparent);}
+  .body{padding:16px;}
+  .eyebrow{font:600 10px/1 var(--f-sans);text-transform:uppercase;letter-spacing:.08em;color:var(--f-muted);margin:0 0 10px;}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+  .m{background:var(--f-cardbg);border:var(--f-cardbd);border-radius:var(--f-radius);padding:12px;position:relative;overflow:hidden;}
+  .m .bar{position:absolute;left:0;top:0;bottom:0;width:2px;}
+  .m .lab{font:600 9px/1 var(--f-sans);text-transform:uppercase;letter-spacing:.06em;color:var(--f-muted);margin-bottom:7px;}
+  .m .val{font:800 20px/1 var(--f-mono);letter-spacing:-0.02em;color:var(--f-text);}
+  .m .val s{font-size:11px;text-decoration:none;color:var(--f-muted);}
+  .panel{background:var(--f-cardbg);border:var(--f-cardbd);border-radius:var(--f-radius);padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px;}
+  .panel .big{font:800 30px/1 var(--f-mono);letter-spacing:-0.03em;color:var(--f-pos);}
+  .panel .pl{font:600 10px/1 var(--f-sans);text-transform:uppercase;letter-spacing:.06em;color:var(--f-muted);margin-bottom:6px;}
+  .verdict{font:700 10px/1 var(--f-sans);text-transform:uppercase;letter-spacing:.06em;color:var(--f-pos);padding:5px 11px;border-radius:999px;background:color-mix(in srgb,var(--f-pos) 16%,transparent);border:1px solid color-mix(in srgb,var(--f-pos) 35%,transparent);}
+  .btns{display:flex;gap:8px;}
+  .btn{font:600 12px/1 var(--f-sans);padding:9px 15px;border-radius:6px;border:1px solid transparent;cursor:pointer;}
+  .btn.p{background:var(--f-accent);color:#fff;}
+  .btn.o{background:var(--f-elev);color:var(--f-text);border-color:var(--f-bd);}
+  .chips{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap;}
+  .chip{font:600 9px/1 var(--f-sans);text-transform:uppercase;letter-spacing:.05em;padding:4px 8px;border-radius:999px;}
+  .chip.pos{background:color-mix(in srgb,var(--f-pos) 16%,transparent);color:var(--f-pos);border:1px solid color-mix(in srgb,var(--f-pos) 30%,transparent);}
+  .chip.warn{background:color-mix(in srgb,var(--f-warn) 16%,transparent);color:var(--f-warn);border:1px solid color-mix(in srgb,var(--f-warn) 30%,transparent);}
+  .chip.neg{background:color-mix(in srgb,var(--f-neg) 16%,transparent);color:var(--f-neg);border:1px solid color-mix(in srgb,var(--f-neg) 30%,transparent);}
+
+  /* ════ THEME B · Obsidian Amber ════ */
+  .t-amber{
+    --f-bg:#0c0a06; --f-card:#17120a; --f-elev:#1b1509; --f-bd:#332817; --f-bd2:#4a3b1f;
+    --f-text:#f3ecdd; --f-soft:#c8bca5; --f-muted:#8a7d63;
+    --f-accent:#f5a623; --f-accent2:#ffc04d; --f-pos:#46d6b3; --f-neg:#ff6b5e; --f-warn:#ffb020;
+    --f-mono:'JetBrains Mono',monospace;
+    --f-wash:radial-gradient(ellipse 80% 60% at 75% -10%, rgba(245,166,35,0.10), transparent 60%);
+  }
+  /* ════ THEME C · Slate Institutional (semi-clair) ════ */
+  .t-slate{
+    --f-bg:#161d29; --f-card:#1f2837; --f-elev:#243044; --f-bd:#33415a; --f-bd2:#46587a;
+    --f-text:#eaf0f8; --f-soft:#aebccf; --f-muted:#7b8aa0;
+    --f-accent:#6366f1; --f-accent2:#8b8ef5; --f-pos:#34d399; --f-neg:#f87171; --f-warn:#fbbf24;
+    --f-radius:10px;
+    --f-wash:linear-gradient(180deg, rgba(99,102,241,0.06), transparent 40%);
+  }
+  /* ════ THEME D · Vivid Quant (spectre) ════ */
+  .t-vivid{
+    --f-bg:#0a0a16; --f-card:#13122a; --f-elev:#1a1838; --f-bd:#2e2a55; --f-bd2:#433d78;
+    --f-text:#ede9ff; --f-soft:#b6b0d8; --f-muted:#7e789e;
+    --f-accent:#a855f7; --f-accent2:#c084fc; --f-pos:#22d3ee; --f-neg:#fb7185; --f-warn:#fbbf24;
+    --f-wash:radial-gradient(ellipse 70% 50% at 80% -5%, rgba(168,85,247,0.16), transparent 55%), radial-gradient(ellipse 60% 50% at 0% 20%, rgba(34,211,238,0.10), transparent 55%);
+  }
+  .t-vivid .panel .big{background:linear-gradient(90deg,#22d3ee,#c084fc);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+  /* ════ THEME E · Mono Editorial ════ */
+  .t-mono{
+    --f-bg:#0d0d0f; --f-card:#141416; --f-elev:#1a1a1d; --f-bd:#27272b; --f-bd2:#3a3a40;
+    --f-text:#f4f4f5; --f-soft:#b8b8bd; --f-muted:#76767e;
+    --f-accent:#e4e4e7; --f-accent2:#ffffff; --f-pos:#9ca3af; --f-neg:#d4d4d8; --f-warn:#a1a1aa;
+    --f-radius:4px;
+  }
+  .t-mono .btn.p{background:#f4f4f5;color:#0d0d0f;}
+  .t-mono .pill,.t-mono .verdict,.t-mono .chip{background:transparent;border:1px solid var(--f-bd2);color:var(--f-soft);}
+  .t-mono .panel .big{color:var(--f-text);}
+
+  /* ════ THEME F · Café Warm (test Starbucks-inspired) — CLAIR ════ */
+  .t-cafe{
+    --f-bg:#f2f0eb; --f-card:#ffffff; --f-elev:#f9f9f9; --f-bd:#e3e0d8; --f-bd2:#cfcabe;
+    --f-text:rgba(0,0,0,0.87); --f-soft:rgba(0,0,0,0.58); --f-muted:rgba(0,0,0,0.58);
+    --f-accent:#00754A; --f-accent2:#006241; --f-pos:#1E3932; --f-neg:#c82014; --f-warn:#cba258;
+    --f-radius:12px; --f-wash:none;
+  }
+  .t-cafe .topbar{border-bottom-color:var(--f-bd);}
+  .t-cafe .dot{background:#fff;border-color:var(--f-bd);}
+  .t-cafe .btn{border-radius:50px;}
+  .t-cafe .btn.o{background:#fff;border-color:var(--f-accent);color:var(--f-accent);}
+  .t-cafe .pill{background:#fff;border-color:var(--f-bd2);color:var(--f-accent2);}
+  .t-cafe .verdict{background:color-mix(in srgb,var(--f-pos) 10%,transparent);color:var(--f-pos);border:1px solid color-mix(in srgb,var(--f-pos) 28%,transparent);}
+  .t-cafe .m{box-shadow:0 0 .5px rgba(0,0,0,.14),0 1px 1px rgba(0,0,0,.24);}
+</style></head>
+<body>
+  <h1>Directions artistiques — DispersionX</h1>
+  <p class="sub">La même tranche d'app (topbar · 3 métriques · prime de corrélation · actions) dans 5 directions. La 1ʳᵉ est l'actuelle. Dis-moi le ou les numéros qui te parlent — je peux aussi mixer (ex. palette de D + sobriété de E). Tout reste sur fond sombre et données mono.</p>
+  <div class="row" id="row"></div>
+
+<script>
+const SLICE = (cls) => `
+  <div class="frame ${cls}">
+    <div class="topbar">
+      <div class="dot">
+        <svg width="16" height="16" viewBox="0 0 42 42" fill="none">
+          <path d="M21 34 A13 13 0 0 1 21 8" stroke="var(--f-pos)" stroke-width="2.6" stroke-linecap="round"/>
+          <path d="M21 36 A15 15 0 0 0 21 6" stroke="var(--f-accent2)" stroke-width="2.6" stroke-linecap="round"/>
+          <circle cx="21" cy="21" r="3.4" fill="var(--f-text)"/>
+        </svg>
+      </div>
+      <span class="brand">Dispersion<b>X</b></span>
+      <span class="pill">Marché ouvert</span>
+    </div>
+    <div class="body">
+      <div class="eyebrow">Market Overview</div>
+      <div class="metrics">
+        <div class="m"><span class="bar" style="background:var(--f-accent)"></span><div class="lab">IV ATM</div><div class="val">18.2<s>%</s></div></div>
+        <div class="m"><span class="bar" style="background:var(--f-pos)"></span><div class="lab">Prime ρ</div><div class="val">+6.4<s>pts</s></div></div>
+        <div class="m"><span class="bar" style="background:var(--f-warn)"></span><div class="lab">Vega net</div><div class="val">−180</div></div>
+      </div>
+      <div class="panel">
+        <div><div class="pl">Prime de corrélation</div><div class="big">+6.4 pts</div></div>
+        <span class="verdict">Favorable</span>
+      </div>
+      <div class="btns">
+        <button class="btn p">Créer une stratégie</button>
+        <button class="btn o">Mode avancé</button>
+      </div>
+      <div class="chips">
+        <span class="chip pos">Prime élevée</span>
+        <span class="chip warn">ρ̂ en hausse</span>
+        <span class="chip neg">Sell-off corrélé</span>
+      </div>
+    </div>
+  </div>`;
+
+const DAS = [
+  ['', 'Actuel · Graphite', 'graphite + bleu électrique', 'La DA en place : sobre, institutionnelle, un seul accent. Le repère.'],
+  ['t-amber', 'Obsidian Amber', 'noir chaud + or/ambre + cyan', 'Plus audacieux et chaud, esprit terminal phosphore. Sérieux mais distinctif.'],
+  ['t-slate', 'Slate Institutional', 'ardoise bleutée + indigo', 'Sobre mais différent : moins de noir, plus aéré, surfaces ardoise. Semi-sombre.'],
+  ['t-vivid', 'Vivid Quant', 'indigo profond + violet/cyan', 'La plus colorée : dégradés spectre, accents saturés par module. Osée.'],
+  ['t-mono', 'Mono Editorial', 'quasi-monochrome, type-led', 'Sobriété poussée : presque pas de couleur, la typo et l espace font tout.'],
+  ['t-cafe', 'Café Warm · test', 'crème + vert + or (Starbucks)', 'Test de ta réf : DA chaleureuse café, crème + vert Starbucks + or, boutons pilule. Rupture totale avec le terminal sombre.'],
+];
+document.getElementById('row').innerHTML = DAS.map(([cls,name,tag,desc]) =>
+  `<div class="col"><div class="clabel"><span class="cname">${name}</span><span class="ctag">${tag}</span></div><p class="cdesc">${desc}</p>${SLICE(cls)}</div>`
+).join('');
+</script>
+</body></html>

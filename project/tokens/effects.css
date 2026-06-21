@@ -1,0 +1,70 @@
+/* ─────────────────────────────────────────────────────────────
+   EFFECTS — DispersionX
+   Sober, futuristic micro-interactions. Calm by default; everything
+   respects prefers-reduced-motion. No glow, no constant motion.
+   ───────────────────────────────────────────────────────────── */
+
+/* Dark-glass surface — semi-transparent, thin border, light blur, soft depth.
+   Serious glassmorphism: low transparency, gentle blur. */
+.dx-glass {
+  background: rgba(22, 27, 34, 0.62);
+  -webkit-backdrop-filter: blur(8px) saturate(115%);
+  backdrop-filter: blur(8px) saturate(115%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 8px 24px rgba(0,0,0,0.35);
+}
+
+/* Hover depth — lift + slightly stronger edge. Pairs with .dx-glass or plain cards. */
+.dx-lift { transition: transform var(--dur) var(--ease), border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+.dx-lift:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 14px 32px rgba(0,0,0,0.45);
+}
+
+/* Entrance — progressive reveal (rise + fade). Add inline animation-delay for stagger. */
+@keyframes dx-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dx-rise { animation: dx-rise 0.5s var(--ease) both; }
+
+/* Alert pulse — for a badge that just appeared. Subtle ring, settles. */
+@keyframes dx-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,152,0,0.45); }
+  70%  { box-shadow: 0 0 0 7px rgba(255,152,0,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,152,0,0); }
+}
+.dx-pulse { animation: dx-pulse 2s var(--ease) infinite; }
+.dx-pulse-neg { animation: dx-pulse 2s var(--ease) infinite; }
+.dx-pulse-neg { box-shadow: 0 0 0 0 rgba(239,83,80,0.45); }
+@keyframes dx-pulse-neg {
+  0%   { box-shadow: 0 0 0 0 rgba(239,83,80,0.45); }
+  70%  { box-shadow: 0 0 0 7px rgba(239,83,80,0); }
+  100% { box-shadow: 0 0 0 0 rgba(239,83,80,0); }
+}
+.dx-pulse-neg { animation-name: dx-pulse-neg; }
+
+/* Soft tooltip entrance */
+@keyframes dx-tip-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.dx-tip { animation: dx-tip-in 0.16s var(--ease) both; }
+
+/* Icon hover color — apply to a container; its svg shifts to accent on hover. */
+.dx-ico-hover svg { transition: color var(--dur-fast) var(--ease), stroke var(--dur-fast) var(--ease); }
+.dx-ico-hover:hover svg { color: var(--accent-hover); stroke: var(--accent-hover); }
+
+/* Logo — arcs rotate smoothly on hover (the correlation arcs spin).
+   !important so the theme-crossfade transition rule can't strip `transform`. */
+.dx-logo-arcs { transform-origin: 50% 50%; transform: rotate(0deg); transition: transform 0.7s var(--ease) !important; }
+.dx-logo:hover .dx-logo-arcs { transform: rotate(360deg); }
+.dx-logo { transition: transform var(--dur) var(--ease); }
+.dx-logo:active { transform: scale(0.96); }
+
+@media (prefers-reduced-motion: reduce) {
+  .dx-rise, .dx-pulse, .dx-pulse-neg, .dx-tip { animation: none !important; }
+  .dx-lift:hover { transform: none; }
+  .dx-logo:hover .dx-logo-arcs { transform: none; }
+}

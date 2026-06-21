@@ -1,0 +1,25 @@
+<!-- @dsCard group="Colors" viewport="700x140" name="Text & Borders" subtitle="Off-white ink ramp on dark, cool hairlines" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;background:var(--bg-base);font-family:var(--font-sans);padding:18px;display:flex;gap:28px;flex-wrap:wrap;}
+  .col{display:flex;flex-direction:column;gap:9px;}
+  .t{font:var(--type-body);}
+  .lab{font:var(--type-data-sm);color:var(--text-dim);margin-left:8px;}
+  .bd{display:flex;align-items:center;gap:10px;}
+  .bar{width:120px;height:0;border-top:1px solid;}
+  .bn{font:var(--type-label);text-transform:uppercase;letter-spacing:var(--track-label);color:var(--text-muted);}
+</style></head>
+<body>
+  <div class="col">
+    <div class="t" style="color:var(--text)">Primary text<span class="lab">--text</span></div>
+    <div class="t" style="color:var(--text-soft)">Secondary body<span class="lab">--text-soft</span></div>
+    <div class="t" style="color:var(--text-muted)">Muted labels<span class="lab">--text-muted</span></div>
+    <div class="t" style="color:var(--text-dim)">Disabled / dim<span class="lab">--text-dim</span></div>
+  </div>
+  <div class="col">
+    <div class="bd"><div class="bar" style="border-color:var(--border-subtle)"></div><span class="bn">subtle</span></div>
+    <div class="bd"><div class="bar" style="border-color:var(--border)"></div><span class="bn">border</span></div>
+    <div class="bd"><div class="bar" style="border-color:var(--border-strong)"></div><span class="bn">strong</span></div>
+  </div>
+</body></html>

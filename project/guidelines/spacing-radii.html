@@ -1,0 +1,26 @@
+<!-- @dsCard group="Spacing" viewport="700x150" name="Radii & Elevation" subtitle="Tight financial radii; quiet layered shadows" -->
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><link rel="stylesheet" href="../styles.css">
+<style>
+  body{margin:0;background:var(--bg-base);font-family:var(--font-sans);padding:20px;display:flex;gap:26px;flex-wrap:wrap;align-items:center;}
+  .grp{display:flex;gap:12px;align-items:flex-end;}
+  .b{width:60px;height:48px;background:var(--bg-card);border:1px solid var(--border);display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;}
+  .v{font:var(--type-data-sm);color:var(--text-muted);}
+  .sep{width:1px;height:60px;background:var(--border-subtle);}
+  .sh{width:74px;height:48px;background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:flex-end;justify-content:center;padding-bottom:5px;}
+</style></head>
+<body>
+  <div class="grp">
+    <div class="b" style="border-radius:var(--radius-sm)"><span class="v">4</span></div>
+    <div class="b" style="border-radius:var(--radius)"><span class="v">6</span></div>
+    <div class="b" style="border-radius:var(--radius-lg)"><span class="v">8</span></div>
+    <div class="b" style="border-radius:var(--radius-xl)"><span class="v">14</span></div>
+    <div class="b" style="border-radius:var(--radius-pill)"><span class="v">pill</span></div>
+  </div>
+  <div class="sep"></div>
+  <div class="grp">
+    <div class="sh" style="box-shadow:var(--shadow-sm)"><span class="v">sm</span></div>
+    <div class="sh" style="box-shadow:var(--shadow)"><span class="v">card</span></div>
+    <div class="sh" style="box-shadow:var(--shadow-lg)"><span class="v">lg</span></div>
+  </div>
+</body></html>

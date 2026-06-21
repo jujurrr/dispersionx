@@ -1,0 +1,69 @@
+<!-- Internal build source for the standalone export — not a DS card. See DispersionX App (standalone).html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DispersionX · Application</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  /* Standalone export safety: the bundler's splash-reveal can defer CSS
+     entrance animations, leaving `.dx-rise` elements stuck at opacity:0.
+     Force the visible end-state so hero metrics never render blank offline. */
+  .dx-rise{animation:none !important;opacity:1 !important;transform:none !important;}
+</style>
+<script>
+  /* Make count-up resolve to final values immediately offline (rAF can be
+     suspended during unpack). Report reduced-motion to the count-up hook. */
+  (function(){
+    var _mm = window.matchMedia ? window.matchMedia.bind(window) : null;
+    window.matchMedia = function(q){
+      if(/prefers-reduced-motion/.test(q)){
+        return {matches:true, media:q, onchange:null,
+          addEventListener:function(){}, removeEventListener:function(){},
+          addListener:function(){}, removeListener:function(){}, dispatchEvent:function(){return false;}};
+      }
+      return _mm ? _mm(q) : {matches:false, media:q, addEventListener:function(){}, removeEventListener:function(){}, addListener:function(){}, removeListener:function(){}};
+    };
+  })();
+</script>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:var(--bg-base);font-family:var(--font-sans);color:var(--text);}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:var(--bg-base);}
+  ::-webkit-scrollbar-thumb{background:var(--border);border:2px solid var(--bg-base);border-radius:5px;}
+  ::selection{background:var(--accent);color:#fff;}
+  table{font-variant-numeric:tabular-nums;}
+</style>
+</head>
+<body>
+<template id="__bundler_thumbnail" data-bg-color="#0c1310">
+  <svg viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1200" height="800" fill="#0c1310"/>
+    <g transform="translate(600,400)" fill="none" stroke-linecap="round">
+      <path d="M0 150 A150 150 0 0 1 0 -150" stroke="#26a69a" stroke-width="34"/>
+      <path d="M0 200 A200 200 0 0 0 0 -200" stroke="#2bb877" stroke-width="34"/>
+      <circle cx="0" cy="0" r="46" fill="#e8efe9" stroke="none"/>
+    </g>
+    <text x="600" y="660" font-family="Inter, sans-serif" font-size="58" font-weight="800" letter-spacing="-1" text-anchor="middle" fill="#e8efe9">Dispersion<tspan fill="#2bb877">X</tspan></text>
+  </svg>
+</template>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<script src="../../_ds_bundle.js"></script>
+<script src="../theme.js"></script>
+<script src="data.js"></script>
+<script type="text/babel" src="Shell.jsx"></script>
+<script type="text/babel" src="Dashboard.jsx"></script>
+<script type="text/babel" src="TradeBrief.jsx"></script>
+<script type="text/babel" src="VolatilityLab.jsx"></script>
+<script type="text/babel" src="CorrelationLab.jsx"></script>
+<script type="text/babel" src="StrategyMonitor.jsx"></script>
+<script type="text/babel" src="Builder.jsx"></script>
+<script type="text/babel" src="RiskLab.jsx"></script>
+<script type="text/babel" src="App.jsx"></script>
+</body>
+</html>

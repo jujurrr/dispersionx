@@ -1,0 +1,301 @@
+<!-- @dsCard group="App" viewport="1320x900" name="Index Detail (re-skin · exemple handoff)" subtitle="Sélection d'actions : recherche live + tri colonnes + scoring — DA appliquée" -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DispersionX · Index Detail (exemple re-skin)</title>
+<link rel="stylesheet" href="../../styles.css">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;background:var(--bg-base);font-family:var(--font-sans);color:var(--text);-webkit-font-smoothing:antialiased;}
+  table{font-variant-numeric:tabular-nums;border-collapse:collapse;}
+  ::selection{background:var(--accent);color:#fff;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-track{background:var(--bg-base);}
+  ::-webkit-scrollbar-thumb{background:var(--border);border:2px solid var(--bg-base);border-radius:5px;}
+
+  /* ── Demo chrome (topbar) ── */
+  .topbar{height:52px;border-bottom:1px solid var(--border);background:var(--bg-surface);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:5;}
+  .crumb{display:flex;gap:8px;align-items:center;font:500 13px/1 var(--font-sans);color:var(--text-muted);}
+  .crumb b{color:var(--text);font-weight:600;}
+  .topbar-actions{display:flex;gap:12px;align-items:center;}
+  .dx-theme-btn{width:32px;height:32px;border-radius:var(--radius);background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-soft);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .12s var(--ease);}
+  .dx-theme-btn:hover{color:var(--accent-hover);background:var(--bg-hover);border-color:var(--border-strong);}
+
+  .wrap{padding:24px 28px 64px;background-image:radial-gradient(ellipse 70% 50% at 80% -5%, rgba(31,157,99,0.06), transparent 60%);}
+
+  /* ── Index header ── */
+  .ix-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:18px;}
+  .ix-title{display:flex;gap:14px;align-items:center;}
+  .ix-flag{font-size:30px;}
+  .ix-title h1{font:800 24px/1.1 var(--font-sans);letter-spacing:-0.01em;margin:0;}
+  .tags{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;}
+  .tag{font:600 10px/1 var(--font-sans);text-transform:uppercase;letter-spacing:0.05em;padding:4px 8px;border-radius:var(--radius-pill);background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-muted);}
+  .tag.live{background:var(--green-soft);border-color:var(--green);color:var(--green-bright);}
+  .ix-price{text-align:right;}
+  .ix-price .p{font:800 26px/1 var(--font-mono);}
+  .ix-price .c{font:600 13px/1 var(--font-mono);margin-top:6px;}
+
+  /* ── Snapshot strip ── */
+  .snap{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:20px;}
+  .snap-cell{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px 14px;}
+  .snap-cell .l{font:600 10px/1 var(--font-sans);text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin-bottom:7px;}
+  .snap-cell .v{font:700 18px/1 var(--font-mono);}
+
+  /* ── Strategy bar (duration pills) ── */
+  .strat-bar{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;}
+  .strat-bar>span{font:600 11px/1 var(--font-sans);text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);}
+  .pills{display:flex;gap:4px;background:var(--bg-elevated);border:1px solid var(--border);border-radius:var(--radius-pill);padding:3px;}
+  .pill{font:600 12px/1 var(--font-mono);padding:6px 13px;border-radius:var(--radius-pill);border:none;background:transparent;color:var(--text-muted);cursor:pointer;transition:all .12s var(--ease);}
+  .pill.active{background:var(--accent);color:#fff;}
+  .hint{margin-left:auto;font:var(--type-caption);color:var(--text-dim);}
+
+  /* ── Search bar ── */
+  .search{display:flex;align-items:center;gap:10px;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius);padding:0 14px;margin-bottom:14px;transition:border-color .12s var(--ease);}
+  .search:focus-within{border-color:var(--accent);box-shadow:var(--ring);}
+  .search svg{color:var(--text-muted);flex-shrink:0;}
+  .search input{flex:1;background:none;border:none;outline:none;color:var(--text);font:var(--type-body);padding:11px 0;}
+  .search input::placeholder{color:var(--text-dim);}
+  .search-count{font:var(--type-data-sm);color:var(--text-muted);}
+
+  /* ── Components table ── */
+  .tbl-wrap{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;}
+  table.comp{width:100%;}
+  table.comp thead tr{background:var(--bg-elevated);}
+  table.comp th{font:600 10px/1 var(--font-sans);text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);padding:11px 14px;text-align:right;border-bottom:1px solid var(--border);white-space:nowrap;}
+  table.comp th:first-child,table.comp th.l{text-align:left;}
+  table.comp th.sortable{cursor:pointer;user-select:none;}
+  table.comp th.sortable:hover{color:var(--text-soft);}
+  table.comp tbody tr{border-bottom:1px solid var(--border-subtle);cursor:pointer;transition:background .1s var(--ease);}
+  table.comp tbody tr:hover{background:var(--bg-hover);}
+  table.comp td{padding:10px 14px;text-align:right;font:var(--type-data-sm);color:var(--text-soft);}
+  .stk{display:flex;gap:10px;align-items:center;text-align:left;}
+  .stk-logo{width:26px;height:26px;border-radius:6px;background:var(--bg-elevated);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font:700 9px/1 var(--font-mono);color:var(--text-soft);flex-shrink:0;}
+  .stk-ticker{font:var(--type-ticker);color:var(--text);}
+  .stk-name{font:var(--type-caption);color:var(--text-muted);margin-top:1px;}
+  .wbar{width:54px;height:5px;border-radius:3px;background:var(--bg-elevated);overflow:hidden;display:inline-block;vertical-align:middle;margin-right:7px;}
+  .wbar-fill{height:100%;background:var(--accent);}
+  .up{color:var(--green-bright);} .down{color:var(--red-bright);}
+  .sec-tag{font:600 10px/1 var(--font-sans);padding:3px 7px;border-radius:var(--radius-sm);background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-muted);}
+  .q-load{color:var(--text-dim);}
+  .btn-score{font:600 11px/1 var(--font-sans);padding:6px 11px;border-radius:var(--radius-sm);border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer;transition:background .12s var(--ease);}
+  .btn-score:hover{background:var(--accent-hover);}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="crumb">Indices <span style="color:var(--text-dim)">›</span> <b>SPX</b></div>
+    <div class="topbar-actions">
+      <div style="display:flex;align-items:center;gap:6px;font:var(--type-data-sm);color:var(--text-muted);"><span style="width:6px;height:6px;border-radius:50%;background:var(--green);"></span> API connectée</div>
+      <button class="dx-theme-btn" id="theme-btn" aria-label="Changer de thème" title="Changer de thème"></button>
+    </div>
+  </div>
+  <div class="wrap"><div id="view"></div></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════
+   EXEMPLE HANDOFF — Index Detail re-skiné (vanilla JS, comme views.js).
+   La LOGIQUE (filtre recherche, cycle de tri, structure quotes) est
+   IDENTIQUE au code réel ; seuls le HTML et les classes adoptent la DA.
+   Données simulées ici ; dans le vrai code : api.getIndex / batchQuotes.
+   ════════════════════════════════════════════════════════════════════ */
+
+// ---- utils minimal (équivalents de frontend/js/utils.js) ----
+const utils = {
+  fmt:(v,d=2)=>v==null?'—':Number(v).toFixed(d),
+  fmtNum:(v,d=2)=>v==null?'—':Number(v).toLocaleString('fr-FR',{minimumFractionDigits:d,maximumFractionDigits:d}),
+  fmtPct:(v,d=1)=>v==null?'—':Number(v).toFixed(d)+'%',
+  escapeHtml:s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
+  stockLogoHtml:(t)=>`<span class="stk-logo">${t.slice(0,2)}</span>`,
+};
+
+// ---- données simulées (dans le vrai code: api.getIndex('SPX')) ----
+const MOCK_INDEX = {
+  symbol:'SPX', name:'S&P 500', country_flag:'🇺🇸', currency:'USD', etf_proxy:'SPY', options_liquid:true,
+  snapshot:{last_price:6432.18, change_pct:0.42, hv_30:15.6, hv_252:14.2, iv_estimate:18.2, perf_5d:1.2, perf_30d:3.4, perf_ytd:12.1},
+  components:[
+    {ticker:'NVDA',name:'Nvidia',sector:'Technology',weight:7.3},
+    {ticker:'AAPL',name:'Apple',sector:'Technology',weight:7.0},
+    {ticker:'MSFT',name:'Microsoft',sector:'Technology',weight:6.5},
+    {ticker:'AMZN',name:'Amazon',sector:'Consumer Disc.',weight:3.8},
+    {ticker:'META',name:'Meta Platforms',sector:'Communications',weight:2.9},
+    {ticker:'AVGO',name:'Broadcom',sector:'Technology',weight:2.4},
+    {ticker:'TSLA',name:'Tesla',sector:'Consumer Disc.',weight:1.9},
+    {ticker:'JPM',name:'JPMorgan Chase',sector:'Financials',weight:1.55},
+    {ticker:'LLY',name:'Eli Lilly',sector:'Health Care',weight:1.4},
+    {ticker:'V',name:'Visa',sector:'Financials',weight:1.1},
+  ],
+};
+// quotes simulées (dans le vrai code: api.batchQuotes(chunk,true,true))
+const MOCK_QUOTES = {
+  NVDA:{price:138.4,change_pct_day:2.1,change_pct_week:5.4}, AAPL:{price:227.5,change_pct_day:-0.6,change_pct_week:1.2},
+  MSFT:{price:441.2,change_pct_day:0.4,change_pct_week:-0.8}, AMZN:{price:201.3,change_pct_day:1.1,change_pct_week:2.4},
+  META:{price:612.0,change_pct_day:-1.3,change_pct_week:3.1}, AVGO:{price:172.8,change_pct_day:0.9,change_pct_week:4.0},
+  TSLA:{price:248.6,change_pct_day:3.2,change_pct_week:-2.1}, JPM:{price:241.9,change_pct_day:0.2,change_pct_week:0.7},
+  LLY:{price:892.4,change_pct_day:-0.4,change_pct_week:1.9}, V:{price:312.7,change_pct_day:0.1,change_pct_week:-0.3},
+};
+
+const app = { state:{ duration:30 } };
+const views = {};
+let _comp;
+
+// ════════ renderIndexDetail (re-skiné) ════════
+function renderIndexDetail(idx){
+  const snap = idx.snapshot;
+  const up = (snap.change_pct>=0);
+  const view = document.getElementById('view');
+  view.innerHTML = `
+    <div class="ix-head">
+      <div class="ix-title">
+        <span class="ix-flag">${idx.country_flag}</span>
+        <div>
+          <h1>${idx.name}</h1>
+          <div class="tags">
+            <span class="tag">${idx.symbol}</span>
+            <span class="tag">${idx.currency}</span>
+            <span class="tag">${idx.components.length} actions</span>
+            <span class="tag">ETF ${idx.etf_proxy}</span>
+            ${idx.options_liquid?'<span class="tag live">Options liquides</span>':''}
+          </div>
+        </div>
+      </div>
+      <div class="ix-price">
+        <div class="p">${utils.fmtNum(snap.last_price,2)}</div>
+        <div class="c ${up?'up':'down'}">${up?'▲':'▼'} ${utils.fmtPct(snap.change_pct,2)}</div>
+      </div>
+    </div>
+
+    <div class="snap">
+      <div class="snap-cell"><div class="l">HV 30j</div><div class="v" style="color:var(--amber)">${utils.fmtPct(snap.hv_30,1)}</div></div>
+      <div class="snap-cell"><div class="l">HV 1Y</div><div class="v">${utils.fmtPct(snap.hv_252,1)}</div></div>
+      <div class="snap-cell"><div class="l">IV estimée</div><div class="v">${utils.fmtPct(snap.iv_estimate,1)}</div></div>
+      <div class="snap-cell"><div class="l">Perf 5j</div><div class="v ${snap.perf_5d>=0?'up':'down'}">${utils.fmt(snap.perf_5d,2)}%</div></div>
+      <div class="snap-cell"><div class="l">Perf 30j</div><div class="v ${snap.perf_30d>=0?'up':'down'}">${utils.fmt(snap.perf_30d,2)}%</div></div>
+      <div class="snap-cell"><div class="l">YTD</div><div class="v ${snap.perf_ytd>=0?'up':'down'}">${utils.fmt(snap.perf_ytd,2)}%</div></div>
+    </div>
+
+    <div class="strat-bar">
+      <span>Durée stratégie</span>
+      <div class="pills">
+        ${[14,30,45,60,90].map(d=>`<button class="pill ${app.state.duration===d?'active':''}" data-duration="${d}">${d}j</button>`).join('')}
+      </div>
+      <span class="hint">Cliquez sur une action pour calculer son score de dispersion</span>
+    </div>
+
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input type="text" id="component-search" placeholder="Rechercher une action par ticker ou nom..." autocomplete="off">
+      <span id="search-count" class="search-count"></span>
+    </div>
+
+    <div class="tbl-wrap">
+      <table class="comp" id="components-table">
+        <thead><tr>
+          <th class="l sortable" data-sort="ticker">Action <span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="weight">Poids <span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="price">Prix <span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="day">Jour <span class="sort-arrow"></span></th>
+          <th class="sortable" data-sort="week">Semaine <span class="sort-arrow"></span></th>
+          <th class="l sortable" data-sort="sector">Secteur <span class="sort-arrow"></span></th>
+          <th>Score</th>
+        </tr></thead>
+        <tbody id="components-tbody"></tbody>
+      </table>
+    </div>
+  `;
+
+  document.querySelectorAll('.pill').forEach(b=>b.addEventListener('click',()=>{
+    app.state.duration=parseInt(b.dataset.duration);
+    document.querySelectorAll('.pill').forEach(p=>p.classList.toggle('active',parseInt(p.dataset.duration)===app.state.duration));
+  }));
+
+  // ── état de la vue : IDENTIQUE au code réel ──
+  _comp = { symbol:idx.symbol, rows:idx.components.map(c=>({...c,price:null,day:null,week:null})), sortKey:null, sortDir:0, filter:'' };
+
+  const searchInput=document.getElementById('component-search');
+  searchInput.addEventListener('input',e=>{ _comp.filter=e.target.value.trim().toLowerCase(); renderComponentsBody(); });
+
+  renderComponentsBody();
+  wireSortHeaders();
+  loadQuotesForComponents();
+}
+
+// ── corps de table : filtre + tri IDENTIQUES au réel ──
+function renderComponentsBody(){
+  const st=_comp; let rows=[...st.rows];
+  if(st.filter){ rows=rows.filter(c=>c.ticker.toLowerCase().includes(st.filter)||(c.name||'').toLowerCase().includes(st.filter)); }
+  if(st.filter&&(!st.sortKey||st.sortDir===0)){ rows.sort((a,b)=>a.ticker.localeCompare(b.ticker)); }
+  if(st.sortKey&&st.sortDir!==0){
+    const k=st.sortKey;
+    rows.sort((a,b)=>{
+      let va=a[k],vb=b[k];
+      if(k==='ticker'||k==='sector'){ va=(va||'').toString(); vb=(vb||'').toString(); return st.sortDir*va.localeCompare(vb); }
+      if(va==null&&vb==null)return 0; if(va==null)return 1; if(vb==null)return -1;
+      return st.sortDir*(va-vb);
+    });
+  }
+  const countEl=document.getElementById('search-count');
+  if(countEl) countEl.textContent=st.filter?`${rows.length} / ${st.rows.length}`:'';
+
+  const tbody=document.getElementById('components-tbody');
+  tbody.innerHTML=rows.map(c=>{
+    const dCls=c.day==null?'':(c.day>=0?'up':'down'), wCls=c.week==null?'':(c.week>=0?'up':'down');
+    const dA=c.day==null?'':(c.day>=0?'▲':'▼'), wA=c.week==null?'':(c.week>=0?'▲':'▼');
+    return `
+      <tr data-ticker="${c.ticker}">
+        <td><div class="stk">${utils.stockLogoHtml(c.ticker)}<div><div class="stk-ticker">${c.ticker}</div><div class="stk-name">${utils.escapeHtml(c.name)}</div></div></div></td>
+        <td><span class="wbar"><span class="wbar-fill" style="width:${Math.min(100,c.weight*8)}%"></span></span>${utils.fmtPct(c.weight,2)}</td>
+        <td class="${'price'}">${c.price==null?'<span class="q-load">···</span>':utils.fmtNum(c.price,2)}</td>
+        <td class="${dCls}">${c.day==null?'<span class="q-load">···</span>':`${dA} ${utils.fmt(c.day,2)}%`}</td>
+        <td class="${wCls}">${c.week==null?'<span class="q-load">···</span>':`${wA} ${utils.fmt(c.week,2)}%`}</td>
+        <td class="l" style="text-align:left;"><span class="sec-tag">${c.sector}</span></td>
+        <td><button class="btn-score" data-ticker="${c.ticker}">▶ Score</button></td>
+      </tr>`;
+  }).join('');
+
+  tbody.querySelectorAll('.btn-score').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();openStockScoreModal(_comp.symbol,b.dataset.ticker);}));
+  tbody.querySelectorAll('tr[data-ticker]').forEach(r=>r.addEventListener('click',()=>openStockScoreModal(_comp.symbol,r.dataset.ticker)));
+}
+
+// ── tri au clic : cycle asc→desc→aucun, IDENTIQUE au réel ──
+function wireSortHeaders(){
+  document.querySelectorAll('#components-table th.sortable').forEach(th=>{
+    th.addEventListener('click',()=>{
+      const key=th.dataset.sort, st=_comp;
+      if(st.sortKey===key){ st.sortDir=st.sortDir===1?-1:st.sortDir===-1?0:1; if(st.sortDir===0)st.sortKey=null; }
+      else { st.sortKey=key; st.sortDir=1; }
+      document.querySelectorAll('#components-table th.sortable .sort-arrow').forEach(a=>a.textContent='');
+      if(st.sortKey){ const a=th.querySelector('.sort-arrow'); if(a)a.textContent=st.sortDir===1?' ↑':' ↓'; }
+      renderComponentsBody();
+    });
+  });
+}
+
+// ── quotes : même structure que batchQuotes (ici simulé + délai) ──
+function loadQuotesForComponents(){
+  const st=_comp;
+  setTimeout(()=>{
+    st.rows.forEach(r=>{ const q=MOCK_QUOTES[r.ticker]; if(q){ r.price=q.price; r.day=q.change_pct_day; r.week=q.change_pct_week; } });
+    if(_comp&&_comp.symbol===st.symbol) renderComponentsBody();
+  },700);
+}
+
+function openStockScoreModal(sym,ticker){
+  // dans le vrai code : api.autoScore({index_symbol,stock_symbol,duration_days,use_ex_action}) → renderScoreModal
+  alert(`Score de dispersion : ${ticker} vs ${sym} · durée ${app.state.duration}j\n\n(Dans l'app réelle, ceci ouvre le Score Modal complet : composantes A/B/C, sous-scores, pipeline ρ̂, IV Rank, grecs, « Ajouter à une liste ».)`);
+}
+
+// ── theme toggle (équivalent theme-toggle.js) ──
+const SUN='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+const MOON='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+const tb=document.getElementById('theme-btn');
+function renderTb(){ const dark=document.documentElement.getAttribute('data-theme')!=='cafe'; tb.innerHTML=dark?SUN:MOON; }
+tb.addEventListener('click',()=>{ const n=document.documentElement.getAttribute('data-theme')==='cafe'?'dark':'cafe'; document.documentElement.setAttribute('data-theme',n); renderTb(); });
+document.documentElement.setAttribute('data-theme','dark'); renderTb();
+
+// boot
+renderIndexDetail(MOCK_INDEX);
+</script>
+</body>
+</html>
