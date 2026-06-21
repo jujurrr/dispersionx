@@ -124,7 +124,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
 
       {mode === 'Débutant' && items.length > 0 && (
         <BeginnerExplanationBox>
-          Cette liste représente votre panier de composants. Le score pondéré synthétise l'attractivité globale de la dispersion sur cet ensemble d'actions. Un score élevé (> 70) avec une prime de corrélation positive est un contexte favorable pour construire une stratégie.
+          Cette liste représente votre panier de composants. Le score pondéré synthétise l'attractivité globale de la dispersion sur cet ensemble d'actions. Un score élevé ({'>'} 70) avec une prime de corrélation positive est un contexte favorable pour construire une stratégie.
         </BeginnerExplanationBox>
       )}
 
