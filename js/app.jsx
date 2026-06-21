@@ -37,14 +37,18 @@ function App() {
   // Expose navigation so the marketing Landing page CTAs (in _ds_bundle.js) can route into the app
   window.__dxNav = onNav;
 
+  // Navigate to a screen with the full-screen transition splash.
+  function transitionTo(target, label, params) {
+    setSplash(label);
+    setTimeout(() => onNav(target, params || {}), 480);
+    setTimeout(() => setSplash(null), 1150);
+  }
+  window.__dxGo = transitionTo;
+
   // Switch between the two parts of the site (presentation ⇆ creation) with a full-screen splash.
   function switchSection() {
     const goingToLanding = screen !== 'landing';
-    const target = goingToLanding ? 'landing' : 'home';
-    const label = goingToLanding ? 'Présentation' : 'Espace de création';
-    setSplash(label);
-    setTimeout(() => onNav(target), 480);
-    setTimeout(() => setSplash(null), 1150);
+    transitionTo(goingToLanding ? 'landing' : 'home', goingToLanding ? 'Présentation' : 'Espace de création');
   }
   window.__dxSwitch = switchSection;
 

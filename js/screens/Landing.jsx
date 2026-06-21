@@ -43,7 +43,7 @@ function Landing() {
             {window.SectionToggle ? <window.SectionToggle to="app" /> : null}
             {window.ThemeToggle ? <window.ThemeToggle /> : null}
             <Button variant="ghost" size="md" onClick={() => window.__dxNav && window.__dxNav('login')}>Connexion</Button>
-            <Button variant="primary" size="md" onClick={() => window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
+            <Button variant="primary" size="md" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
           </div>
         </div>
       </header>
@@ -65,7 +65,7 @@ function Landing() {
               Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutral et testez vos risques avant exécution.
             </p>
             <div style={{ display: 'flex', gap: 12, marginTop: 32, flexWrap: 'wrap' }}>
-              <Button variant="primary" size="lg" onClick={() => window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
+              <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
               <Button variant="outline" size="lg" onClick={() => scrollTo('comprendre')}>Comprendre la dispersion</Button>
             </div>
             <div style={{ display: 'flex', gap: 24, marginTop: 30, font: 'var(--type-caption)', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
@@ -214,7 +214,7 @@ function Landing() {
             </div>
           ))}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10, padding: 18 }}>
-            <Button variant="primary" size="md" full onClick={() => window.__dxNav && window.__dxNav('builder')}>Lancer le Builder</Button>
+            <Button variant="primary" size="md" full onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Lancer le Builder</Button>
             <Button variant="outline" size="md" full onClick={() => window.__dxNav && window.__dxNav('docs')}>Voir les formules</Button>
           </div>
         </div>
@@ -294,7 +294,7 @@ function Landing() {
         <h2 style={{ font: 'var(--type-hero)', fontSize: 40, letterSpacing: 'var(--track-tight)', color: 'var(--text)', maxWidth: 760, margin: '0 auto 28px', textWrap: 'balance' }}>
           Passez d'une idée de volatilité à une stratégie construite et testée.
         </h2>
-        <Button variant="primary" size="lg" onClick={() => window.__dxNav && window.__dxNav('builder')}>Lancer le Strategy Builder</Button>
+        <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Lancer le Strategy Builder</Button>
       </section>
     );
   }
