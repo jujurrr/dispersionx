@@ -11,6 +11,12 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
     DXApi.autoScore(indexSymbol, stockTicker, duration).then(d => {
       setData(d);
       setLoading(false);
+      // Surcouche : IV ATM + greeks réels via MarketData (si disponible)
+      DXApi.getOptionAtm(stockTicker, duration).then(opt => {
+        if (opt && opt.iv) {
+          setData(prev => prev ? { ...prev, stock: { ...prev.stock, iv: opt.iv, greeks: opt.greeks, iv_source: 'marketdata' } } : prev);
+        }
+      }).catch(() => {});
     }).catch(() => setLoading(false));
   }, [indexSymbol, stockTicker, duration]);
 
@@ -147,7 +153,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               {/* Greeks (IBKR) */}
               {stock.greeks && (
                 <div style={{ padding: '12px 16px', background: 'var(--pos-soft)', border: '1px solid var(--pos)', borderRadius: 'var(--radius-lg)' }}>
-                  <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--pos-bright)', marginBottom: 8 }}>Grecs straddle · IBKR temps réel</div>
+                  <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--pos-bright)', marginBottom: 8 }}>{stock.iv_source === 'marketdata' ? 'Grecs straddle · MarketData temps réel' : 'Grecs straddle · estimés'}</div>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
                     {[
                       { l: 'Delta', v: stock.greeks.delta?.toFixed(3) },
@@ -201,7 +207,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
 
               {/* IV source */}
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', textAlign: 'center' }}>
-                Source IV : {stock.iv_source === 'thetadata' ? '✓ ThetaData (réelle)' : stock.iv_source === 'estimated_from_hv' ? '⚠ Estimée depuis HV' : stock.iv_source || 'Inconnue'}
+                Source IV : {stock.iv_source === 'marketdata' ? '✓ MarketData (réelle)' : stock.iv_source === 'thetadata' ? '✓ ThetaData (réelle)' : stock.iv_source === 'estimated_from_hv' ? '⚠ Estimée depuis HV' : stock.iv_source || 'Inconnue'}
               </div>
             </div>
           );

@@ -97,6 +97,12 @@
     }
   }
 
+  /* ── Options (IV ATM + greeks, MarketData) ───────────────────── */
+  async function getOptionAtm(symbol, dte = 30) {
+    try { return await _get('/options/atm?symbol=' + encodeURIComponent(symbol) + '&dte=' + dte); }
+    catch { return null; } // null → l'appelant garde ses données estimées
+  }
+
   /* ── Lists ───────────────────────────────────────────────────── */
   async function getLists() {
     try { return await _get('/lists'); }
@@ -221,7 +227,7 @@
     checkHealth, isConnected,
     getIndices, getIndex, getSnapshot, getComponents, getSources,
     batchQuotes,
-    autoScore,
+    autoScore, getOptionAtm,
     getLists, createList, getList, updateList, deleteList,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,

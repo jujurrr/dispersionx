@@ -12,6 +12,7 @@ erreur 5xx, le client (`js/api.js`) bascule automatiquement sur les données moc
 | `POST /api/quotes/batch`           | `quotes-batch.mjs`   | Alpaca data   |
 | `GET  /api/indices/:sym/snapshot`  | `index-snapshot.mjs` | Alpaca (ETF proxy) |
 | `GET  /api/indices/:sym/components`| `index-components.mjs` | FMP (etf-holder / constituent) |
+| `GET  /api/options/atm`            | `options-atm.mjs`    | MarketData.app (IV ATM + greeks) |
 
 > Les snapshots d'indices passent par l'ETF proxy (SPX→SPY, NDX→QQQ, DJI→DIA,
 > CAC→EWQ, DAX→EWG). Variation %, HV et perfs sont fiables ; le niveau absolu est
@@ -28,6 +29,7 @@ Netlify → **Site settings → Environment variables** → Add a variable :
 | `ALPACA_DATA_FEED`       | `iex` (gratuit) ou `sip` (abonnement)             | `iex`                           |
 | `ALPACA_TRADING_BASE`    | `https://paper-api.alpaca.markets` (papier) ou `https://api.alpaca.markets` (réel) | `https://paper-api.alpaca.markets` |
 | `FMP_API_KEY`            | Clé Financial Modeling Prep (constituants d'indices) | `…`                    |
+| `MARKETDATA_API_TOKEN`   | Token MarketData.app (IV ATM + greeks d'options)     | `…`                    |
 
 Après avoir ajouté les variables, redéployer (Deploys → Trigger deploy) pour qu'elles
 soient prises en compte. Sans clés, `health` renvoie 503 → l'app reste en « Mode démo ».

@@ -26,6 +26,11 @@
   to = "/.netlify/functions/index-components?symbol=:symbol"
   status = 200
 
+[[redirects]]
+  from = "/api/options/atm"
+  to = "/.netlify/functions/options-atm"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
