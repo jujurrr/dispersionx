@@ -243,7 +243,7 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
   );
 }
 
-function Topbar({ crumbs, mode, onMode, activeList }) {
+function Topbar({ crumbs, mode, onMode, activeList, onNav, user }) {
   const [apiOn, setApiOn] = React.useState(window.DXApi ? window.DXApi.isConnected() : null);
 
   React.useEffect(() => {
@@ -289,7 +289,14 @@ function Topbar({ crumbs, mode, onMode, activeList }) {
         </div>
         <SectionToggle to="landing" />
         <ThemeToggle />
-        <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>DX</div>
+        <div onClick={() => onNav && onNav('login')} title={user ? `${user.name} — profil` : 'Connexion'}
+          style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
+            background: user ? 'var(--accent-soft)' : 'var(--bg-elevated)',
+            border: `1px solid ${user ? 'var(--accent-border)' : 'var(--border)'}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            font: '600 11px/1 var(--font-mono)', color: user ? 'var(--accent-hover)' : 'var(--text-soft)' }}>
+          {user && window.initialsOf ? window.initialsOf(user.name) : 'DX'}
+        </div>
       </div>
     </header>
   );

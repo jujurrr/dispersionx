@@ -42,6 +42,7 @@ function Landing() {
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {window.SectionToggle ? <window.SectionToggle to="app" /> : null}
             {window.ThemeToggle ? <window.ThemeToggle /> : null}
+            <Button variant="ghost" size="md" onClick={() => window.__dxNav && window.__dxNav('login')}>Connexion</Button>
             <Button variant="primary" size="md" onClick={() => window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
           </div>
         </div>

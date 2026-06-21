@@ -7,7 +7,16 @@ function App() {
   const [scoreModal, setScoreModal] = React.useState(null);
   const [duration, setDuration] = React.useState(30);
   const [splash, setSplash] = React.useState(null);
+  const [user, setUser] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('dx-user') || 'null'); } catch { return null; }
+  });
   const [toasts, addToast] = window.useToasts();
+
+  function handleAuth(u) {
+    setUser(u);
+    if (u) localStorage.setItem('dx-user', JSON.stringify(u));
+    else localStorage.removeItem('dx-user');
+  }
 
   // Load lists on mount
   React.useEffect(() => {
@@ -123,6 +132,18 @@ function App() {
 
   const splashEl = splash ? <SectionSplash label={splash} /> : null;
 
+  // Login / profile — standalone full-screen page (no app shell)
+  if (screen === 'login') {
+    return (
+      <React.Fragment>
+        <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
+          {window.Auth ? <window.Auth onNav={onNav} user={user} onAuth={handleAuth} /> : null}
+        </div>
+        {splashEl}
+      </React.Fragment>
+    );
+  }
+
   // Landing / presentation page — full screen, no app shell (it has its own Nav)
   if (screen === 'landing') {
     return (
@@ -140,7 +161,7 @@ function App() {
     <div style={{ display: 'grid', gridTemplateColumns: 'var(--sidebar-w, 220px) 1fr', height: '100vh', overflow: 'hidden' }}>
       <window.Sidebar active={screen} onNav={onNav} lists={lists} />
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
-        <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} />
+        <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} />
         <main style={{
           flex: 1, overflowY: 'auto', padding: '24px 28px 64px',
           backgroundImage: 'radial-gradient(ellipse 70% 50% at 80% -5%, var(--accent-soft), transparent 60%), radial-gradient(ellipse 50% 40% at 0% 10%, var(--pos-soft), transparent 55%)',
