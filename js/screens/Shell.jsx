@@ -152,8 +152,9 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
       background: 'var(--bg-surface)', borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
-      {/* Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '16px 18px 18px', borderBottom: '1px solid var(--border-subtle)' }}>
+      {/* Logo — clicking reloads the site */}
+      <div onClick={() => window.location.reload()} title="Recharger DispersionX"
+        style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '16px 18px 18px', borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
         <Logo size={32} wordmark={false} />
         <div style={{ lineHeight: 1.15 }}>
           <div style={{ font: '800 14px/1 var(--font-sans)', letterSpacing: '-0.01em', color: 'var(--text)' }}>

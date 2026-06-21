@@ -4680,6 +4680,7 @@ function Logo({
   const s = height || size;
   return /*#__PURE__*/React.createElement("span", {
     className: "dx-logo",
+    onClick: () => window.location.reload(),
     style: {
       display: 'inline-flex',
       alignItems: 'center',
