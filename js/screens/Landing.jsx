@@ -13,7 +13,7 @@ function Landing() {
 
   const LINKS = [
     ['comprendre', 'Comprendre'],
-    ['fonctionnalites', 'Fonctionnalités'],
+    ['pourquoi', 'Pourquoi'],
     ['workflow', 'Workflow'],
     ['risques', 'Risques'],
     ['execution', 'Exécution'],
@@ -58,8 +58,8 @@ function Landing() {
         <div style={{ ...wrap, position: 'relative', padding: '92px 32px 80px', display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 48, alignItems: 'center' }}>
           <div>
             <Badge tone="accent" size="md">Analyse de dispersion d'options</Badge>
-            <h1 style={{ font: 'var(--type-hero)', fontSize: 52, letterSpacing: 'var(--track-tight)', color: 'var(--text)', margin: '20px 0 0', textWrap: 'balance' }}>
-              La volatilité de l'indice n'est pas la somme de ses composants.
+            <h1 style={{ font: 'var(--type-hero)', fontSize: 48, letterSpacing: 'var(--track-tight)', color: 'var(--text)', margin: '20px 0 0', textWrap: 'balance' }}>
+              Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.
             </h1>
             <p style={{ ...lede, fontSize: 19, marginTop: 22 }}>
               Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutral et testez vos risques avant exécution.
@@ -161,30 +161,27 @@ function Landing() {
     );
   }
 
-  // ═══════════════════════ 2. FONCTIONNALITÉS ═══════════════════════
-  const FEATURES = [
-    { icon: 'M3 3v18h18M7 14l3-3 3 3 5-6', t: 'Scoring des composants', d: 'Chaque action est notée sur la liquidité, la prime de volatilité, sa contribution à la dispersion, l\'exécution et le risque d\'événement.' },
-    { icon: 'M3 3v18h18M7 14l3-3 3 3 5-6', t: 'Correlation Lab', d: 'Matrice de corrélation, ρ implicite vs ρ̂ réalisée par fenêtre (20/60/120j), z-score et couverture du panier.' },
-    { icon: 'M3 12h4l3 8 4-16 3 8h4', t: 'Volatility Lab', d: 'Structure par terme, skew, IV rank et percentile pour choisir l\'échéance et les strikes.' },
-    { icon: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z', t: 'Strategy Builder', d: 'Assistant en plusieurs étapes : sizing vega-neutral, équilibrage indice / panier, prime nette et coûts estimés.' },
-    { icon: 'M12 2 2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7L12 2Z', t: 'Risk Lab', d: 'Grecs agrégés, scénarios de stress, heatmap spot × vol et attribution du P&L par sous-jacent et par secteur.' },
-    { icon: 'M3 3h18v14H3zM8 21h8M12 17v4', t: 'Suivi des positions', d: 'Checklist de validation, snapshots, P&L en direct et alertes sur le déséquilibre vega ou le theta critique.' },
+  // ═══════════════════════ 2. POURQUOI ═══════════════════════
+  const WHY = [
+    ['Analyse structurée', 'La stratégie est examinée sous plusieurs angles avant toute décision.'],
+    ['Meilleure compréhension du risque', 'Grecs, theta, scénarios de stress et coûts rendus visibles.'],
+    ['Construction vega-neutral', 'Équilibrage entre la jambe indice et le panier de composants.'],
+    ['Scénarios de stress', 'Sell-off corrélé, vol crush, hausse IV — testés avant exécution.'],
+    ['Lecture pédagogique', 'Explications « en clair » et tooltips pour les débutants sérieux.'],
+    ['Outil avancé', 'Matrices, formules et exports pour les utilisateurs expérimentés.'],
   ];
-  function Fonctionnalites() {
+  function Pourquoi() {
     return (
-      <section id="fonctionnalites" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+      <section id="pourquoi" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ ...sectionPad, ...wrap }}>
-          <div style={eyebrow}>Ce que la plateforme offre</div>
-          <h2 style={{ ...h2, marginBottom: 14 }}>Une suite d'outils, du screening au suivi.</h2>
-          <p style={{ ...lede, marginBottom: 36 }}>Chaque module reprend les mêmes conventions de lecture et le même vocabulaire, du débutant sérieux à l'utilisateur avancé.</p>
+          <div style={eyebrow}>Pourquoi cette approche est utile</div>
+          <h2 style={{ ...h2, marginBottom: 14 }}>Elle oblige à analyser sous plusieurs angles.</h2>
+          <p style={{ ...lede, marginBottom: 36 }}>Volatilité implicite, volatilité historique, corrélation, liquidité, grecs, theta, scénario de stress et coût d'exécution — chaque dimension est mesurée, jamais supposée.</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-            {FEATURES.map(f => (
-              <div key={f.t} className="dx-lift" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 22 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 'var(--radius)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-hover)', marginBottom: 14 }}>
-                  <Icon d={f.icon} />
-                </div>
-                <h3 style={{ font: 'var(--type-title)', color: 'var(--text)', margin: '0 0 6px' }}>{f.t}</h3>
-                <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>{f.d}</p>
+            {WHY.map(([t, d]) => (
+              <div key={t} className="dx-lift" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 22 }}>
+                <h3 style={{ font: 'var(--type-title)', color: 'var(--text)', margin: '0 0 8px' }}>{t}</h3>
+                <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>{d}</p>
               </div>
             ))}
           </div>
@@ -232,7 +229,7 @@ function Landing() {
     ['Theta & échéance', 'À l\'approche de l\'expiration, la position peut perdre sa valeur temps plus vite qu\'anticipé.'],
     ['Coût d\'exécution', 'Le bid/ask aller-retour peut absorber une part significative de l\'edge théorique.'],
   ];
-  const BOUNDARIES = ['Ne donne pas de conseil financier', 'Ne garantit aucune performance', 'Ne remplace pas une validation humaine', "N'exécute jamais automatiquement sans contrôle"];
+  const BOUNDARIES = ['Ne donne pas de conseil financier', 'Ne garantit aucune performance', 'Ne remplace pas Risk Navigator ni une validation humaine', "N'exécute jamais automatiquement sans contrôle"];
   function Risques() {
     return (
       <section id="risques" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -321,7 +318,7 @@ function Landing() {
       <Nav />
       <Hero />
       <Comprendre />
-      <Fonctionnalites />
+      <Pourquoi />
       <Workflow />
       <Risques />
       <Execution />
