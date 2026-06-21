@@ -13,9 +13,10 @@ const INDEX = {
   SPX: { etf: 'SPY', constituent: 'sp500_constituent' },
   NDX: { etf: 'QQQ', constituent: 'nasdaq_constituent' },
   DJI: { etf: 'DIA', constituent: 'dowjones_constituent' },
-  // CAC / DAX : pas d'endpoint FMP simple → repli mock côté client
-  CAC: { etf: null, constituent: null },
-  DAX: { etf: null, constituent: null },
+  // CAC / DAX : pas d'endpoint "constituent" FMP → on passe par les holdings de l'ETF
+  // (EWQ ≈ grandes caps françaises, EWG ≈ grandes caps allemandes).
+  CAC: { etf: 'EWQ', constituent: null },
+  DAX: { etf: 'EWG', constituent: null },
 };
 
 function blank(extra) {
