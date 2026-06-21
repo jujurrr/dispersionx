@@ -87,6 +87,42 @@ function ThemeToggle() {
   );
 }
 
+// Toggle between the presentation (Landing) part and the app (creation) part.
+// `to` = destination side, controls the icon + tooltip. Action runs window.__dxSwitch.
+function SectionToggle({ to = 'landing' }) {
+  const [hover, setHover] = React.useState(false);
+  const goingToApp = to === 'app';
+  const title = goingToApp ? 'Aller à l’espace de création' : 'Aller à la présentation';
+  return (
+    <button onClick={() => window.__dxSwitch && window.__dxSwitch()}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      title={title} aria-label={title}
+      style={{
+        width: 30, height: 30, borderRadius: 'var(--radius)', cursor: 'pointer',
+        background: hover ? 'var(--bg-hover)' : 'var(--bg-elevated)',
+        border: '1px solid var(--border)', color: hover ? 'var(--accent-hover)' : 'var(--text-soft)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all var(--dur-fast) var(--ease)',
+      }}>
+      <span style={{ display: 'inline-flex', transition: 'transform var(--dur) var(--ease)' }}>
+        {goingToApp ? (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="3" width="7" height="7" rx="1" />
+            <rect x="14" y="14" width="7" height="7" rx="1" />
+            <rect x="3" y="14" width="7" height="7" rx="1" />
+          </svg>
+        ) : (
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 5h11l4 4v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z" />
+            <path d="M15 5v4h4" />
+          </svg>
+        )}
+      </span>
+    </button>
+  );
+}
+
 const NAV = [
   { group: 'Accueil', items: [
     { id: 'home', label: 'Indices', icon: 'home' },
@@ -250,6 +286,7 @@ function Topbar({ crumbs, mode, onMode, activeList }) {
             }}>{m}</button>
           ))}
         </div>
+        <SectionToggle to="landing" />
         <ThemeToggle />
         <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>DX</div>
       </div>
@@ -287,4 +324,4 @@ function useToasts() {
   return [toasts, add];
 }
 
-Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, Sidebar, Topbar, Toast, useToasts });
+Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, SectionToggle, Sidebar, Topbar, Toast, useToasts });

@@ -63,6 +63,22 @@
       margin: -16px 0 0 -16px;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Section transition splash */
+    @keyframes dxSplashWrap {
+      0% { opacity: 0; }
+      14% { opacity: 1; }
+      76% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes dxSplashTitle {
+      0% { opacity: 0; transform: translateY(12px) scale(0.94); letter-spacing: 0.4em; }
+      100% { opacity: 1; transform: none; letter-spacing: -0.01em; }
+    }
+    @keyframes dxSplashBar {
+      0% { transform: scaleX(0); }
+      100% { transform: scaleX(1); }
+    }
   </style>
 </head>
 <body>

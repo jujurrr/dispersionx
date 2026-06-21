@@ -6,6 +6,7 @@ function App() {
   const [lists, setLists] = React.useState([]);
   const [scoreModal, setScoreModal] = React.useState(null);
   const [duration, setDuration] = React.useState(30);
+  const [splash, setSplash] = React.useState(null);
   const [toasts, addToast] = window.useToasts();
 
   // Load lists on mount
@@ -26,6 +27,17 @@ function App() {
 
   // Expose navigation so the marketing Landing page CTAs (in _ds_bundle.js) can route into the app
   window.__dxNav = onNav;
+
+  // Switch between the two parts of the site (presentation ⇆ creation) with a full-screen splash.
+  function switchSection() {
+    const goingToLanding = screen !== 'landing';
+    const target = goingToLanding ? 'landing' : 'home';
+    const label = goingToLanding ? 'Présentation' : 'Espace de création';
+    setSplash(label);
+    setTimeout(() => onNav(target), 480);
+    setTimeout(() => setSplash(null), 1150);
+  }
+  window.__dxSwitch = switchSection;
 
   function onScore(indexSymbol, stockTicker, duration) {
     setScoreModal({ indexSymbol, stockTicker, duration: duration || 30 });
@@ -109,16 +121,22 @@ function App() {
       );
   }
 
+  const splashEl = splash ? <SectionSplash label={splash} /> : null;
+
   // Landing / presentation page — full screen, no app shell (it has its own Nav)
   if (screen === 'landing') {
     return (
-      <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
-        {window.Landing ? <window.Landing /> : null}
-      </div>
+      <React.Fragment>
+        <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
+          {window.Landing ? <window.Landing /> : null}
+        </div>
+        {splashEl}
+      </React.Fragment>
     );
   }
 
   return (
+    <React.Fragment>
     <div style={{ display: 'grid', gridTemplateColumns: 'var(--sidebar-w, 220px) 1fr', height: '100vh', overflow: 'hidden' }}>
       <window.Sidebar active={screen} onNav={onNav} lists={lists} />
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
@@ -147,6 +165,31 @@ function App() {
 
       {/* Toast notifications */}
       <window.Toast toasts={toasts} remove={() => {}} />
+    </div>
+    {splashEl}
+    </React.Fragment>
+  );
+}
+
+/* ─── Full-screen transition splash between the two parts of the site ─── */
+function SectionSplash({ label }) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 26,
+      background: 'var(--bg-base)',
+      backgroundImage: 'radial-gradient(ellipse 70% 50% at 50% 30%, var(--accent-soft), transparent 65%)',
+      animation: 'dxSplashWrap 1150ms ease both',
+    }}>
+      <div style={{ opacity: 0.55 }}><window.Logo size={44} wordmark={false} /></div>
+      <div style={{
+        font: '800 clamp(30px, 6vw, 58px)/1 var(--font-sans)',
+        color: 'var(--text)', textAlign: 'center', padding: '0 20px',
+        animation: 'dxSplashTitle 620ms cubic-bezier(0.2, 0.7, 0.2, 1) both',
+      }}>{label}</div>
+      <div style={{ width: 160, height: 3, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+        <div style={{ height: '100%', background: 'var(--accent)', transformOrigin: 'left', animation: 'dxSplashBar 1000ms ease both' }} />
+      </div>
     </div>
   );
 }

@@ -4835,7 +4835,9 @@ function Nav() {
       gap: 10,
       alignItems: 'center'
     }
-  }, /*#__PURE__*/React.createElement(MktThemeToggle, null), /*#__PURE__*/React.createElement(Button, {
+  }, window.SectionToggle ? /*#__PURE__*/React.createElement(window.SectionToggle, {
+    to: 'app'
+  }) : null, /*#__PURE__*/React.createElement(MktThemeToggle, null), /*#__PURE__*/React.createElement(Button, {
     variant: "ghost",
     size: "md",
     onClick: () => window.__dxNav && window.__dxNav('home')
