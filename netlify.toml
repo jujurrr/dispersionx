@@ -31,6 +31,12 @@
   to = "/.netlify/functions/options-atm"
   status = 200
 
+# Phase 3 — proxy vers le backend IBKR (FastAPI sur VPS). Tout /api/ib/* est relayé.
+[[redirects]]
+  from = "/api/ib/*"
+  to = "/.netlify/functions/backend-proxy/:splat"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]

@@ -1,0 +1,28 @@
+# Lance IB Gateway (auto-login via IBC) + le backend FastAPI sur le même réseau.
+# Le backend joint la Gateway via le hostname "ibgateway" sur le port 4002 (paper).
+services:
+  ibgateway:
+    image: ghcr.io/gnzsnz/ib-gateway:stable
+    restart: unless-stopped
+    environment:
+      TWS_USERID: ${TWS_USERID}
+      TWS_PASSWORD: ${TWS_PASSWORD}
+      TRADING_MODE: ${TRADING_MODE:-paper}
+      READ_ONLY_API: "no"
+      TZ: Europe/Paris
+    ports:
+      - "4002:4002"   # API paper (exposé localement seulement si besoin de debug)
+
+  backend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - ibgateway
+    environment:
+      IB_HOST: ibgateway
+      IB_PORT: 4002
+      IB_CLIENT_ID: 11
+      BACKEND_TOKEN: ${BACKEND_TOKEN}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
+    ports:
+      - "8000:8000"   # API FastAPI — à mettre derrière un reverse proxy HTTPS (Caddy/Traefik)

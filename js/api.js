@@ -97,10 +97,13 @@
     }
   }
 
-  /* ── Options (IV ATM + greeks, MarketData) ───────────────────── */
+  /* ── Options (IV ATM + greeks) ───────────────────────────────── */
+  // Tente IBKR d'abord (backend dédié via /api/ib/*), puis MarketData, sinon null.
   async function getOptionAtm(symbol, dte = 30) {
-    try { return await _get('/options/atm?symbol=' + encodeURIComponent(symbol) + '&dte=' + dte); }
-    catch { return null; } // null → l'appelant garde ses données estimées
+    const qs = 'symbol=' + encodeURIComponent(symbol) + '&dte=' + dte;
+    try { return await _get('/ib/options/atm?' + qs); } catch { /* backend IBKR absent */ }
+    try { return await _get('/options/atm?' + qs); } catch { /* MarketData absent */ }
+    return null; // l'appelant garde ses données estimées
   }
 
   /* ── Lists ───────────────────────────────────────────────────── */
