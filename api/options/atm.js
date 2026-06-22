@@ -31,12 +31,15 @@ async function fetchMarketData(symbol, dte, token) {
   };
 }
 
-async function fetchYahooOptions(symbol, dte) {
+async function fetchYahooOptions(symbol, dte, debug = false) {
   const headers = { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' };
 
   // 1. Dates d'expiration disponibles + prix actuel
   const r1 = await fetch(`https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`, { headers });
-  if (!r1.ok) return null;
+  if (!r1.ok) {
+    if (debug) return { _debug: `v7 status ${r1.status}`, error: `http_${r1.status}` };
+    return null;
+  }
   const d1 = await r1.json();
   const res = d1?.optionChain?.result?.[0];
   if (!res) return null;
@@ -100,7 +103,7 @@ export default async (req) => {
       process.env.MARKETDATA_API_TOKEN
         ? fetchMarketData(symbol, dte, process.env.MARKETDATA_API_TOKEN)
         : Promise.resolve(null),
-      fetchYahooOptions(symbol, dte),
+      fetchYahooOptions(symbol, dte, true),
     ]);
     return Response.json({
       symbol, dte,
