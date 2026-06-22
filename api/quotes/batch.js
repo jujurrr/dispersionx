@@ -35,10 +35,11 @@ async function fetchAlpaca(symbols) {
   if (!snapRes.ok) return null;
   const snaps = await snapRes.json();
 
-  let weekly = {};
+  // Barres journalières sur 7 jours pour la variation semaine (bar[0] = ~5 jours de bourse en arrière)
+  let dailyBars = {};
   try {
-    const wkRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${list}&timeframe=1Week&limit=2&feed=${FEED}`, { headers: alpacaHeaders() });
-    if (wkRes.ok) weekly = (await wkRes.json()).bars || {};
+    const dRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${list}&timeframe=1Day&limit=7&feed=${FEED}`, { headers: alpacaHeaders() });
+    if (dRes.ok) dailyBars = (await dRes.json()).bars || {};
   } catch { /* variation semaine optionnelle */ }
 
   return symbols.map(sym => {
@@ -46,9 +47,9 @@ async function fetchAlpaca(symbols) {
     const price = s.latestTrade?.p ?? s.minuteBar?.c ?? s.dailyBar?.c ?? null;
     const prevClose = s.prevDailyBar?.c ?? null;
     const day = (price != null && prevClose) ? ((price - prevClose) / prevClose) * 100 : null;
-    const wkBars = weekly[sym] || [];
-    const wkClose = wkBars.length ? wkBars[0].c : null;
-    const week = (price != null && wkClose) ? ((price - wkClose) / wkClose) * 100 : null;
+    const bars = dailyBars[sym] || [];
+    const weekClose = bars.length >= 2 ? bars[0].c : null; // bar le plus ancien = ~5j en arrière
+    const week = (price != null && weekClose) ? ((price - weekClose) / weekClose) * 100 : null;
     return {
       ticker: sym,
       price: price != null ? price.toFixed(2) : null,
@@ -78,11 +79,31 @@ export default async (req) => {
       const valid = finnhubResults.filter(Boolean);
       if (valid.length >= Math.ceil(symbols.length / 2)) {
         const missing = symbols.filter((_, i) => !finnhubResults[i]);
-        if (missing.length && process.env.ALPACA_API_KEY_ID) {
+
+        // Enrichir avec variation semaine via barres journalières Alpaca
+        if (process.env.ALPACA_API_KEY_ID) {
           try {
-            const alpacaFill = await fetchAlpaca(missing);
-            return Response.json([...valid, ...(alpacaFill || []).filter(r => r.price != null)], { status: 200 });
-          } catch { /* retourne ce qu'on a */ }
+            const allTickers = valid.map(r => r.ticker);
+            const list = encodeURIComponent(allTickers.join(','));
+            const dRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${list}&timeframe=1Day&limit=7&feed=${FEED}`, { headers: alpacaHeaders() });
+            if (dRes.ok) {
+              const dailyBars = (await dRes.json()).bars || {};
+              valid.forEach(r => {
+                const bars = dailyBars[r.ticker] || [];
+                const weekClose = bars.length >= 2 ? bars[0].c : null;
+                if (weekClose && r.price) {
+                  r.week = (((parseFloat(r.price) - weekClose) / weekClose) * 100).toFixed(2);
+                }
+              });
+            }
+          } catch { /* semaine optionnelle */ }
+
+          if (missing.length) {
+            try {
+              const alpacaFill = await fetchAlpaca(missing);
+              return Response.json([...valid, ...(alpacaFill || []).filter(r => r.price != null)], { status: 200 });
+            } catch { /* retourne ce qu'on a */ }
+          }
         }
         return Response.json(valid, { status: 200 });
       }

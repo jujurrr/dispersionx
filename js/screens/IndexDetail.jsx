@@ -44,7 +44,14 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
   const effScore = (c) => c.score != null ? c.score : (window.DXMock && window.DXMock.scoreFor ? window.DXMock.scoreFor(c.ticker) : null);
 
   // Sort
-  const getSortVal = (c) => sort.key === 'score' ? effScore(c) : c[sort.key];
+  const getSortVal = (c) => {
+    if (sort.key === 'score') return effScore(c);
+    if (sort.key === 'price' || sort.key === 'day' || sort.key === 'week') {
+      const q = quotes[c.ticker];
+      return q ? parseFloat(q[sort.key]) : null;
+    }
+    return c[sort.key];
+  };
   const sorted = sort.dir === 0 ? filtered : [...filtered].sort((a, b) => {
     const av = getSortVal(a) ?? (sort.dir > 0 ? Infinity : -Infinity);
     const bv = getSortVal(b) ?? (sort.dir > 0 ? Infinity : -Infinity);
@@ -157,9 +164,9 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
               {[
                 { label: 'Action', key: 'ticker', align: 'left' },
                 { label: 'Poids', key: 'weight', align: 'right' },
-                { label: 'Prix', key: null, align: 'right' },
-                { label: 'Jour', key: null, align: 'right' },
-                { label: 'Semaine', key: null, align: 'right' },
+                { label: 'Prix', key: 'price', align: 'right' },
+                { label: 'Jour', key: 'day', align: 'right' },
+                { label: 'Semaine', key: 'week', align: 'right' },
                 { label: 'Secteur', key: 'sector', align: 'left' },
                 { label: 'Score', key: 'score', align: 'right' },
                 { label: '', key: null, align: 'right' },
@@ -184,8 +191,12 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
                   {/* Stock cell */}
                   <td style={{ padding: '10px 14px' }}>
                     <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                      <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 8px/1 var(--font-mono)', color: 'var(--text-soft)', flexShrink: 0 }}>
-                        {c.ticker.slice(0, 3)}
+                      <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {c.logo
+                          ? <img src={c.logo} alt="" style={{ width: 22, height: 22, objectFit: 'contain' }}
+                              onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', `<span style="font:700 8px/1 var(--font-mono);color:var(--text-soft)">${c.ticker.slice(0,3)}</span>`); }} />
+                          : <span style={{ font: '700 8px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{c.ticker.slice(0, 3)}</span>
+                        }
                       </div>
                       <div>
                         <div style={{ font: 'var(--type-ticker)', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 6 }}>
