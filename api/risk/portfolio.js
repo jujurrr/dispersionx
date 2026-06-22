@@ -21,7 +21,7 @@ function bsAtm(S, sigma, T) {
   return {
     premium: 2 * S * (normCDF(d1) - 0.5) + S * sigma * sqrtT * nd1 * 0.5,
     gamma:   2 * nd1 / (S * sigma * sqrtT),
-    vega:    2 * S * nd1 * sqrtT / 100,
+    vega:    2 * S * nd1 * sqrtT,
     theta: -(S * sigma * nd1) / (2 * sqrtT * 365),
   };
 }
@@ -180,7 +180,7 @@ export default async (req) => {
     scenarios,
     // pnlByName : P&L per-ticker pour choc IV +15% sur CE straddle (1 contrat plein)
     pnlByName:   perTickerResult.map(r => ({ t: r.ticker, pnl: r.greeks ? Math.round(r.greeks.vega * 0.15 * CONTRACT) : 0 })),
-    pnlBySector: [{ s: 'Composants', pnl: Math.round(portVega * 0.15) }, { s: indexSym, pnl: Math.round(idxVega * -0.15) }],
+    pnlBySector: [{ s: 'Composants', pnl: Math.round(portVega * 0.15) }, { s: indexSym, pnl: Math.round(idxVega * 0.15) }],
     portfolio:   { n_tickers: perTicker.length, avg_iv: avgIV, index_iv: idxIVfn ?? null, net_vega: netVegaPct, net_theta: netTheta, net_premium: netPremium, duration },
     per_ticker:  perTickerResult.map(r => ({ ticker: r.ticker, price: r.price, iv: r.iv, hv: r.hv, beta: r.beta, iv_src: r.ivSrc, greeks: r.greeks })),
     source: mdTok ? 'marketdata+yahoo' : 'yahoo_hv_estimate',
