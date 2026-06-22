@@ -3,10 +3,16 @@ function Dashboard({ onNav, lists, mode }) {
   const { MetricCard, ScoreBadge, RiskBadge, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [positions, setPositions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
+  const [mktData, setMktData] = React.useState(null);
 
   React.useEffect(() => {
     DXApi.getPositions().catch(() => window.DXMock?.positions || [])
       .then(pos => { setPositions(pos || []); setLoading(false); });
+    // Charger les vraies données de marché
+    Promise.all([
+      fetch('/api/vol/spx').then(r => r.ok ? r.json() : null).catch(() => null),
+      DXApi.getCorrelation(null, ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN'], 'SPX').catch(() => null),
+    ]).then(([vol, corr]) => setMktData({ vol, corr }));
   }, []);
 
   const D = window.DXData;
@@ -18,12 +24,22 @@ function Dashboard({ onNav, lists, mode }) {
     { t: 'TSLA · vol crush probable', tone: 'var(--warn)' },
   ];
 
-  const marketCards = D?.market || [
-    { label: 'VIX', value: '18.2', accent: 'var(--warn)' },
-    { label: 'ρ implicite SPX', value: '0.61', accent: 'var(--accent)' },
-    { label: 'Prime ρ', value: '+6.4', unit: 'pts', accent: 'var(--pos)' },
-    { label: 'HV 30j SPX', value: '15.6', unit: '%', accent: 'var(--info)' },
-    { label: 'Signal global', value: 'Favorable', accent: 'var(--pos)' },
+  const vol  = mktData?.vol;
+  const corr = mktData?.corr;
+  const ivAtm  = vol?.iv_atm ?? null;
+  const hv30d  = vol?.hv30   ?? null;
+  const rhoI   = corr?.rho_impl ?? null;
+  const rhoR   = corr?.rho_real ?? null;
+  const prime  = rhoI != null && rhoR != null ? Number(((rhoI - rhoR) * 100).toFixed(1)) : null;
+  const signal = prime != null ? (prime > 5 ? 'Favorable' : prime > 0 ? 'Neutre' : 'Défavorable') : '···';
+  const sigAccent = prime != null ? (prime > 5 ? 'var(--pos)' : prime > 0 ? 'var(--warn)' : 'var(--neg)') : 'var(--text-muted)';
+
+  const marketCards = [
+    { label: 'IV ATM SPX', value: ivAtm != null ? ivAtm.toFixed(1) : '···', unit: '%', accent: 'var(--warn)', hint: vol?.source === 'marketdata+yahoo' ? 'MarketData' : 'Est.' },
+    { label: 'ρ implicite SPX', value: rhoI != null ? rhoI.toFixed(2) : '···', accent: 'var(--accent)' },
+    { label: 'Prime ρ', value: prime != null ? (prime >= 0 ? '+' : '') + prime : '···', unit: prime != null ? 'pts' : '', accent: prime != null && prime > 0 ? 'var(--pos)' : 'var(--neg)' },
+    { label: 'HV 30j SPX', value: hv30d != null ? hv30d.toFixed(1) : '···', unit: '%', accent: 'var(--info)', hint: 'Yahoo Finance' },
+    { label: 'Signal global', value: signal, accent: sigAccent },
   ];
 
   const trackedStrategies = [

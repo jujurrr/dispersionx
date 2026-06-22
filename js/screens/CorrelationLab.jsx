@@ -4,16 +4,22 @@ function CorrelationLab({ listId, onNav, mode }) {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
+  const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN'];
+
   React.useEffect(() => {
-    if (listId) {
-      DXApi.getCorrelation(listId).then(d => { setData(d); setLoading(false); }).catch(() => {
-        setData(window.DXData?.corr);
-        setLoading(false);
-      });
-    } else {
+    const resolve = listId
+      ? DXApi.getList(listId).then(list => {
+          const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
+          const index   = list?.index_symbol || 'SPX';
+          if (tickers.length < 2) return DXApi.getCorrelation(null, DEMO_TICKERS, index);
+          return DXApi.getCorrelation(listId, tickers, index);
+        })
+      : DXApi.getCorrelation(null, DEMO_TICKERS, 'SPX');
+
+    resolve.then(d => { setData(d); setLoading(false); }).catch(() => {
       setData(window.DXData?.corr);
       setLoading(false);
-    }
+    });
   }, [listId]);
 
   const cellColor = (v) => {

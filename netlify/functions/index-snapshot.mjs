@@ -32,23 +32,51 @@ function stdev(arr) {
 }
 const ann = 100 * Math.sqrt(252); // annualisation HV → %
 
+async function getBarsYahoo(etf) {
+  const r = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${etf}?interval=1d&range=1y`,
+    { headers: { 'User-Agent': 'Mozilla/5.0' } }
+  );
+  if (!r.ok) return null;
+  const result = (await r.json())?.chart?.result?.[0];
+  if (!result) return null;
+  const timestamps = result.timestamp || [];
+  const closes     = result.indicators?.quote?.[0]?.close || [];
+  if (closes.length < 5) return null;
+  return timestamps
+    .map((t, i) => ({ t: new Date(t * 1000).toISOString(), c: closes[i] }))
+    .filter(b => b.c != null);
+}
+
 export const config = { path: '/api/indices/:symbol/snapshot' };
 
 export default async (req, context) => {
-  if (!process.env.ALPACA_API_KEY_ID || !process.env.ALPACA_API_SECRET_KEY) {
-    return Response.json({ error: 'no_keys' }, { status: 503 });
-  }
   const symbol = ((context?.params?.symbol) || new URL(req.url).searchParams.get('symbol') || '').toUpperCase();
   const map = PROXY[symbol];
   if (!map) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
 
-  try {
-    const url = `${DATA_BASE}/v2/stocks/${map.etf}/bars?timeframe=1Day&limit=260&feed=${FEED}`;
-    const r = await fetch(url, { headers: authHeaders() });
-    if (!r.ok) return Response.json({ error: 'alpaca_bars', http: r.status }, { status: 502 });
-    const bars = (await r.json()).bars || [];
-    if (bars.length < 5) return Response.json({ error: 'not_enough_data' }, { status: 502 });
+  let bars = null;
 
+  // 1) Alpaca bars (si les clés sont disponibles)
+  if (process.env.ALPACA_API_KEY_ID && process.env.ALPACA_API_SECRET_KEY) {
+    try {
+      const url = `${DATA_BASE}/v2/stocks/${map.etf}/bars?timeframe=1Day&limit=260&feed=${FEED}`;
+      const r = await fetch(url, { headers: authHeaders() });
+      if (r.ok) {
+        const raw = (await r.json()).bars || [];
+        if (raw.length >= 5) bars = raw.map(b => ({ t: b.t, c: b.c }));
+      }
+    } catch { /* fallback */ }
+  }
+
+  // 2) Yahoo Finance bars (fallback)
+  if (!bars) {
+    try { bars = await getBarsYahoo(map.etf); } catch { /* erreur */ }
+  }
+
+  if (!bars || bars.length < 5) return Response.json({ error: 'no_data' }, { status: 502 });
+
+  try {
     const closes = bars.map(b => b.c);
     const n = closes.length;
     const last = closes[n - 1];

@@ -6,12 +6,17 @@ function VolatilityLab({ mode }) {
   const adv = mode === 'Avancé';
 
   React.useEffect(() => {
-    setVolData(window.DXData || null);
-    setLoading(false);
+    fetch('/api/vol/spx')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { setVolData(d); setLoading(false); })
+      .catch(() => { setVolData(null); setLoading(false); });
   }, []);
 
   const D = volData || {};
-  const term = D.term || [
+  const ivAtm = D.iv_atm ?? 18.2;
+  const hv30v = D.hv30  ?? 15.6;
+  const ivMhv = D.iv_minus_hv ?? Number((ivAtm - hv30v).toFixed(1));
+  const term = (D.term && D.term.length >= 2) ? D.term : [
     { dte: 14, iv: 19.8 }, { dte: 21, iv: 18.6 }, { dte: 30, iv: 18.2 },
     { dte: 45, iv: 17.8 }, { dte: 60, iv: 17.4 }, { dte: 90, iv: 17.1 },
   ];
@@ -21,7 +26,8 @@ function VolatilityLab({ mode }) {
     { k: '110%', iv: 17.6 }, { k: '115%', iv: 17.4 }, { k: '120%', iv: 17.3 },
   ];
 
-  const ivPoints = [{ iv: 14.2 }, { iv: 15.1 }, { iv: 16.8 }, { iv: 15.9 }, { iv: 17.2 }, { iv: 18.0 }, { iv: 18.2 }];
+  // Historique IV vs HV sur la term (points des DTE disponibles)
+  const ivPoints = term.map(p => ({ iv: p.iv }));
 
   function Panel({ title, hint, children, help }) {
     return (
@@ -74,11 +80,11 @@ function VolatilityLab({ mode }) {
 
       {/* Top metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-        <MetricCard label="IV ATM" value="18.2" unit="%" accent="var(--accent)" />
-        <MetricCard label="HV 30j" value="15.6" unit="%" accent="var(--info)" />
-        <MetricCard label="IV − HV" value="+2.6" unit="pts" accent="var(--pos)" />
-        <MetricCard label="IV Rank" value="38" unit="%" hint="Position dans la fourchette 52 sem." accent="var(--warn)" />
-        <MetricCard label="IV Percentile" value="44" unit="%" accent="var(--warn)" />
+        <MetricCard label="IV ATM" value={ivAtm != null ? ivAtm.toFixed(1) : '···'} unit="%" accent="var(--accent)" hint={D.source === 'marketdata+yahoo' ? 'MarketData · SPY 30j' : D.source === 'yahoo_hv' ? 'Est. HV×1.12' : undefined} />
+        <MetricCard label="HV 30j" value={hv30v != null ? hv30v.toFixed(1) : '···'} unit="%" accent="var(--info)" hint="Yahoo Finance · SPY" />
+        <MetricCard label="IV − HV" value={ivMhv != null ? (ivMhv >= 0 ? '+' : '') + ivMhv.toFixed(1) : '···'} unit="pts" accent={ivMhv > 0 ? 'var(--pos)' : 'var(--neg)'} />
+        <MetricCard label="IV Rank" value="—" unit="%" hint="Requiert données historiques" accent="var(--warn)" />
+        <MetricCard label="HV 252j" value={D.hv252 != null ? D.hv252.toFixed(1) : '···'} unit="%" accent="var(--warn)" hint="Annualisée" />
       </div>
 
       {mode === 'Débutant' && (

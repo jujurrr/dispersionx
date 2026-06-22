@@ -30,14 +30,17 @@ async function fetchFinnhub(symbols, token) {
 }
 
 async function fetchAlpaca(symbols) {
-  const list = encodeURIComponent(symbols.join(','));
-  const snapRes = await fetch(`${DATA_BASE}/v2/stocks/snapshots?symbols=${list}&feed=${FEED}`, { headers: alpacaHeaders() });
+  // Snapshots : Alpaca accepte les virgules encodées pour cet endpoint
+  const listEncoded = encodeURIComponent(symbols.join(','));
+  const snapRes = await fetch(`${DATA_BASE}/v2/stocks/snapshots?symbols=${listEncoded}&feed=${FEED}`, { headers: alpacaHeaders() });
   if (!snapRes.ok) return null;
   const snaps = await snapRes.json();
 
   let weekly = {};
   try {
-    const wkRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${list}&timeframe=1Week&limit=2&feed=${FEED}`, { headers: alpacaHeaders() });
+    // Bars multi-symbols : pas d'encodage des virgules (Alpaca le rejette sinon)
+    const listRaw = symbols.join(',');
+    const wkRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${listRaw}&timeframe=1Day&limit=10&feed=${FEED}`, { headers: alpacaHeaders() });
     if (wkRes.ok) weekly = (await wkRes.json()).bars || {};
   } catch { /* variation semaine optionnelle */ }
 
@@ -46,8 +49,10 @@ async function fetchAlpaca(symbols) {
     const price = s.latestTrade?.p ?? s.minuteBar?.c ?? s.dailyBar?.c ?? null;
     const prevClose = s.prevDailyBar?.c ?? null;
     const day = (price != null && prevClose) ? ((price - prevClose) / prevClose) * 100 : null;
-    const wkBars = weekly[sym] || [];
-    const wkClose = wkBars.length ? wkBars[0].c : null;
+    const bars = weekly[sym] || [];
+    // ~5 séances de trading en arrière
+    const idx = Math.max(0, bars.length - 6);
+    const wkClose = bars.length >= 2 ? bars[idx]?.c : null;
     const week = (price != null && wkClose) ? ((price - wkClose) / wkClose) * 100 : null;
     return {
       ticker: sym,
@@ -55,6 +60,32 @@ async function fetchAlpaca(symbols) {
       day: day != null ? day.toFixed(2) : null,
       week: week != null ? week.toFixed(2) : null,
     };
+  });
+}
+
+async function fetchWeekCloseYahoo(ticker) {
+  try {
+    const r = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=10d`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    );
+    if (!r.ok) return null;
+    const closes = (await r.json())?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+    const valid = closes.filter(c => c != null);
+    return valid.length >= 2 ? valid[Math.max(0, valid.length - 6)] : null;
+  } catch { return null; }
+}
+
+async function enrichWeekYahoo(results) {
+  const missing = results.filter(r => r && r.week == null && r.price != null);
+  if (!missing.length) return;
+  const closes = await Promise.allSettled(missing.map(r => fetchWeekCloseYahoo(r.ticker)));
+  missing.forEach((r, i) => {
+    const wkClose = closes[i].status === 'fulfilled' ? closes[i].value : null;
+    if (wkClose != null && wkClose !== 0) {
+      const price = parseFloat(r.price);
+      if (!isNaN(price)) r.week = ((price - wkClose) / wkClose * 100).toFixed(2);
+    }
   });
 }
 
@@ -84,9 +115,12 @@ export default async (req) => {
         if (missing.length && process.env.ALPACA_API_KEY_ID) {
           try {
             const alpacaFill = await fetchAlpaca(missing);
-            return Response.json([...valid, ...alpacaFill.filter(r => r.price != null)], { status: 200 });
+            const combined = [...valid, ...alpacaFill.filter(r => r.price != null)];
+            await enrichWeekYahoo(combined);
+            return Response.json(combined, { status: 200 });
           } catch { /* on retourne ce qu'on a */ }
         }
+        await enrichWeekYahoo(valid);
         return Response.json(valid, { status: 200 });
       }
     } catch { /* fallback Alpaca */ }
@@ -98,6 +132,7 @@ export default async (req) => {
   }
   try {
     const out = await fetchAlpaca(symbols);
+    await enrichWeekYahoo(out);
     return Response.json(out, { status: 200 });
   } catch (e) {
     return Response.json({ error: String(e) }, { status: 502 });

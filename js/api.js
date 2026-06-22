@@ -172,8 +172,9 @@
   }
 
   /* ── Correlation ─────────────────────────────────────────────── */
-  async function getCorrelation(list_id) {
-    try { return await _get('/correlation/list/' + list_id); }
+  async function getCorrelation(list_id, tickers, index_symbol) {
+    const body = { tickers: tickers || [], index: index_symbol || 'SPX', days: 60 };
+    try { return await _post('/correlation/matrix', body); }
     catch { return window.DXMock.correlation; }
   }
 
@@ -191,8 +192,9 @@
   }
 
   /* ── Risk ────────────────────────────────────────────────────── */
-  async function getRisk(list_id) {
-    try { return await _get('/risk/list/' + list_id); }
+  async function getRisk(list_id, tickers, index_symbol, duration) {
+    const body = { tickers: tickers || [], index: index_symbol || 'SPX', duration: duration || 30 };
+    try { return await _post('/risk/portfolio', body); }
     catch { return window.DXMock.risk; }
   }
 

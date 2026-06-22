@@ -5,16 +5,27 @@ function RiskLab({ listId, onNav, mode }) {
   const [loading, setLoading] = React.useState(true);
   const [scenario, setScenario] = React.useState(1);
 
+  const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
+
   React.useEffect(() => {
-    const load = listId
-      ? DXApi.getRisk(listId).catch(() => window.DXMock?.risk)
-      : Promise.resolve(null);
-    load.then(d => { setRiskData(d); setLoading(false); });
+    const resolve = listId
+      ? DXApi.getList(listId).then(list => {
+          const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
+          const index   = list?.index_symbol || 'SPX';
+          if (tickers.length === 0) return DXApi.getRisk(null, DEMO_TICKERS, index, 30);
+          return DXApi.getRisk(listId, tickers, index, 30);
+        })
+      : DXApi.getRisk(null, DEMO_TICKERS, 'SPX', 30);
+
+    resolve.then(d => { setRiskData(d); setLoading(false); }).catch(() => {
+      setRiskData(window.DXMock?.risk);
+      setLoading(false);
+    });
   }, [listId]);
 
   if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
 
-  const D = window.DXData || {};
+  const D = riskData || window.DXData || {};
   const greeks = D.greeks || [
     { label: 'Δ net', value: '−0.08', hint: 'Quasi-neutre', accent: 'var(--pos)' },
     { label: 'Γ net', value: '+0.003', hint: 'Long gamma', accent: 'var(--accent)' },
