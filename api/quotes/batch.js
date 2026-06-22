@@ -29,6 +29,34 @@ async function fetchFinnhub(symbols, token) {
   return results.map(r => (r.status === 'fulfilled' ? r.value : null));
 }
 
+// Récupère le close d'il y a ~5 jours via Yahoo Finance (pas d'auth requise)
+async function fetchWeekCloseYahoo(ticker) {
+  try {
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=10d`;
+    const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const closes = data?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+    const valid = closes.filter(c => c != null);
+    if (valid.length < 2) return null;
+    return valid[Math.max(0, valid.length - 6)]; // ~5 jours de bourse en arrière
+  } catch { return null; }
+}
+
+// Enrichit week=null avec Yahoo Finance pour les résultats manquants
+async function enrichWeekYahoo(results) {
+  const missing = results.filter(r => r && r.week == null && r.price != null);
+  if (!missing.length) return;
+  const closes = await Promise.allSettled(missing.map(r => fetchWeekCloseYahoo(r.ticker)));
+  missing.forEach((r, i) => {
+    const weekClose = closes[i].status === 'fulfilled' ? closes[i].value : null;
+    if (weekClose != null && weekClose !== 0) {
+      const price = parseFloat(r.price);
+      if (!isNaN(price)) r.week = (((price - weekClose) / weekClose) * 100).toFixed(2);
+    }
+  });
+}
+
 async function fetchAlpaca(symbols) {
   const list = encodeURIComponent(symbols.join(','));
   const snapRes = await fetch(`${DATA_BASE}/v2/stocks/snapshots?symbols=${list}&feed=${FEED}`, { headers: alpacaHeaders() });
@@ -104,10 +132,15 @@ export default async (req) => {
             }
           } catch { /* semaine optionnelle */ }
 
+          // Fallback Yahoo Finance pour les semaines encore nulles
+          await enrichWeekYahoo(valid);
+
           if (missing.length) {
             try {
               const alpacaFill = await fetchAlpaca(missing);
-              return Response.json([...valid, ...(alpacaFill || []).filter(r => r.price != null)], { status: 200 });
+              const filled = (alpacaFill || []).filter(r => r.price != null);
+              await enrichWeekYahoo(filled);
+              return Response.json([...valid, ...filled], { status: 200 });
             } catch { /* retourne ce qu'on a */ }
           }
         }
@@ -121,6 +154,7 @@ export default async (req) => {
   }
   try {
     const out = await fetchAlpaca(symbols);
+    await enrichWeekYahoo(out || []);
     return Response.json(out, { status: 200 });
   } catch (e) {
     return Response.json({ error: String(e) }, { status: 502 });
