@@ -340,26 +340,23 @@ function CorrelationLab({ listId, onNav, mode }) {
             {parseFloat(prime) > 0 && <Badge tone="warn">Contexte favorable</Badge>}
             <Badge tone="neg">Risque sell-off corrélé</Badge>
           </div>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+            <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 4px' }}>Contribution à la prime</h3>
+            <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>
+              ρ implicite − ρ̄ du composant. Vert = apport positif à la dispersion.
+            </p>
+            <ContribChart matrixTickers={matrixTickers} matrix={matrix} rhoImpl={rhoImpl} />
+          </div>
         </div>
       </div>
 
-      {/* ── Contribution par composant ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 4px' }}>Contribution à la prime</h3>
-          <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>
-            ρ implicite − ρ moyenne du composant. Vert = apport positif à la dispersion.
-          </p>
-          <ContribChart matrixTickers={matrixTickers} matrix={matrix} rhoImpl={rhoImpl} />
-        </div>
-
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 4px' }}>Décomposition sectorielle</h3>
-          <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>
-            ρ̄ moyenne intra-secteur. Secteurs à ρ̄ basse = meilleurs contributeurs à la dispersion.
-          </p>
-          <SectorChart matrixTickers={matrixTickers} matrix={matrix} rhoImpl={rhoImpl} />
-        </div>
+      {/* ── Décomposition sectorielle ── */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 4px' }}>Décomposition sectorielle de la prime</h3>
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>
+          ρ̄ moyenne intra-secteur. Secteurs à ρ̄ basse = meilleurs contributeurs à la dispersion.
+        </p>
+        <SectorChart matrixTickers={matrixTickers} matrix={matrix} rhoImpl={rhoImpl} />
       </div>
 
       {/* Historique */}
