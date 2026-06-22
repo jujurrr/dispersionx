@@ -152,8 +152,8 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
       background: 'var(--bg-surface)', borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
     }}>
-      {/* Logo — clicking reloads the site */}
-      <div onClick={() => window.location.reload()} title="Recharger DispersionX"
+      {/* Logo — clicking navigates to home (indices) */}
+      <div onClick={() => onNav('home')} title="Accueil — Indices"
         style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '16px 18px 18px', borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
         <Logo size={32} wordmark={false} />
         <div style={{ lineHeight: 1.15 }}>
@@ -259,12 +259,26 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user }) {
       padding: '0 28px', flexShrink: 0,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '500 13px/1 var(--font-sans)', color: 'var(--text-muted)' }}>
-        {crumbs.map((c, i) => (
-          <React.Fragment key={i}>
-            {i > 0 && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>›</span>}
-            <span style={{ color: i === crumbs.length - 1 ? 'var(--text)' : 'var(--text-soft)', fontWeight: i === crumbs.length - 1 ? 600 : 500 }}>{c}</span>
-          </React.Fragment>
-        ))}
+        {crumbs.map((c, i) => {
+          const isLink = i === 0 && crumbs.length > 1;
+          return (
+            <React.Fragment key={i}>
+              {i > 0 && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>›</span>}
+              <span
+                onClick={isLink ? () => onNav && onNav('home') : undefined}
+                style={{
+                  color: i === crumbs.length - 1 ? 'var(--text)' : 'var(--text-soft)',
+                  fontWeight: i === crumbs.length - 1 ? 600 : 500,
+                  cursor: isLink ? 'pointer' : 'default',
+                  textDecoration: isLink ? 'underline' : 'none',
+                  textUnderlineOffset: 3,
+                }}
+              >
+                {c}
+              </span>
+            </React.Fragment>
+          );
+        })}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
         {activeList && (

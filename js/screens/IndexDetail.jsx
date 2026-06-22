@@ -225,8 +225,8 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
                     {q ? (parseFloat(q.day) >= 0 ? '▲' : '▼') + ' ' + Math.abs(parseFloat(q.day)).toFixed(2) + '%' : '···'}
                   </td>
                   {/* Week */}
-                  <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: q ? pctColor(parseFloat(q.week)) : 'var(--text-dim)' }}>
-                    {q ? (parseFloat(q.week) >= 0 ? '▲' : '▼') + ' ' + Math.abs(parseFloat(q.week)).toFixed(2) + '%' : '···'}
+                  <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: q && q.week != null ? pctColor(parseFloat(q.week)) : 'var(--text-dim)' }}>
+                    {q && q.week != null ? (parseFloat(q.week) >= 0 ? '▲' : '▼') + ' ' + Math.abs(parseFloat(q.week)).toFixed(2) + '%' : '···'}
                   </td>
                   {/* Sector */}
                   <td style={{ padding: '10px 14px', textAlign: 'left' }}>

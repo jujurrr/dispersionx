@@ -1,6 +1,11 @@
 /* ─── DispersionX App: router + global state ─────────────────────── */
+const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'risk', 'builder', 'monitor', 'docs'];
+
 function App() {
-  const [screen, setScreen] = React.useState('landing');
+  const [screen, setScreen] = React.useState(() => {
+    const hash = window.location.hash.slice(1);
+    return HASH_SCREENS.includes(hash) ? hash : 'landing';
+  });
   const [params, setParams] = React.useState({});
   const [mode, setMode] = React.useState(() => localStorage.getItem('dx-mode') || 'Débutant');
   const [lists, setLists] = React.useState([]);
@@ -31,6 +36,7 @@ function App() {
   function onNav(s, p = {}) {
     setScreen(s);
     setParams(p);
+    if (HASH_SCREENS.includes(s)) window.location.hash = s;
     window.scrollTo && window.scrollTo(0, 0);
   }
 
