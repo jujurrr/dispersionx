@@ -47,8 +47,13 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '18px 22px', borderBottom: '1px solid var(--border)' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 10px/1 var(--font-mono)', color: 'var(--text-soft)' }}>
-                {stockTicker.slice(0, 3)}
+              <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <img
+                  src={`https://assets.parqet.com/logos/symbol/${stockTicker.split('.')[0]}`}
+                  alt=""
+                  style={{ width: 30, height: 30, objectFit: 'contain' }}
+                  onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', `<span style="font:700 10px/1 var(--font-mono);color:var(--text-soft)">${stockTicker.slice(0,3)}</span>`); }}
+                />
               </div>
               <div>
                 <div style={{ font: '800 16px/1 var(--font-mono)', color: 'var(--text)' }}>{stockTicker}</div>

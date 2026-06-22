@@ -35,10 +35,11 @@ async function fetchAlpaca(symbols) {
   if (!snapRes.ok) return null;
   const snaps = await snapRes.json();
 
-  // Barres journalières sur 7 jours pour la variation semaine (bar[0] = ~5 jours de bourse en arrière)
+  // Barres journalières sur 7 jours pour la variation semaine
   let dailyBars = {};
   try {
-    const dRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${list}&timeframe=1Day&limit=7&feed=${FEED}`, { headers: alpacaHeaders() });
+    const symList = symbols.join(','); // virgules littérales, pas encodées
+    const dRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${symList}&timeframe=1Day&limit=7&feed=${FEED}`, { headers: alpacaHeaders() });
     if (dRes.ok) dailyBars = (await dRes.json()).bars || {};
   } catch { /* variation semaine optionnelle */ }
 
@@ -48,7 +49,8 @@ async function fetchAlpaca(symbols) {
     const prevClose = s.prevDailyBar?.c ?? null;
     const day = (price != null && prevClose) ? ((price - prevClose) / prevClose) * 100 : null;
     const bars = dailyBars[sym] || [];
-    const weekClose = bars.length >= 2 ? bars[0].c : null; // bar le plus ancien = ~5j en arrière
+    const idx = Math.max(0, bars.length - 6);
+    const weekClose = bars.length >= 2 ? bars[idx].c : null; // ~5 jours de bourse en arrière
     const week = (price != null && weekClose) ? ((price - weekClose) / weekClose) * 100 : null;
     return {
       ticker: sym,
@@ -84,13 +86,17 @@ export default async (req) => {
         if (process.env.ALPACA_API_KEY_ID) {
           try {
             const allTickers = valid.map(r => r.ticker);
-            const list = encodeURIComponent(allTickers.join(','));
-            const dRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${list}&timeframe=1Day&limit=7&feed=${FEED}`, { headers: alpacaHeaders() });
+            // Ne pas encoder les virgules — Alpaca attend des virgules littérales
+            const symList = allTickers.join(',');
+            const dRes = await fetch(`${DATA_BASE}/v2/stocks/bars?symbols=${symList}&timeframe=1Day&limit=7&feed=${FEED}`, { headers: alpacaHeaders() });
             if (dRes.ok) {
               const dailyBars = (await dRes.json()).bars || {};
               valid.forEach(r => {
                 const bars = dailyBars[r.ticker] || [];
-                const weekClose = bars.length >= 2 ? bars[0].c : null;
+                // bars trié ASC : bars[0]=le plus ancien, bars[last]=hier
+                // Pour variation 5j : prendre le bar à l'index max(0, length-6)
+                const idx = Math.max(0, bars.length - 6);
+                const weekClose = bars.length >= 2 ? bars[idx].c : null;
                 if (weekClose && r.price) {
                   r.week = (((parseFloat(r.price) - weekClose) / weekClose) * 100).toFixed(2);
                 }
