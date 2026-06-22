@@ -162,12 +162,19 @@ function buildSensCharts(D) {
   const thetaDay = netTheta || (thetaPnl / 7);
 
   // 1 — P&L par mouvement de l'indice
+  // Quadratic scaling : 5% = scénario de référence, sature au-delà
   const spots = [-8, -6, -4, -2, 0, 2, 4, 6, 8];
   const spotBars = spots.map(x => {
-    if (x === 0) return Math.round(thetaDay * 0.5);
-    const frac = (Math.abs(x) / 5) ** 1.4;    // 5% = scénario de référence
-    const ref  = x < 0 ? sellPnl : gapPnl;
-    return Math.round(ref * frac);
+    if (x === 0) return Math.round(thetaDay);
+    const absX = Math.abs(x);
+    const ref   = x < 0 ? sellPnl : gapPnl;
+    // Quadratique jusqu'à 5%, puis linéaire (saturation)
+    const frac  = absX <= 5
+      ? (absX / 5) ** 2
+      : 1 + (absX - 5) / 10;   // au-delà de 5% : +10% par point supplémentaire
+    // Theta aide pour les petits mouvements (s'efface à 4%)
+    const thetaContrib = thetaDay * Math.max(0, 1 - absX / 4);
+    return Math.round(ref * frac + thetaContrib);
   }).map((v, i) => ({ label: (spots[i] >= 0 ? '+' : '') + spots[i] + '%', value: v }));
 
   // 2 — P&L par choc de vol indice (idxVegaPct = $ par 1% IV indice)
@@ -255,8 +262,9 @@ function RiskLab({ listId, onNav, mode }) {
   const perTicker   = D.per_ticker || [];
   const port        = D.portfolio  || {};
 
+  const CONTRACT = 100;
   const maxVega  = Math.max(...perTicker.map(t => Math.abs(t.greeks?.vega  || 0)), 1);
-  const maxTheta = Math.max(...perTicker.map(t => Math.abs(t.greeks?.theta || 0)), 1);
+  const maxTheta = Math.max(...perTicker.map(t => Math.abs(t.greeks?.theta || 0) * CONTRACT), 1);
   const maxByName= Math.max(...pnlByName.map(r => Math.abs(r.pnl || 0)), 1);
   const maxBySec = Math.max(...pnlBySector.map(r => Math.abs(r.pnl || 0)), 1);
   const selSc    = scenarios[scenario];
@@ -319,7 +327,7 @@ function RiskLab({ listId, onNav, mode }) {
           </div>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '160px 72px 110px 64px 90px 90px 80px', gap: 0, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-              {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega/lot', 'Theta/j', 'Prime/lot'].map(h => (
+              {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega $/1%', 'Theta/j', 'Prime/lot'].map(h => (
                 <div key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</div>
               ))}
             </div>
@@ -360,11 +368,11 @@ function RiskLab({ listId, onNav, mode }) {
                     {vega ? <GreekBar value={vega} max={maxVega} pos={vega > 0} /> : null}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{theta ? (theta >= 0 ? '+' : '') + theta.toFixed(1) + ' $' : '—'}</span>
-                    {theta ? <GreekBar value={theta} max={maxTheta} pos={theta > 0} /> : null}
+                    <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{theta ? (theta >= 0 ? '+' : '') + (theta * CONTRACT).toFixed(1) + ' $' : '—'}</span>
+                    {theta ? <GreekBar value={theta * CONTRACT} max={maxTheta} pos={theta > 0} /> : null}
                   </div>
                   <span style={{ font: '700 11px/1 var(--font-mono)', color: prem >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-                    {prem ? (prem >= 0 ? '+' : '') + prem.toFixed(0) + ' $' : '—'}
+                    {prem ? (prem >= 0 ? '+' : '') + Math.round(prem * CONTRACT) + ' $' : '—'}
                   </span>
                 </div>
               );
