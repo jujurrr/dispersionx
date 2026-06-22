@@ -1,14 +1,52 @@
 /* ─── List Detail: basket analysis + sortable items + score modal ─ */
 function ListDetail({ listId, onNav, onScore, addToast, mode }) {
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
-  const [list, setList] = React.useState(null);
+  const [list, setList]       = React.useState(null);
   const [analysis, setAnalysis] = React.useState(null);
+  const [quotes, setQuotes]   = React.useState({});
+  const [volData, setVolData] = React.useState({});
   const [loading, setLoading] = React.useState(true);
-  const [sort, setSort] = React.useState({ key: 'added', dir: -1 });
+  const [sort, setSort]       = React.useState({ key: 'added', dir: -1 });
 
   const load = React.useCallback(() => {
     Promise.all([DXApi.getList(listId), DXApi.getListAnalysis(listId)]).then(([l, a]) => {
-      setList(l); setAnalysis(a); setLoading(false);
+      setList(l);
+
+      // Analyse calculée à partir des vrais items (pas du mock figé)
+      const items  = l?.items || [];
+      const scores = items.map(i => i.score).filter(s => s != null);
+      setAnalysis({
+        ...a,
+        avg_score: scores.length ? Number((scores.reduce((x, y) => x + y, 0) / scores.length).toFixed(1)) : (a?.avg_score ?? null),
+        n_items:   items.length,
+      });
+
+      setLoading(false);
+
+      // Cotations live + IV/HV en parallèle
+      const tickers = items.map(i => i.ticker).filter(Boolean);
+      const indexSym = l?.index_symbol || 'SPX';
+      if (tickers.length > 0) {
+        // Cotations live
+        DXApi.batchQuotes(tickers).then(results => {
+          const m = {};
+          (results || []).forEach(r => { if (r?.ticker) m[r.ticker] = r; });
+          setQuotes(m);
+        }).catch(() => {});
+
+        // IV/HV réelles depuis le risk endpoint (Yahoo Finance + MarketData)
+        fetch('/api/risk/portfolio', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tickers, index: indexSym, duration: 30 }),
+        }).then(r => r.ok ? r.json() : null).then(d => {
+          if (d?.per_ticker) {
+            const vm = {};
+            d.per_ticker.forEach(t => { if (t.ticker) vm[t.ticker] = { iv: t.iv, hv: t.hv, src: t.iv_src }; });
+            setVolData(vm);
+          }
+        }).catch(() => {});
+      }
     }).catch(() => setLoading(false));
   }, [listId]);
 
@@ -49,9 +87,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
     return <span style={{ color: 'var(--accent-hover)', marginLeft: 3 }}>{sort.dir === 1 ? '↑' : '↓'}</span>;
   }
 
-  const pctColor = v => v >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
+  const pctColor  = v => parseFloat(v) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
   const scoreColor = s => s >= 70 ? 'var(--pos-bright)' : s >= 50 ? 'var(--warn)' : 'var(--neg-bright)';
-  const sigColors = { FAVORABLE: 'var(--pos)', NEUTRE: 'var(--warn)', DÉFAVORABLE: 'var(--neg)' };
+  const sigColors  = { FAVORABLE: 'var(--pos)', NEUTRE: 'var(--warn)', DÉFAVORABLE: 'var(--neg)' };
 
   const items = list?.items || [];
   const sorted = [...items].sort((a, b) => {
@@ -81,6 +119,8 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>+ Ajouter</button>
           <button onClick={() => onNav('corr', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Corrélation</button>
+          <button onClick={() => onNav('risk', { listId })}
+            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Risk Lab</button>
           <button onClick={() => onNav('builder', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Stratégie</button>
           <button onClick={() => onNav('monitor-list', { listId })}
@@ -92,17 +132,17 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
         </div>
       </div>
 
-      {/* Analysis metrics */}
+      {/* Analysis metrics — calculés depuis les vrais items */}
       {analysis && (
         <section>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 12 }}>
             {[
               { label: 'Score pondéré', value: analysis.avg_score?.toFixed(1), accent: scoreColor(analysis.avg_score) },
-              { label: 'Edge moyen', value: (analysis.avg_edge >= 0 ? '+' : '') + analysis.avg_edge?.toFixed(1), accent: 'var(--pos)' },
-              { label: 'ρ implicite', value: analysis.rho_impl?.toFixed(2), accent: 'var(--info)' },
-              { label: 'ρ̂ réalisée', value: analysis.rho_real?.toFixed(2), accent: 'var(--info)' },
-              { label: 'Dispersion', value: (analysis.dispersion * 1e4)?.toFixed(1) + ' ×10⁻⁴', accent: 'var(--accent)' },
-              { label: 'Actions', value: String(analysis.n_items), accent: 'var(--text-soft)' },
+              { label: 'Edge moyen',    value: (analysis.avg_edge >= 0 ? '+' : '') + analysis.avg_edge?.toFixed(1), accent: 'var(--pos)' },
+              { label: 'ρ implicite',  value: analysis.rho_impl?.toFixed(2), accent: 'var(--info)' },
+              { label: 'ρ̂ réalisée',  value: analysis.rho_real?.toFixed(2), accent: 'var(--info)' },
+              { label: 'Dispersion',   value: (analysis.dispersion * 1e4)?.toFixed(1) + ' ×10⁻⁴', accent: 'var(--accent)' },
+              { label: 'Actions',      value: String(analysis.n_items), accent: 'var(--text-soft)' },
             ].map(m => <MetricCard key={m.label} {...m} />)}
           </div>
           {analysis.signal && (
@@ -140,16 +180,17 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
             <thead>
               <tr style={{ background: 'var(--bg-elevated)' }}>
                 {[
-                  { l: 'Action', k: 'ticker', al: 'left' },
-                  { l: 'Poids', k: 'weight', al: 'right' },
-                  { l: 'IV/HV', k: null, al: 'right' },
-                  { l: 'β', k: null, al: 'right' },
-                  { l: 'Edge', k: 'score', al: 'right' },
-                  { l: 'Score', k: 'score', al: 'right' },
-                  { l: 'Ajouté', k: 'added', al: 'right' },
-                  { l: '', k: null, al: 'right' },
+                  { l: 'Action',   k: 'ticker', al: 'left'  },
+                  { l: 'Prix',     k: null,      al: 'right' },
+                  { l: 'Var. J',   k: null,      al: 'right' },
+                  { l: 'Var. 5j',  k: null,      al: 'right' },
+                  { l: 'IV / HV',  k: null,      al: 'right' },
+                  { l: 'β',        k: null,      al: 'right' },
+                  { l: 'Score',    k: 'score',   al: 'right' },
+                  { l: 'Ajouté',   k: 'added',   al: 'right' },
+                  { l: '',         k: null,      al: 'right' },
                 ].map((h, i) => (
-                  <th key={h.l+i} onClick={h.k ? () => cycleSort(h.k) : undefined}
+                  <th key={h.l + i} onClick={h.k ? () => cycleSort(h.k) : undefined}
                     style={{ font: '600 10px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '11px 14px', textAlign: h.al, borderBottom: '1px solid var(--border)', cursor: h.k ? 'pointer' : 'default', userSelect: 'none', whiteSpace: 'nowrap' }}>
                     {h.l}{h.k && sortArrow(h.k)}
                   </th>
@@ -159,6 +200,14 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
             <tbody>
               {sorted.map(item => {
                 const comp = (window.DXMock.getComponents(list.index_symbol) || []).find(c => c.ticker === item.ticker) || {};
+                const q    = quotes[item.ticker];
+
+                // IV/HV : données temps réel (risk/portfolio) > comp mock
+                const vol  = volData[item.ticker];
+                const iv   = vol?.iv  ?? comp.iv  ?? null;
+                const hv   = vol?.hv  ?? comp.hv  ?? null;
+                const beta = comp.beta ?? null;
+
                 return (
                   <tr key={item.ticker}
                     onClick={() => onScore(list.index_symbol, item.ticker, 30)}
@@ -166,27 +215,66 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
                     onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
                   >
+                    {/* Action + logo */}
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <div style={{ width: 26, height: 26, borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 8px/1 var(--font-mono)', color: 'var(--text-soft)', flexShrink: 0 }}>{item.ticker.slice(0,3)}</div>
+                        <div style={{ width: 28, height: 28, borderRadius: 7, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <img
+                            src={`https://assets.parqet.com/logos/symbol/${item.ticker.split('.')[0]}`}
+                            alt=""
+                            style={{ width: 22, height: 22, objectFit: 'contain' }}
+                            onError={e => { e.currentTarget.style.display = 'none'; e.currentTarget.insertAdjacentHTML('afterend', `<span style="font:700 8px/1 var(--font-mono);color:var(--text-soft)">${item.ticker.slice(0,3)}</span>`); }}
+                          />
+                        </div>
                         <div>
                           <div style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{item.ticker}</div>
                           {comp.name && <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{comp.name}</div>}
                         </div>
                       </div>
                     </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{comp.weight?.toFixed(1) ?? '—'}%</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>
-                      {comp.iv ? `${comp.iv?.toFixed(1)} / ${comp.hv?.toFixed(1)}` : '—'}
+
+                    {/* Prix live */}
+                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text)' }}>
+                      {q?.price != null ? '$' + parseFloat(q.price).toFixed(2) : <span style={{ color: 'var(--text-dim)' }}>···</span>}
                     </td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{comp.beta?.toFixed(2) ?? '—'}</td>
-                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--pos-bright)' }}>—</td>
+
+                    {/* Variation journalière */}
+                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: q?.day != null ? pctColor(q.day) : 'var(--text-dim)' }}>
+                      {q?.day != null
+                        ? (parseFloat(q.day) >= 0 ? '▲ ' : '▼ ') + Math.abs(parseFloat(q.day)).toFixed(2) + '%'
+                        : '···'}
+                    </td>
+
+                    {/* Variation 5 jours */}
+                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: q?.week != null ? pctColor(q.week) : 'var(--text-dim)' }}>
+                      {q?.week != null
+                        ? (parseFloat(q.week) >= 0 ? '▲ ' : '▼ ') + Math.abs(parseFloat(q.week)).toFixed(2) + '%'
+                        : '···'}
+                    </td>
+
+                    {/* IV / HV */}
+                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>
+                      {iv != null && hv != null
+                        ? <span>{iv.toFixed(1)}<span style={{ color: 'var(--text-dim)' }}> / </span>{hv.toFixed(1)}</span>
+                        : <span style={{ color: 'var(--text-dim)' }}>—</span>}
+                    </td>
+
+                    {/* Beta */}
+                    <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>
+                      {beta != null ? beta.toFixed(2) : <span style={{ color: 'var(--text-dim)' }}>—</span>}
+                    </td>
+
+                    {/* Score */}
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                       {item.score != null && (
                         <span style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: item.score >= 70 ? 'var(--pos-soft)' : item.score >= 50 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(item.score), border: `1px solid ${item.score >= 70 ? 'var(--pos)' : item.score >= 50 ? 'var(--warn)' : 'var(--neg)'}` }}>{item.score}</span>
                       )}
                     </td>
+
+                    {/* Date ajout */}
                     <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{item.added}</td>
+
+                    {/* Supprimer */}
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                       <button onClick={e => { e.stopPropagation(); handleRemove(item.ticker); }}
                         style={{ font: '600 12px/1', padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
@@ -196,6 +284,12 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
               })}
             </tbody>
           </table>
+
+          {/* Source indicator */}
+          <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border-subtle)', font: 'var(--type-caption)', color: 'var(--text-dim)', display: 'flex', gap: 16 }}>
+            <span>Prix : {Object.keys(quotes).length > 0 ? '● live · Finnhub/Alpaca' : '○ chargement…'}</span>
+            <span>IV/HV : {Object.keys(volData).length > 0 ? '● MarketData/Yahoo Finance' : '○ chargement…'}</span>
+          </div>
         </div>
       )}
     </div>
