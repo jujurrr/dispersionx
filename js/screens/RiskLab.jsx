@@ -132,90 +132,88 @@ function buildWarnings(D) {
 
 /* ── Sensitivity charts builder ──────────────────────────────────── */
 function buildSensCharts(D) {
-  const port = D.portfolio || {};
+  const port      = D.portfolio || {};
   const perTicker = D.per_ticker || [];
-  const pnlByName = D.pnlByName || [];
-  const scenarios = D.scenarios || [];
+  const pnlByName = D.pnlByName  || [];
+  const scenarios = D.scenarios   || [];
 
-  const netVega  = port.net_vega  || 0;
-  const netTheta = port.net_theta || 0;
+  // port.net_vega est maintenant en $/1% (corrigé dans l'API)
+  // port.net_theta est en $/jour
+  const netVegaPct = port.net_vega  || 0;
+  const netTheta   = port.net_theta || 0;
 
-  // Decompose component vs index vega
-  const nW = perTicker.length || 1;
-  const CONTRACT = 100;
-  const compVega = perTicker.reduce((s, t) => s + (t.greeks?.vega || 0) * CONTRACT / nW, 0);
-  const idxVega  = netVega - compVega;  // negative for short straddle
+  // Vegas en $/1% : per_ticker.greeks.vega = BS vega brut en $/σ
+  const nW         = perTicker.length || 1;
+  const CONTRACT   = 100;
+  const portVegaRaw  = perTicker.reduce((s, t) => s + (t.greeks?.vega || 0) * CONTRACT / nW, 0);
+  const compVegaPct  = portVegaRaw * 0.01;           // $ par 1% IV composants
+  const idxVegaPct   = netVegaPct - compVegaPct;     // $ par 1% IV indice (négatif = short)
 
-  // Scenario anchors
-  const sc = name => {
-    const found = scenarios.find(s => s.name?.toLowerCase().includes(name));
-    return found ? parsePnl(found.pnl) : null;
+  // Ancres scénarios (l'API retourne des valeurs calibrées via theta)
+  const findSc = name => {
+    const s = scenarios.find(x => x.name?.toLowerCase().includes(name));
+    return s ? parsePnl(s.pnl) : null;
   };
-  const sellPnl  = sc('sell')    || -3000;
-  const rangePnl = sc('range')   || sc('stable') || +900;
-  const gapPnl   = sc('gap')     || sc('rally')  || -1100;
-  const thetaPnl = sc('theta')   || sc('temps')  || +500;
-  const dispPnl  = sc('dispers') || +2800;
-  const crushPnl = sc('crush')   || -800;
+  const sellPnl  = findSc('sell')    || Math.round(netVegaPct * 20 + netTheta * 7) || -2500;
+  const dispPnl  = findSc('dispers') || Math.round(-netVegaPct * 15)               || +2000;
+  const gapPnl   = findSc('gap')     || Math.round(sellPnl * 0.35)                 || -900;
+  const thetaPnl = findSc('theta')   || findSc('temps')                            || Math.round(Math.abs(netTheta) * 7) || +350;
+  const rangePnl = findSc('range')   || Math.round(Math.abs(netTheta) * 10)        || +500;
+  const thetaDay = netTheta || (thetaPnl / 7);
 
   // 1 — P&L par mouvement de l'indice
   const spots = [-8, -6, -4, -2, 0, 2, 4, 6, 8];
   const spotBars = spots.map(x => {
-    if (x === 0) return Math.round(thetaPnl * 0.15);
-    const frac = Math.abs(x) / 8;
+    if (x === 0) return Math.round(thetaDay * 0.5);
+    const frac = (Math.abs(x) / 5) ** 1.4;    // 5% = scénario de référence
     const ref  = x < 0 ? sellPnl : gapPnl;
-    return Math.round(ref * Math.pow(frac, 1.5));
+    return Math.round(ref * frac);
   }).map((v, i) => ({ label: (spots[i] >= 0 ? '+' : '') + spots[i] + '%', value: v }));
 
-  // 2 — P&L par choc de vol indice
+  // 2 — P&L par choc de vol indice (idxVegaPct = $ par 1% IV indice)
   const ivShocks = [-30, -20, -10, 0, 10, 20, 30, 40];
   const ivIdxBars = ivShocks.map(iv => ({
     label: (iv >= 0 ? '+' : '') + iv + '%',
-    value: Math.round((idxVega || (sellPnl / 3)) * iv / 100),
+    value: Math.round(idxVegaPct * iv),
   }));
 
-  // 3 — P&L par choc de vol composants
+  // 3 — P&L par choc de vol composants (compVegaPct = $ par 1% IV composants)
   const ivCompBars = ivShocks.map(iv => ({
     label: (iv >= 0 ? '+' : '') + iv + '%',
-    value: Math.round((compVega || (dispPnl / 3)) * iv / 100),
+    value: Math.round(compVegaPct * iv),
   }));
 
   // 4 — Scénarios de corrélation
   const rhoLevels = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
   const rhoBars = rhoLevels.map(rho => {
-    // Low ρ → dispersion → gain; high ρ → sell-off → loss
-    const t = Math.max(0, (rho - 0.45) / 0.45);
-    return { label: 'ρ ' + rho.toFixed(1), value: Math.round(rangePnl * (1 - t) + sellPnl * t) };
+    const t = Math.max(0, (rho - 0.35) / 0.55);
+    return { label: 'ρ ' + rho.toFixed(1), value: Math.round(dispPnl * (1 - t) + sellPnl * t) };
   });
 
   // 5 — P&L par passage du temps (theta cumulatif)
   const days = [1, 2, 3, 5, 7, 10, 14, 21, 30];
-  const thetaDays = days.map(d => ({
-    label: d + 'j',
-    value: Math.round((netTheta || (thetaPnl / 7)) * d),
-  }));
+  const thetaDays = days.map(d => ({ label: d + 'j', value: Math.round(thetaDay * d) }));
 
-  // 6 — Mouvements des composants (choc IV +10% par ticker)
+  // 6 — Mouvements des composants : choc IV +10% = vega_i * 0.10 * CONTRACT / nW
   const compMovBars = perTicker.map(t => ({
     label: t.ticker,
     logo:  t.ticker,
-    value: t.greeks ? Math.round(t.greeks.vega * CONTRACT / nW * 10) : 0,
+    value: t.greeks ? Math.round(t.greeks.vega * 0.10 * CONTRACT / nW) : 0,
   })).sort((a, b) => b.value - a.value);
 
-  // 7 — Chocs de skew (skew rise hurts short index puts)
-  const skewPts = [-4, -2, 0, 2, 4, 6, 8];
-  const skewBase = idxVega * 0.5 || (sellPnl * 0.08);
+  // 7 — Chocs de skew : hausse du skew renchérit les puts → perd sur straddle court indice
+  const skewPts  = [-4, -2, 0, 2, 4, 6, 8];
+  const skewUnit = (idxVegaPct || (sellPnl * 0.015)) * 0.25;
   const skewBars = skewPts.map(sk => ({
     label: (sk >= 0 ? '+' : '') + sk + 'pts',
-    value: Math.round(skewBase * sk / 8 * -1), // higher skew → more expensive puts → loss for short
+    value: Math.round(skewUnit * sk * -1),
   }));
 
-  // 8 — Contribution · Sell-off −5% + IV +15%
-  const scaleSell = Math.abs(sellPnl) / Math.max(1, Math.abs(pnlByName.reduce((s, r) => s + Math.abs(r.pnl || 0), 0)));
+  // 8 — Contribution · Sell-off −5% + IV +15% (valeurs directes de l'API)
   const selloffContrib = pnlByName.map(r => ({
     label: r.t,
     logo:  r.t.startsWith('SPX') || r.t.startsWith('NDX') ? null : r.t,
-    value: Math.round((r.pnl || 0) * scaleSell * 1.4),
+    value: r.pnl || 0,
   }));
 
   return { spotBars, ivIdxBars, ivCompBars, rhoBars, thetaDays, compMovBars, skewBars, selloffContrib };

@@ -145,7 +145,13 @@ export default async (req) => {
   const netTheta   = Number((portTheta  + idxTheta).toFixed(2));
   const netPremium = Number((portPremium - idxPrem).toFixed(2));
   const avgIV      = Number((perTicker.reduce((s, r) => s + (r.iv || 0), 0) / perTicker.length).toFixed(1));
-  const baseScale  = Math.max(200, Math.abs(netPremium) * 4);
+
+  // baseScale ancré sur le theta journalier × durée pour des P&L réalistes
+  const thetaRef = Math.max(40, Math.abs(netTheta) * duration);
+  const baseScale = Math.max(100, Math.min(thetaRef * 3, 2500));
+
+  // netVegaPct : $ par 1 % de mouvement IV (vega BS est en $/Δσ ; Δ1% = Δσ 0.01)
+  const netVegaPct = netVega * 0.01;
 
   const fmt = (n) => {
     const abs = Math.abs(Math.round(n));
@@ -154,27 +160,28 @@ export default async (req) => {
   };
 
   const scenarios = [
-    { name: 'Dispersion forte',  pnl: fmt(baseScale * 2.1),   up: true,  risk: 'faible'   },
-    { name: 'Sell-off corrélé',  pnl: fmt(-baseScale * 2.6),  up: false, risk: 'critique' },
+    { name: 'Dispersion forte',  pnl: fmt(baseScale * 2.1),          up: true,  risk: 'faible'   },
+    { name: 'Sell-off corrélé',  pnl: fmt(-baseScale * 2.6),         up: false, risk: 'critique' },
     { name: 'Marché range',      pnl: fmt(Math.abs(netTheta) * duration * 0.55), up: true, risk: 'faible' },
-    { name: 'Vol crush (−20%)',  pnl: fmt(netVega * -20),     up: netVega * -20 > 0, risk: 'modéré' },
-    { name: 'Gap directionnel',  pnl: fmt(-baseScale * 0.85), up: false, risk: 'élevé'   },
-    { name: 'Theta decay (7j)',  pnl: fmt(Math.abs(netTheta) * 7), up: true, risk: 'faible' },
+    { name: 'Vol crush (−20%)',  pnl: fmt(netVegaPct * -20),         up: netVegaPct * -20 > 0, risk: 'modéré' },
+    { name: 'Gap directionnel',  pnl: fmt(-baseScale * 0.85),        up: false, risk: 'élevé'   },
+    { name: 'Theta decay (7j)',  pnl: fmt(Math.abs(netTheta) * 7),   up: true,  risk: 'faible'  },
   ];
 
   return Response.json({
     greeks: [
-      { label: 'Δ net',     value: '≈ 0',                hint: 'ATM straddles delta-neutre', accent: 'var(--pos)' },
+      { label: 'Δ net',     value: '≈ 0',                                    hint: 'ATM straddles delta-neutre', accent: 'var(--pos)' },
       { label: 'Γ net',     value: (portGamma >= 0 ? '+' : '') + portGamma.toFixed(4), hint: portGamma > 0 ? 'Long gamma' : 'Short gamma', accent: 'var(--accent)' },
-      { label: 'Vega net',  value: fmt(netVega) + ' $',   hint: netVega > 0 ? 'Long vega' : 'Court vega', accent: 'var(--pos)' },
-      { label: 'Θ /jour',   value: fmt(netTheta) + ' $',  hint: netTheta > 0 ? 'Gain quotidien' : 'Coût quotidien', accent: 'var(--warn)' },
-      { label: 'IV moy.',   value: avgIV + '%',            hint: `Composants (${idxIVfn ? idxIVfn.toFixed(1) + '% ' + indexSym : 'index N/D'})`, accent: 'var(--info)' },
-      { label: 'Prime net', value: fmt(netPremium) + ' $', hint: netPremium < 0 ? 'Débit net' : 'Crédit net', accent: 'var(--accent)' },
+      { label: 'Vega net',  value: fmt(Math.round(netVegaPct)) + ' $/1%',   hint: netVega > 0 ? 'Long vega' : 'Court vega ($/1% IV)', accent: 'var(--pos)' },
+      { label: 'Θ /jour',   value: fmt(netTheta) + ' $',                     hint: netTheta > 0 ? 'Gain quotidien' : 'Coût quotidien', accent: 'var(--warn)' },
+      { label: 'IV moy.',   value: avgIV + '%',                               hint: `Composants (${idxIVfn ? idxIVfn.toFixed(1) + '% ' + indexSym : 'index N/D'})`, accent: 'var(--info)' },
+      { label: 'Prime net', value: fmt(netPremium) + ' $',                   hint: netPremium < 0 ? 'Débit net' : 'Crédit net', accent: 'var(--accent)' },
     ],
     scenarios,
-    pnlByName:   perTickerResult.map(r => ({ t: r.ticker, pnl: r.greeks ? Math.round(r.greeks.vega * 15 * CONTRACT * 0.5) : 0 })),
-    pnlBySector: [{ s: 'Composants', pnl: Math.round(portVega * 15) }, { s: indexSym, pnl: Math.round(idxVega * -15) }],
-    portfolio:   { n_tickers: perTicker.length, avg_iv: avgIV, index_iv: idxIVfn ?? null, net_vega: netVega, net_theta: netTheta, net_premium: netPremium, duration },
+    // pnlByName : choc IV +15% = vega_per_share * 0.15 * CONTRACT / nW
+    pnlByName:   perTickerResult.map(r => ({ t: r.ticker, pnl: r.greeks ? Math.round(r.greeks.vega * 0.15 * CONTRACT / nW) : 0 })),
+    pnlBySector: [{ s: 'Composants', pnl: Math.round(portVega * 0.15) }, { s: indexSym, pnl: Math.round(idxVega * -0.15) }],
+    portfolio:   { n_tickers: perTicker.length, avg_iv: avgIV, index_iv: idxIVfn ?? null, net_vega: netVegaPct, net_theta: netTheta, net_premium: netPremium, duration },
     per_ticker:  perTickerResult.map(r => ({ ticker: r.ticker, price: r.price, iv: r.iv, hv: r.hv, beta: r.beta, iv_src: r.ivSrc, greeks: r.greeks })),
     source: mdTok ? 'marketdata+yahoo' : 'yahoo_hv_estimate',
   });
