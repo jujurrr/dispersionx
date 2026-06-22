@@ -1,13 +1,13 @@
 // GET /api/vol/spx
-// IV ATM + HV + structure par terme du SPX (via SPY)
-// Sources: MarketData.app (IV/term), Yahoo Finance (HV)
+// IV ATM + HV30/HV252 + structure par terme du SPX (via SPY)
+// Sources: MarketData.app (IV/terme), Yahoo Finance (HV)
 export const config = { runtime: 'edge' };
 
 const DTES = [14, 21, 30, 45, 60, 90];
 
 async function fetchHV(symbol, days) {
   const r = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=6mo`,
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=6mo`,
     { headers: { 'User-Agent': 'Mozilla/5.0' } }
   );
   if (!r.ok) return null;
@@ -28,46 +28,36 @@ async function fetchAtmIV(symbol, dte, token) {
   if (!r.ok) return null;
   const d = await r.json();
   if (d.s !== 'ok' || !Array.isArray(d.iv) || !d.iv.length) return null;
-  // Prendre l'IV mid (strike central = ATM)
   const up   = (d.underlyingPrice || [])[0] || 0;
   let best = Math.floor(d.iv.length / 2), bestDiff = Infinity;
   (d.strike || []).forEach((s, i) => { const diff = Math.abs(s - up); if (diff < bestDiff) { bestDiff = diff; best = i; } });
   return d.iv[best] != null ? Number((d.iv[best] * 100).toFixed(1)) : null;
 }
 
-export default async (req) => {
+export default async () => {
   const mdTok = process.env.MARKETDATA_API_TOKEN;
 
-  // HV30 et HV252 depuis Yahoo Finance en parallèle
   const [hv30, hv252] = await Promise.all([fetchHV('SPY', 30), fetchHV('SPY', 252)]);
 
   let term = null, ivAtm = null;
 
   if (mdTok) {
-    // Structure par terme : un appel par DTE en parallèle
-    const termResults = await Promise.allSettled(DTES.map(dte => fetchAtmIV('SPY', dte, mdTok)));
-    const built = DTES.map((dte, i) => ({
-      dte,
-      iv: termResults[i].status === 'fulfilled' ? termResults[i].value : null,
-    })).filter(p => p.iv != null);
-
+    const results = await Promise.allSettled(DTES.map(dte => fetchAtmIV('SPY', dte, mdTok)));
+    const built   = DTES.map((dte, i) => ({ dte, iv: results[i].status === 'fulfilled' ? results[i].value : null })).filter(p => p.iv != null);
     if (built.length >= 2) {
-      term   = built;
-      ivAtm  = built.find(p => p.dte === 30)?.iv ?? built[Math.floor(built.length / 2)].iv;
+      term  = built;
+      ivAtm = built.find(p => p.dte === 30)?.iv ?? built[Math.floor(built.length / 2)].iv;
     }
   }
 
-  // Fallback IV ATM : HV × 1.12
   if (!ivAtm && hv30) ivAtm = Number((hv30 * 1.12).toFixed(1));
 
-  const ivMhv = ivAtm && hv30 ? Number((ivAtm - hv30).toFixed(1)) : null;
-
   return Response.json({
-    iv_atm: ivAtm,
+    iv_atm:      ivAtm,
     hv30,
     hv252,
-    iv_minus_hv: ivMhv,
+    iv_minus_hv: ivAtm && hv30 ? Number((ivAtm - hv30).toFixed(1)) : null,
     term,
-    source: mdTok ? 'marketdata+yahoo' : 'yahoo_hv',
+    source:      mdTok ? 'marketdata+yahoo' : 'yahoo_hv',
   });
 };
