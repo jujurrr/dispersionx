@@ -43,11 +43,11 @@ export default async (req, context) => {
   if (!map) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
 
   try {
-    const url = `${DATA_BASE}/v2/stocks/${map.etf}/bars?timeframe=1Day&limit=260&feed=${FEED}&adjustment=all`;
+    const url = `${DATA_BASE}/v2/stocks/${map.etf}/bars?timeframe=1Day&limit=260&feed=${FEED}`;
     const r = await fetch(url, { headers: authHeaders() });
     if (!r.ok) return Response.json({ error: 'alpaca_bars', http: r.status }, { status: 502 });
     const bars = (await r.json()).bars || [];
-    if (bars.length < 30) return Response.json({ error: 'not_enough_data' }, { status: 502 });
+    if (bars.length < 5) return Response.json({ error: 'not_enough_data' }, { status: 502 });
 
     const closes = bars.map(b => b.c);
     const n = closes.length;
