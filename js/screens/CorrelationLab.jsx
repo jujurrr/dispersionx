@@ -304,7 +304,7 @@ function CorrelationLab({ listId, onNav, mode }) {
       )}
 
       {/* Matrice + Gauge */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 16, alignItems: 'start' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 16, alignItems: 'stretch' }}>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
             <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Matrice de corrélation réalisée</h3>
@@ -331,7 +331,7 @@ function CorrelationLab({ listId, onNav, mode }) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, height: '100%' }}>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20, display: 'flex', justifyContent: 'center' }}>
             <PrimeGauge implied={rhoImpl} realized={rhoReal} size={240} />
           </div>
@@ -340,7 +340,7 @@ function CorrelationLab({ listId, onNav, mode }) {
             {parseFloat(prime) > 0 && <Badge tone="warn">Contexte favorable</Badge>}
             <Badge tone="neg">Risque sell-off corrélé</Badge>
           </div>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, flex: 1, overflow: 'auto' }}>
             <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 4px' }}>Contribution à la prime</h3>
             <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>
               ρ implicite − ρ̄ du composant. Vert = apport positif à la dispersion.
