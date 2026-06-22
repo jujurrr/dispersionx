@@ -6,7 +6,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
   const [quotes, setQuotes]   = React.useState({});
   const [volData, setVolData] = React.useState({});
   const [loading, setLoading] = React.useState(true);
+  const [rescoring, setRescoring] = React.useState(false);
   const [sort, setSort]       = React.useState({ key: 'added', dir: -1 });
+  const autoScoredRef = React.useRef(null);
 
   const load = React.useCallback(() => {
     Promise.all([DXApi.getList(listId), DXApi.getListAnalysis(listId)]).then(([l, a]) => {
@@ -51,7 +53,45 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
     }).catch(() => setLoading(false));
   }, [listId]);
 
-  React.useEffect(() => { load(); }, [listId]);
+  React.useEffect(() => { load(); autoScoredRef.current = null; }, [listId]);
+
+  // Auto-rescore all items once per list load (background, batches de 4)
+  React.useEffect(() => {
+    if (!list || autoScoredRef.current === listId) return;
+    const items = list.items || [];
+    if (items.length === 0) return;
+    autoScoredRef.current = listId;
+
+    const indexSym = list.index_symbol || 'SPX';
+    const BATCH = 4;
+
+    async function rescoreAll() {
+      setRescoring(true);
+      for (let i = 0; i < items.length; i += BATCH) {
+        const batch = items.slice(i, i + BATCH);
+        await Promise.allSettled(batch.map(async item => {
+          const result = await DXApi.autoScore(indexSym, item.ticker, 30);
+          if (result?.scoring?.score != null) {
+            await DXApi.addListItem(listId, item.ticker, result.scoring);
+          }
+        }));
+      }
+      setRescoring(false);
+      // Recharger la liste pour afficher les scores mis à jour
+      DXApi.getList(listId).then(l => {
+        if (!l) return;
+        setList(l);
+        const scores = (l.items || []).map(i => i.score_data?.score ?? i.score).filter(s => s != null);
+        setAnalysis(prev => ({
+          ...prev,
+          avg_score: scores.length ? Number((scores.reduce((x, y) => x + y, 0) / scores.length).toFixed(1)) : prev?.avg_score,
+          n_items: (l.items || []).length,
+        }));
+      });
+    }
+
+    rescoreAll();
+  }, [list, listId]);
 
   async function handleRemove(ticker) {
     if (!confirm(`Retirer ${ticker} de la liste ?`)) return;
@@ -112,7 +152,10 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
             <span style={{ color: 'var(--text-dim)' }}>›</span>
             <span style={{ font: 'var(--type-caption)', color: 'var(--accent-hover)' }}>{list.index_symbol}</span>
           </div>
-          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>{list.name}</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>{list.name}</h1>
+            {rescoring && <span style={{ font: 'var(--type-caption)', color: 'var(--accent-hover)', animation: 'pulse 1.2s infinite' }}>⟳ Scoring…</span>}
+          </div>
           {list.description && <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>{list.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
