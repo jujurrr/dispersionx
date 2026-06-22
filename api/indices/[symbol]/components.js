@@ -1,122 +1,382 @@
 // GET /api/indices/[symbol]/components
+// Listes statiques complètes + logos via Parqet CDN
 export const config = { runtime: 'edge' };
 
-const STABLE = 'https://financialmodelingprep.com/stable';
-const V3 = 'https://financialmodelingprep.com/api/v3';
 const MAX = 600;
 
-const INDEX = {
-  SPX: { stable: 'sp500-constituent', v3: 'sp500_constituent', etf: 'SPY' },
-  NDX: { stable: 'nasdaq-constituent', v3: 'nasdaq_constituent', etf: 'QQQ' },
-  DJI: { stable: 'dowjones-constituent', v3: 'dowjones_constituent', etf: 'DIA' },
-  CAC: { etf: 'EWQ' },
-  DAX: { etf: 'EWG' },
-};
+// Logo Parqet CDN — strip exchange suffix (.PA, .DE, etc.)
+const logo = (ticker) =>
+  `https://assets.parqet.com/logos/symbol/${ticker.split('.')[0]}`;
 
-const STATIC = {
-  SPX: [
-    ['AAPL','Apple','Technology'],['MSFT','Microsoft','Technology'],['NVDA','Nvidia','Technology'],
-    ['AMZN','Amazon','Consumer Disc.'],['GOOGL','Alphabet A','Communications'],['GOOG','Alphabet C','Communications'],
-    ['META','Meta Platforms','Communications'],['AVGO','Broadcom','Technology'],['TSLA','Tesla','Consumer Disc.'],
-    ['BRK.B','Berkshire Hathaway','Financials'],['LLY','Eli Lilly','Healthcare'],['JPM','JPMorgan Chase','Financials'],
-    ['V','Visa','Financials'],['XOM','Exxon Mobil','Energy'],['UNH','UnitedHealth','Healthcare'],
-    ['MA','Mastercard','Financials'],['JNJ','Johnson & Johnson','Healthcare'],['PG','Procter & Gamble','Consumer Staples'],
-    ['HD','Home Depot','Consumer Disc.'],['COST','Costco','Consumer Staples'],['ABBV','AbbVie','Healthcare'],
-    ['WMT','Walmart','Consumer Staples'],['NFLX','Netflix','Communications'],['BAC','Bank of America','Financials'],
-    ['KO','Coca-Cola','Consumer Staples'],['CRM','Salesforce','Technology'],['CVX','Chevron','Energy'],
-    ['AMD','AMD','Technology'],['PEP','PepsiCo','Consumer Staples'],['ADBE','Adobe','Technology'],
-    ['MRK','Merck','Healthcare'],['TMO','Thermo Fisher','Healthcare'],['CSCO','Cisco','Technology'],
-    ['ACN','Accenture','Technology'],['MCD',"McDonald's",'Consumer Disc.'],['ABT','Abbott','Healthcare'],
-    ['QCOM','Qualcomm','Technology'],['TXN','Texas Instruments','Technology'],['DHR','Danaher','Healthcare'],
-    ['INTC','Intel','Technology'],['INTU','Intuit','Technology'],['IBM','IBM','Technology'],
-    ['GE','GE Aerospace','Industrials'],['CAT','Caterpillar','Industrials'],['VZ','Verizon','Communications'],
-    ['AMGN','Amgen','Healthcare'],['PFE','Pfizer','Healthcare'],['NOW','ServiceNow','Technology'],
-    ['UBER','Uber','Technology'],['GS','Goldman Sachs','Financials'],
-  ],
-  NDX: [
-    ['AAPL','Apple','Technology'],['MSFT','Microsoft','Technology'],['NVDA','Nvidia','Technology'],
-    ['AMZN','Amazon','Consumer Disc.'],['AVGO','Broadcom','Technology'],['META','Meta Platforms','Communications'],
-    ['GOOGL','Alphabet A','Communications'],['GOOG','Alphabet C','Communications'],['TSLA','Tesla','Consumer Disc.'],
-    ['COST','Costco','Consumer Staples'],['NFLX','Netflix','Communications'],['AMD','AMD','Technology'],
-    ['PEP','PepsiCo','Consumer Staples'],['ADBE','Adobe','Technology'],['CSCO','Cisco','Technology'],
-    ['TMUS','T-Mobile','Communications'],['INTC','Intel','Technology'],['QCOM','Qualcomm','Technology'],
-    ['INTU','Intuit','Technology'],['AMAT','Applied Materials','Technology'],['TXN','Texas Instruments','Technology'],
-    ['ISRG','Intuitive Surgical','Healthcare'],['BKNG','Booking','Consumer Disc.'],['HON','Honeywell','Industrials'],
-    ['MU','Micron','Technology'],['LRCX','Lam Research','Technology'],['ADI','Analog Devices','Technology'],
-    ['REGN','Regeneron','Healthcare'],['VRTX','Vertex','Healthcare'],['PANW','Palo Alto Networks','Technology'],
-    ['KLAC','KLA Corp','Technology'],['SBUX','Starbucks','Consumer Disc.'],['MDLZ','Mondelez','Consumer Staples'],
-    ['GILD','Gilead','Healthcare'],['ADP','ADP','Industrials'],['MELI','MercadoLibre','Consumer Disc.'],
-  ],
-  DJI: [
-    ['AAPL','Apple','Technology'],['MSFT','Microsoft','Technology'],['AMZN','Amazon','Consumer Disc.'],
-    ['JPM','JPMorgan Chase','Financials'],['V','Visa','Financials'],['JNJ','Johnson & Johnson','Healthcare'],
-    ['WMT','Walmart','Consumer Staples'],['PG','Procter & Gamble','Consumer Staples'],['HD','Home Depot','Consumer Disc.'],
-    ['CVX','Chevron','Energy'],['MRK','Merck','Healthcare'],['KO','Coca-Cola','Consumer Staples'],
-    ['CSCO','Cisco','Technology'],['MCD',"McDonald's",'Consumer Disc.'],['CRM','Salesforce','Technology'],
-    ['DIS','Disney','Communications'],['IBM','IBM','Technology'],['GS','Goldman Sachs','Financials'],
-    ['CAT','Caterpillar','Industrials'],['AXP','American Express','Financials'],['BA','Boeing','Industrials'],
-    ['HON','Honeywell','Industrials'],['AMGN','Amgen','Healthcare'],['NKE','Nike','Consumer Disc.'],
-    ['TRV','Travelers','Financials'],['VZ','Verizon','Communications'],['MMM','3M','Industrials'],
-    ['UNH','UnitedHealth','Healthcare'],['SHW','Sherwin-Williams','Materials'],['NVDA','Nvidia','Technology'],
-  ],
-};
-
-function blank(extra) {
-  return { sector: null, score: null, iv: null, hv: null, rho: null, earnings: false, liq: null, beta: null, ...extra };
+function blank(ticker, name, sector, weight) {
+  return {
+    ticker, name, sector,
+    weight: weight ?? null,
+    logo: logo(ticker),
+    score: null, iv: null, hv: null, rho: null,
+    earnings: false, liq: null, beta: null,
+  };
 }
 
-async function fmpJson(url) {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    const j = await r.json();
-    return Array.isArray(j) && j.length ? j : null;
-  } catch { return null; }
-}
+const SPX = [
+  ["NVDA",7.3,"Nvidia","Technology"],["AAPL",7.0,"Apple Inc.","Technology"],["MSFT",6.5,"Microsoft","Technology"],
+  ["AMZN",3.8,"Amazon","Consumer Disc."],["META",2.9,"Meta Platforms","Communications"],["AVGO",2.4,"Broadcom","Technology"],
+  ["GOOGL",2.1,"Alphabet Inc. (Class A)","Communications"],["TSLA",1.9,"Tesla, Inc.","Consumer Disc."],
+  ["GOOG",1.75,"Alphabet Inc. (Class C)","Communications"],["BRK.B",1.7,"Berkshire Hathaway","Financials"],
+  ["JPM",1.55,"JPMorgan Chase","Financials"],["LLY",1.4,"Lilly (Eli)","Health Care"],
+  ["V",1.1,"Visa Inc.","Financials"],["XOM",1.05,"ExxonMobil","Energy"],["MA",1.0,"Mastercard","Financials"],
+  ["COST",0.95,"Costco","Consumer Staples"],["WMT",0.95,"Walmart","Consumer Staples"],
+  ["NFLX",0.9,"Netflix","Communications"],["UNH",0.9,"UnitedHealth Group","Health Care"],
+  ["JNJ",0.85,"Johnson & Johnson","Health Care"],["PG",0.85,"Procter & Gamble","Consumer Staples"],
+  ["HD",0.8,"Home Depot (The)","Consumer Disc."],["ABBV",0.78,"AbbVie","Health Care"],
+  ["BAC",0.72,"Bank of America","Financials"],["ORCL",0.7,"Oracle Corporation","Technology"],
+  ["KO",0.65,"Coca-Cola Company (The)","Consumer Staples"],["CRM",0.65,"Salesforce","Technology"],
+  ["CVX",0.62,"Chevron Corporation","Energy"],["WFC",0.6,"Wells Fargo","Financials"],
+  ["CSCO",0.58,"Cisco","Technology"],["PM",0.58,"Philip Morris International","Consumer Staples"],
+  ["ABT",0.56,"Abbott Laboratories","Health Care"],["IBM",0.55,"IBM","Technology"],
+  ["GE",0.54,"GE Aerospace","Industrials"],["MCD",0.54,"McDonald's","Consumer Disc."],
+  ["LIN",0.53,"Linde plc","Materials"],["PLTR",0.52,"Palantir Technologies","Technology"],
+  ["ACN",0.5,"Accenture","Technology"],["TMO",0.5,"Thermo Fisher Scientific","Health Care"],
+  ["ADBE",0.48,"Adobe Inc.","Technology"],["INTU",0.47,"Intuit","Technology"],
+  ["DIS",0.46,"Walt Disney Company (The)","Communications"],["TXN",0.45,"Texas Instruments","Technology"],
+  ["AXP",0.44,"American Express","Financials"],["QCOM",0.44,"Qualcomm","Technology"],
+  ["AMD",0.43,"Advanced Micro Devices","Technology"],["ISRG",0.43,"Intuitive Surgical","Health Care"],
+  ["CAT",0.42,"Caterpillar Inc.","Industrials"],["PEP",0.42,"PepsiCo","Consumer Staples"],
+  ["BKNG",0.41,"Booking Holdings","Consumer Disc."],["T",0.4,"AT&T","Communications"],
+  ["MRK",0.4,"Merck & Co.","Health Care"],["GS",0.39,"Goldman Sachs","Financials"],
+  ["VZ",0.39,"Verizon","Communications"],["RTX",0.38,"RTX Corporation","Industrials"],
+  ["SPGI",0.37,"S&P Global","Financials"],["NOW",0.37,"ServiceNow","Technology"],
+  ["UBER",0.36,"Uber","Industrials"],["BSX",0.35,"Boston Scientific","Health Care"],
+  ["PGR",0.35,"Progressive Corporation","Financials"],["AMGN",0.34,"Amgen","Health Care"],
+  ["HON",0.33,"Honeywell","Industrials"],["UNP",0.33,"Union Pacific Corporation","Industrials"],
+  ["LOW",0.32,"Lowe's","Consumer Disc."],["NEE",0.32,"NextEra Energy","Utilities"],
+  ["BLK",0.31,"BlackRock","Financials"],["C",0.31,"Citigroup","Financials"],
+  ["ETN",0.31,"Eaton Corporation","Industrials"],["MU",0.3,"Micron Technology","Technology"],
+  ["SYK",0.3,"Stryker Corporation","Health Care"],["TJX",0.3,"TJX Companies","Consumer Disc."],
+  ["ADP",0.29,"Automatic Data Processing","Industrials"],["BA",0.28,"Boeing","Industrials"],
+  ["COP",0.28,"ConocoPhillips","Energy"],["VRTX",0.28,"Vertex Pharmaceuticals","Health Care"],
+  ["SCHW",0.27,"Charles Schwab Corporation","Financials"],["ANET",0.26,"Arista Networks","Technology"],
+  ["DE",0.26,"Deere & Company","Industrials"],["ADI",0.25,"Analog Devices","Technology"],
+  ["GILD",0.25,"Gilead Sciences","Health Care"],["KKR",0.25,"KKR & Co.","Financials"],
+  ["LRCX",0.24,"Lam Research","Technology"],["MDT",0.24,"Medtronic","Health Care"],
+  ["PANW",0.24,"Palo Alto Networks","Technology"],["CB",0.23,"Chubb Limited","Financials"],
+  ["INTC",0.23,"Intel","Technology"],["SBUX",0.23,"Starbucks","Consumer Disc."],
+  ["AMAT",0.22,"Applied Materials","Technology"],["BX",0.22,"Blackstone Inc.","Financials"],
+  ["PLD",0.22,"Prologis","Real Estate"],["MO",0.21,"Altria","Consumer Staples"],
+  ["ELV",0.21,"Elevance Health","Health Care"],["KLAC",0.21,"KLA Corporation","Technology"],
+  ["TMUS",0.21,"T-Mobile US","Communications"],["CMCSA",0.2,"Comcast","Communications"],
+  ["ICE",0.2,"Intercontinental Exchange","Financials"],["SO",0.2,"Southern Company","Utilities"],
+  ["DUK",0.19,"Duke Energy","Utilities"],["MMM",0.052,"3M","Industrials"],
+  ["AOS",0.052,"A. O. Smith","Industrials"],["AES",0.052,"AES Corporation","Utilities"],
+  ["AFL",0.052,"Aflac","Financials"],["A",0.052,"Agilent Technologies","Health Care"],
+  ["APD",0.052,"Air Products","Materials"],["ABNB",0.052,"Airbnb","Consumer Disc."],
+  ["AKAM",0.052,"Akamai Technologies","Technology"],["ALB",0.052,"Albemarle Corporation","Materials"],
+  ["ARE",0.052,"Alexandria Real Estate Equities","Real Estate"],["ALGN",0.052,"Align Technology","Health Care"],
+  ["ALLE",0.052,"Allegion","Industrials"],["LNT",0.052,"Alliant Energy","Utilities"],
+  ["ALL",0.052,"Allstate","Financials"],["AMCR",0.052,"Amcor","Materials"],
+  ["AEE",0.052,"Ameren","Utilities"],["AEP",0.052,"American Electric Power","Utilities"],
+  ["AIG",0.052,"American International Group","Financials"],["AMT",0.052,"American Tower","Real Estate"],
+  ["AWK",0.052,"American Water Works","Utilities"],["AMP",0.052,"Ameriprise Financial","Financials"],
+  ["AME",0.052,"Ametek","Industrials"],["APH",0.052,"Amphenol","Technology"],
+  ["AON",0.052,"Aon plc","Financials"],["APA",0.052,"APA Corporation","Energy"],
+  ["APO",0.052,"Apollo Global Management","Financials"],["APP",0.052,"AppLovin","Technology"],
+  ["APTV",0.052,"Aptiv","Consumer Disc."],["ACGL",0.052,"Arch Capital Group","Financials"],
+  ["ADM",0.052,"Archer Daniels Midland","Consumer Staples"],["ARES",0.052,"Ares Management","Financials"],
+  ["AJG",0.052,"Arthur J. Gallagher & Co.","Financials"],["AIZ",0.052,"Assurant","Financials"],
+  ["ATO",0.052,"Atmos Energy","Utilities"],["ADSK",0.052,"Autodesk","Technology"],
+  ["AZO",0.052,"AutoZone","Consumer Disc."],["AVB",0.052,"AvalonBay Communities","Real Estate"],
+  ["AVY",0.052,"Avery Dennison","Materials"],["AXON",0.052,"Axon Enterprise","Industrials"],
+  ["BKR",0.052,"Baker Hughes","Energy"],["BALL",0.052,"Ball Corporation","Materials"],
+  ["BAX",0.052,"Baxter International","Health Care"],["BDX",0.052,"Becton Dickinson","Health Care"],
+  ["BBY",0.052,"Best Buy","Consumer Disc."],["TECH",0.052,"Bio-Techne","Health Care"],
+  ["BIIB",0.052,"Biogen","Health Care"],["XYZ",0.052,"Block, Inc.","Financials"],
+  ["BNY",0.052,"BNY Mellon","Financials"],["BMY",0.052,"Bristol Myers Squibb","Health Care"],
+  ["BR",0.052,"Broadridge Financial Solutions","Industrials"],["BRO",0.052,"Brown & Brown","Financials"],
+  ["BF.B",0.052,"Brown-Forman","Consumer Staples"],["BLDR",0.052,"Builders FirstSource","Industrials"],
+  ["BG",0.052,"Bunge Global","Consumer Staples"],["BXP",0.052,"BXP, Inc.","Real Estate"],
+  ["CHRW",0.052,"C.H. Robinson","Industrials"],["CDNS",0.052,"Cadence Design Systems","Technology"],
+  ["CPT",0.052,"Camden Property Trust","Real Estate"],["CPB",0.052,"Campbell's Company (The)","Consumer Staples"],
+  ["COF",0.052,"Capital One","Financials"],["CAH",0.052,"Cardinal Health","Health Care"],
+  ["CCL",0.052,"Carnival Corporation","Consumer Disc."],["CARR",0.052,"Carrier Global","Industrials"],
+  ["CVNA",0.052,"Carvana","Consumer Disc."],["CASY",0.052,"Casey's","Consumer Staples"],
+  ["CBOE",0.052,"Cboe Global Markets","Financials"],["CBRE",0.052,"CBRE Group","Real Estate"],
+  ["CDW",0.052,"CDW Corporation","Technology"],["COR",0.052,"Cencora","Health Care"],
+  ["CNC",0.052,"Centene Corporation","Health Care"],["CNP",0.052,"CenterPoint Energy","Utilities"],
+  ["CF",0.052,"CF Industries","Materials"],["CRL",0.052,"Charles River Laboratories","Health Care"],
+  ["CHTR",0.052,"Charter Communications","Communications"],["CMG",0.052,"Chipotle Mexican Grill","Consumer Disc."],
+  ["CHD",0.052,"Church & Dwight","Consumer Staples"],["CIEN",0.052,"Ciena","Technology"],
+  ["CI",0.052,"Cigna","Health Care"],["CINF",0.052,"Cincinnati Financial","Financials"],
+  ["CTAS",0.052,"Cintas","Industrials"],["CFG",0.052,"Citizens Financial Group","Financials"],
+  ["CLX",0.052,"Clorox","Consumer Staples"],["CME",0.052,"CME Group","Financials"],
+  ["CMS",0.052,"CMS Energy","Utilities"],["CTSH",0.052,"Cognizant","Technology"],
+  ["COHR",0.052,"Coherent Corp.","Technology"],["COIN",0.052,"Coinbase","Financials"],
+  ["CL",0.052,"Colgate-Palmolive","Consumer Staples"],["FIX",0.052,"Comfort Systems USA","Industrials"],
+  ["CAG",0.052,"Conagra Brands","Consumer Staples"],["ED",0.052,"Consolidated Edison","Utilities"],
+  ["STZ",0.052,"Constellation Brands","Consumer Staples"],["CEG",0.052,"Constellation Energy","Utilities"],
+  ["COO",0.052,"Cooper Companies (The)","Health Care"],["CPRT",0.052,"Copart","Industrials"],
+  ["GLW",0.052,"Corning Inc.","Technology"],["CPAY",0.052,"Corpay","Financials"],
+  ["CTVA",0.052,"Corteva","Materials"],["CSGP",0.052,"CoStar Group","Real Estate"],
+  ["CRH",0.052,"CRH plc","Materials"],["CRWD",0.052,"CrowdStrike","Technology"],
+  ["CCI",0.052,"Crown Castle","Real Estate"],["CSX",0.052,"CSX Corporation","Industrials"],
+  ["CMI",0.052,"Cummins","Industrials"],["CVS",0.052,"CVS Health","Health Care"],
+  ["DHR",0.052,"Danaher Corporation","Health Care"],["DRI",0.052,"Darden Restaurants","Consumer Disc."],
+  ["DDOG",0.052,"Datadog","Technology"],["DVA",0.052,"DaVita","Health Care"],
+  ["DECK",0.052,"Deckers Brands","Consumer Disc."],["DELL",0.052,"Dell Technologies","Technology"],
+  ["DAL",0.052,"Delta Air Lines","Industrials"],["DVN",0.052,"Devon Energy","Energy"],
+  ["DXCM",0.052,"Dexcom","Health Care"],["FANG",0.052,"Diamondback Energy","Energy"],
+  ["DLR",0.052,"Digital Realty","Real Estate"],["DG",0.052,"Dollar General","Consumer Staples"],
+  ["DLTR",0.052,"Dollar Tree","Consumer Staples"],["D",0.052,"Dominion Energy","Utilities"],
+  ["DPZ",0.052,"Domino's","Consumer Disc."],["DASH",0.052,"DoorDash","Consumer Disc."],
+  ["DOV",0.052,"Dover Corporation","Industrials"],["DOW",0.052,"Dow Inc.","Materials"],
+  ["DHI",0.052,"D. R. Horton","Consumer Disc."],["DTE",0.052,"DTE Energy","Utilities"],
+  ["DD",0.052,"DuPont","Materials"],["EBAY",0.052,"eBay Inc.","Consumer Disc."],
+  ["ECL",0.052,"Ecolab","Materials"],["EIX",0.052,"Edison International","Utilities"],
+  ["EW",0.052,"Edwards Lifesciences","Health Care"],["EA",0.052,"Electronic Arts","Communications"],
+  ["EME",0.052,"Emcor","Industrials"],["EMR",0.052,"Emerson Electric","Industrials"],
+  ["ETR",0.052,"Entergy","Utilities"],["EOG",0.052,"EOG Resources","Energy"],
+  ["EQT",0.052,"EQT Corporation","Energy"],["EFX",0.052,"Equifax","Industrials"],
+  ["EQIX",0.052,"Equinix","Real Estate"],["EQR",0.052,"Equity Residential","Real Estate"],
+  ["ERIE",0.052,"Erie Indemnity","Financials"],["ESS",0.052,"Essex Property Trust","Real Estate"],
+  ["EL",0.052,"Estée Lauder Companies (The)","Consumer Staples"],["EG",0.052,"Everest Group","Financials"],
+  ["EVRG",0.052,"Evergy","Utilities"],["ES",0.052,"Eversource Energy","Utilities"],
+  ["EXC",0.052,"Exelon","Utilities"],["EXPE",0.052,"Expedia Group","Consumer Disc."],
+  ["EXPD",0.052,"Expeditors International","Industrials"],["EXR",0.052,"Extra Space Storage","Real Estate"],
+  ["FFIV",0.052,"F5, Inc.","Technology"],["FDS",0.052,"FactSet","Financials"],
+  ["FICO",0.052,"Fair Isaac","Technology"],["FAST",0.052,"Fastenal","Industrials"],
+  ["FRT",0.052,"Federal Realty Investment Trust","Real Estate"],["FDX",0.052,"FedEx","Industrials"],
+  ["FIS",0.052,"Fidelity National Information Services","Financials"],["FITB",0.052,"Fifth Third Bancorp","Financials"],
+  ["FSLR",0.052,"First Solar","Technology"],["FE",0.052,"FirstEnergy","Utilities"],
+  ["FISV",0.052,"Fiserv","Financials"],["F",0.052,"Ford Motor Company","Consumer Disc."],
+  ["FTNT",0.052,"Fortinet","Technology"],["FTV",0.052,"Fortive","Industrials"],
+  ["FOXA",0.052,"Fox Corporation (Class A)","Communications"],["FOX",0.052,"Fox Corporation (Class B)","Communications"],
+  ["BEN",0.052,"Franklin Resources","Financials"],["FCX",0.052,"Freeport-McMoRan","Materials"],
+  ["GRMN",0.052,"Garmin","Consumer Disc."],["IT",0.052,"Gartner","Technology"],
+  ["GEHC",0.052,"GE HealthCare","Health Care"],["GEV",0.052,"GE Vernova","Industrials"],
+  ["GEN",0.052,"Gen Digital","Technology"],["GNRC",0.052,"Generac","Industrials"],
+  ["GD",0.052,"General Dynamics","Industrials"],["GIS",0.052,"General Mills","Consumer Staples"],
+  ["GM",0.052,"General Motors","Consumer Disc."],["GPC",0.052,"Genuine Parts Company","Consumer Disc."],
+  ["GPN",0.052,"Global Payments","Financials"],["GL",0.052,"Globe Life","Financials"],
+  ["GDDY",0.052,"GoDaddy","Technology"],["HAL",0.052,"Halliburton","Energy"],
+  ["HIG",0.052,"Hartford (The)","Financials"],["HAS",0.052,"Hasbro","Consumer Disc."],
+  ["HCA",0.052,"HCA Healthcare","Health Care"],["DOC",0.052,"Healthpeak Properties","Real Estate"],
+  ["HSIC",0.052,"Henry Schein","Health Care"],["HSY",0.052,"Hershey Company (The)","Consumer Staples"],
+  ["HPE",0.052,"Hewlett Packard Enterprise","Technology"],["HLT",0.052,"Hilton Worldwide","Consumer Disc."],
+  ["HRL",0.052,"Hormel Foods","Consumer Staples"],["HST",0.052,"Host Hotels & Resorts","Real Estate"],
+  ["HWM",0.052,"Howmet Aerospace","Industrials"],["HPQ",0.052,"HP Inc.","Technology"],
+  ["HUBB",0.052,"Hubbell Incorporated","Industrials"],["HUM",0.052,"Humana","Health Care"],
+  ["HBAN",0.052,"Huntington Bancshares","Financials"],["HII",0.052,"Huntington Ingalls Industries","Industrials"],
+  ["IEX",0.052,"IDEX Corporation","Industrials"],["IDXX",0.052,"Idexx Laboratories","Health Care"],
+  ["ITW",0.052,"Illinois Tool Works","Industrials"],["INCY",0.052,"Incyte","Health Care"],
+  ["IR",0.052,"Ingersoll Rand","Industrials"],["PODD",0.052,"Insulet Corporation","Health Care"],
+  ["IBKR",0.052,"Interactive Brokers","Financials"],["IFF",0.052,"International Flavors & Fragrances","Materials"],
+  ["IP",0.052,"International Paper","Materials"],["IVZ",0.052,"Invesco","Financials"],
+  ["INVH",0.052,"Invitation Homes","Real Estate"],["IQV",0.052,"IQVIA","Health Care"],
+  ["IRM",0.052,"Iron Mountain","Real Estate"],["JBHT",0.052,"J.B. Hunt","Industrials"],
+  ["JBL",0.052,"Jabil","Technology"],["JKHY",0.052,"Jack Henry & Associates","Financials"],
+  ["J",0.052,"Jacobs Solutions","Industrials"],["JCI",0.052,"Johnson Controls","Industrials"],
+  ["KVUE",0.052,"Kenvue","Consumer Staples"],["KDP",0.052,"Keurig Dr Pepper","Consumer Staples"],
+  ["KEY",0.052,"KeyCorp","Financials"],["KEYS",0.052,"Keysight Technologies","Technology"],
+  ["KMB",0.052,"Kimberly-Clark","Consumer Staples"],["KIM",0.052,"Kimco Realty","Real Estate"],
+  ["KMI",0.052,"Kinder Morgan","Energy"],["KHC",0.052,"Kraft Heinz","Consumer Staples"],
+  ["KR",0.052,"Kroger","Consumer Staples"],["LHX",0.052,"L3Harris","Industrials"],
+  ["LH",0.052,"Labcorp","Health Care"],["LVS",0.052,"Las Vegas Sands","Consumer Disc."],
+  ["LDOS",0.052,"Leidos","Industrials"],["LEN",0.052,"Lennar","Consumer Disc."],
+  ["LII",0.052,"Lennox International","Industrials"],["LYV",0.052,"Live Nation Entertainment","Communications"],
+  ["LMT",0.052,"Lockheed Martin","Industrials"],["L",0.052,"Loews Corporation","Financials"],
+  ["LULU",0.052,"Lululemon Athletica","Consumer Disc."],["LYB",0.052,"LyondellBasell","Materials"],
+  ["MTB",0.052,"M&T Bank","Financials"],["MPC",0.052,"Marathon Petroleum","Energy"],
+  ["MAR",0.052,"Marriott International","Consumer Disc."],["MRSH",0.052,"Marsh McLennan","Financials"],
+  ["MLM",0.052,"Martin Marietta Materials","Materials"],["MAS",0.052,"Masco","Industrials"],
+  ["MKC",0.052,"McCormick & Company","Consumer Staples"],["MCK",0.052,"McKesson Corporation","Health Care"],
+  ["MET",0.052,"MetLife","Financials"],["MTD",0.052,"Mettler Toledo","Health Care"],
+  ["MGM",0.052,"MGM Resorts","Consumer Disc."],["MCHP",0.052,"Microchip Technology","Technology"],
+  ["MAA",0.052,"Mid-America Apartment Communities","Real Estate"],["MRNA",0.052,"Moderna","Health Care"],
+  ["TAP",0.052,"Molson Coors Beverage Company","Consumer Staples"],["MDLZ",0.052,"Mondelez International","Consumer Staples"],
+  ["MPWR",0.052,"Monolithic Power Systems","Technology"],["MNST",0.052,"Monster Beverage","Consumer Staples"],
+  ["MCO",0.052,"Moody's Corporation","Financials"],["MS",0.052,"Morgan Stanley","Financials"],
+  ["MOS",0.052,"Mosaic Company (The)","Materials"],["MSI",0.052,"Motorola Solutions","Technology"],
+  ["MSCI",0.052,"MSCI Inc.","Financials"],["NDAQ",0.052,"Nasdaq, Inc.","Financials"],
+  ["NTAP",0.052,"NetApp","Technology"],["NEM",0.052,"Newmont","Materials"],
+  ["NWSA",0.052,"News Corp (Class A)","Communications"],["NWS",0.052,"News Corp (Class B)","Communications"],
+  ["NKE",0.052,"Nike, Inc.","Consumer Disc."],["NI",0.052,"NiSource","Utilities"],
+  ["NDSN",0.052,"Nordson Corporation","Industrials"],["NSC",0.052,"Norfolk Southern","Industrials"],
+  ["NTRS",0.052,"Northern Trust","Financials"],["NOC",0.052,"Northrop Grumman","Industrials"],
+  ["NCLH",0.052,"Norwegian Cruise Line Holdings","Consumer Disc."],["NRG",0.052,"NRG Energy","Utilities"],
+  ["NUE",0.052,"Nucor","Materials"],["NVR",0.052,"NVR, Inc.","Consumer Disc."],
+  ["NXPI",0.052,"NXP Semiconductors","Technology"],["ORLY",0.052,"O'Reilly Automotive","Consumer Disc."],
+  ["OXY",0.052,"Occidental Petroleum","Energy"],["ODFL",0.052,"Old Dominion","Industrials"],
+  ["OMC",0.052,"Omnicom Group","Communications"],["ON",0.052,"ON Semiconductor","Technology"],
+  ["OKE",0.052,"Oneok","Energy"],["OTIS",0.052,"Otis Worldwide","Industrials"],
+  ["PCAR",0.052,"Paccar","Industrials"],["PKG",0.052,"Packaging Corporation of America","Materials"],
+  ["PH",0.052,"Parker Hannifin","Industrials"],["PAYX",0.052,"Paychex","Industrials"],
+  ["PYPL",0.052,"PayPal","Financials"],["PNR",0.052,"Pentair","Industrials"],
+  ["PFE",0.052,"Pfizer","Health Care"],["PCG",0.052,"PG&E Corporation","Utilities"],
+  ["PSX",0.052,"Phillips 66","Energy"],["PNW",0.052,"Pinnacle West Capital","Utilities"],
+  ["PNC",0.052,"PNC Financial Services","Financials"],["POOL",0.052,"Pool Corporation","Consumer Disc."],
+  ["PPG",0.052,"PPG Industries","Materials"],["PPL",0.052,"PPL Corporation","Utilities"],
+  ["PFG",0.052,"Principal Financial Group","Financials"],["PRU",0.052,"Prudential Financial","Financials"],
+  ["PEG",0.052,"Public Service Enterprise Group","Utilities"],["PTC",0.052,"PTC Inc.","Technology"],
+  ["PSA",0.052,"Public Storage","Real Estate"],["PHM",0.052,"PulteGroup","Consumer Disc."],
+  ["PWR",0.052,"Quanta Services","Industrials"],["DGX",0.052,"Quest Diagnostics","Health Care"],
+  ["RL",0.052,"Ralph Lauren Corporation","Consumer Disc."],["RJF",0.052,"Raymond James Financial","Financials"],
+  ["O",0.052,"Realty Income","Real Estate"],["REG",0.052,"Regency Centers","Real Estate"],
+  ["REGN",0.052,"Regeneron Pharmaceuticals","Health Care"],["RF",0.052,"Regions Financial Corporation","Financials"],
+  ["RSG",0.052,"Republic Services","Industrials"],["RMD",0.052,"ResMed","Health Care"],
+  ["RVTY",0.052,"Revvity","Health Care"],["HOOD",0.052,"Robinhood Markets","Financials"],
+  ["ROK",0.052,"Rockwell Automation","Industrials"],["ROL",0.052,"Rollins, Inc.","Industrials"],
+  ["ROP",0.052,"Roper Technologies","Technology"],["ROST",0.052,"Ross Stores","Consumer Disc."],
+  ["RCL",0.052,"Royal Caribbean Group","Consumer Disc."],["SBAC",0.052,"SBA Communications","Real Estate"],
+  ["SLB",0.052,"Schlumberger","Energy"],["STX",0.052,"Seagate Technology","Technology"],
+  ["SRE",0.052,"Sempra","Utilities"],["SHW",0.052,"Sherwin-Williams","Materials"],
+  ["SPG",0.052,"Simon Property Group","Real Estate"],["SWKS",0.052,"Skyworks Solutions","Technology"],
+  ["SJM",0.052,"J.M. Smucker Company (The)","Consumer Staples"],["SW",0.052,"Smurfit Westrock","Materials"],
+  ["SNA",0.052,"Snap-on","Industrials"],["SOLV",0.052,"Solventum","Health Care"],
+  ["LUV",0.052,"Southwest Airlines","Industrials"],["SWK",0.052,"Stanley Black & Decker","Industrials"],
+  ["STT",0.052,"State Street Corporation","Financials"],["STLD",0.052,"Steel Dynamics","Materials"],
+  ["STE",0.052,"Steris","Health Care"],["SMCI",0.052,"Supermicro","Technology"],
+  ["SYF",0.052,"Synchrony Financial","Financials"],["SNPS",0.052,"Synopsys","Technology"],
+  ["SYY",0.052,"Sysco","Consumer Staples"],["TROW",0.052,"T. Rowe Price","Financials"],
+  ["TTWO",0.052,"Take-Two Interactive","Communications"],["TPR",0.052,"Tapestry, Inc.","Consumer Disc."],
+  ["TRGP",0.052,"Targa Resources","Energy"],["TGT",0.052,"Target Corporation","Consumer Staples"],
+  ["TEL",0.052,"TE Connectivity","Technology"],["TDY",0.052,"Teledyne Technologies","Technology"],
+  ["TER",0.052,"Teradyne","Technology"],["TPL",0.052,"Texas Pacific Land Corporation","Energy"],
+  ["TXT",0.052,"Textron","Industrials"],["TKO",0.052,"TKO Group Holdings","Communications"],
+  ["TTD",0.052,"Trade Desk (The)","Communications"],["TSCO",0.052,"Tractor Supply","Consumer Disc."],
+  ["TT",0.052,"Trane Technologies","Industrials"],["TDG",0.052,"TransDigm Group","Industrials"],
+  ["TRV",0.052,"Travelers Companies (The)","Financials"],["TRMB",0.052,"Trimble Inc.","Technology"],
+  ["TFC",0.052,"Truist Financial","Financials"],["TYL",0.052,"Tyler Technologies","Technology"],
+  ["TSN",0.052,"Tyson Foods","Consumer Staples"],["USB",0.052,"U.S. Bancorp","Financials"],
+  ["UDR",0.052,"UDR, Inc.","Real Estate"],["ULTA",0.052,"Ulta Beauty","Consumer Disc."],
+  ["UAL",0.052,"United Airlines Holdings","Industrials"],["UPS",0.052,"United Parcel Service","Industrials"],
+  ["URI",0.052,"United Rentals","Industrials"],["UHS",0.052,"Universal Health Services","Health Care"],
+  ["VLO",0.052,"Valero Energy","Energy"],["VEEV",0.052,"Veeva Systems","Health Care"],
+  ["VTR",0.052,"Ventas","Real Estate"],["VLTO",0.052,"Veralto","Industrials"],
+  ["VRSN",0.052,"Verisign","Technology"],["VRSK",0.052,"Verisk Analytics","Industrials"],
+  ["VRT",0.052,"Vertiv","Industrials"],["VTRS",0.052,"Viatris","Health Care"],
+  ["VICI",0.052,"Vici Properties","Real Estate"],["VST",0.052,"Vistra Corp.","Utilities"],
+  ["VMC",0.052,"Vulcan Materials Company","Materials"],["WRB",0.052,"W. R. Berkley Corporation","Financials"],
+  ["GWW",0.052,"W. W. Grainger","Industrials"],["WAB",0.052,"Wabtec","Industrials"],
+  ["WBD",0.052,"Warner Bros. Discovery","Communications"],["WM",0.052,"Waste Management","Industrials"],
+  ["WAT",0.052,"Waters Corporation","Health Care"],["WEC",0.052,"WEC Energy Group","Utilities"],
+  ["WELL",0.052,"Welltower","Real Estate"],["WST",0.052,"West Pharmaceutical Services","Health Care"],
+  ["WDC",0.052,"Western Digital","Technology"],["WY",0.052,"Weyerhaeuser","Real Estate"],
+  ["WSM",0.052,"Williams-Sonoma, Inc.","Consumer Disc."],["WMB",0.052,"Williams Companies","Energy"],
+  ["WTW",0.052,"Willis Towers Watson","Financials"],["WDAY",0.052,"Workday, Inc.","Technology"],
+  ["WYNN",0.052,"Wynn Resorts","Consumer Disc."],["XEL",0.052,"Xcel Energy","Utilities"],
+  ["XYL",0.052,"Xylem Inc.","Industrials"],["YUM",0.052,"Yum! Brands","Consumer Disc."],
+  ["ZBRA",0.052,"Zebra Technologies","Technology"],["ZBH",0.052,"Zimmer Biomet","Health Care"],
+  ["ZTS",0.052,"Zoetis","Health Care"],
+];
+
+const NDX = [
+  ["NVDA",8.263,"Nvidia","Technology"],["AAPL",7.981,"Apple Inc.","Technology"],["MSFT",7.512,"Microsoft","Technology"],
+  ["AMZN",5.164,"Amazon","Consumer Disc."],["AVGO",4.695,"Broadcom","Technology"],["META",3.568,"Meta Platforms","Communications"],
+  ["TSLA",2.817,"Tesla","Consumer Disc."],["GOOGL",2.347,"Alphabet A","Communications"],["GOOG",2.254,"Alphabet C","Communications"],
+  ["COST",2.441,"Costco","Consumer Staples"],["NFLX",2.629,"Netflix","Communications"],["PLTR",1.502,"Palantir","Technology"],
+  ["CSCO",1.408,"Cisco","Technology"],["TMUS",1.502,"T-Mobile US","Communications"],["AMD",1.315,"AMD","Technology"],
+  ["PEP",1.315,"PepsiCo","Consumer Staples"],["LIN",1.315,"Linde","Materials"],["INTU",1.408,"Intuit","Technology"],
+  ["ADBE",1.127,"Adobe","Technology"],["TXN",1.127,"Texas Instruments","Technology"],["QCOM",0.939,"Qualcomm","Technology"],
+  ["BKNG",1.221,"Booking Holdings","Consumer Disc."],["AMGN",1.033,"Amgen","Health Care"],
+  ["ISRG",1.127,"Intuitive Surgical","Health Care"],["HON",0.845,"Honeywell","Industrials"],
+  ["AMAT",0.939,"Applied Materials","Technology"],["CMCSA",0.845,"Comcast","Communications"],
+  ["ADP",0.845,"ADP","Industrials"],["VRTX",0.845,"Vertex Pharma","Health Care"],["GILD",0.845,"Gilead Sciences","Health Care"],
+  ["MU",0.845,"Micron","Technology"],["PANW",0.845,"Palo Alto Networks","Technology"],["LRCX",0.845,"Lam Research","Technology"],
+  ["KLAC",0.751,"KLA Corp","Technology"],["SBUX",0.657,"Starbucks","Consumer Disc."],["INTC",0.657,"Intel","Technology"],
+  ["MDLZ",0.657,"Mondelez","Consumer Staples"],["ADI",0.751,"Analog Devices","Technology"],
+  ["REGN",0.563,"Regeneron","Health Care"],["CDNS",0.751,"Cadence Design","Technology"],["SNPS",0.657,"Synopsys","Technology"],
+  ["MELI",0.751,"MercadoLibre","Consumer Disc."],["CRWD",0.751,"CrowdStrike","Technology"],["CTAS",0.563,"Cintas","Industrials"],
+  ["PYPL",0.563,"PayPal","Financials"],["MAR",0.563,"Marriott","Consumer Disc."],["ORLY",0.563,"O'Reilly Auto","Consumer Disc."],
+  ["CEG",0.657,"Constellation Energy","Utilities"],["ABNB",0.563,"Airbnb","Consumer Disc."],["FTNT",0.563,"Fortinet","Technology"],
+  ["DASH",0.563,"DoorDash","Consumer Disc."],["WDAY",0.469,"Workday","Technology"],["NXPI",0.469,"NXP Semiconductors","Technology"],
+  ["ROP",0.469,"Roper Tech","Technology"],["CSX",0.469,"CSX","Industrials"],["AEP",0.469,"American Electric Power","Utilities"],
+  ["PCAR",0.469,"PACCAR","Industrials"],["MNST",0.469,"Monster Beverage","Consumer Staples"],
+  ["FANG",0.376,"Diamondback Energy","Energy"],["PAYX",0.376,"Paychex","Industrials"],["KDP",0.376,"Keurig Dr Pepper","Consumer Staples"],
+  ["ODFL",0.376,"Old Dominion","Industrials"],["ROST",0.376,"Ross Stores","Consumer Disc."],["VRSK",0.376,"Verisk","Industrials"],
+  ["EA",0.376,"Electronic Arts","Communications"],["CTSH",0.376,"Cognizant","Technology"],["DDOG",0.376,"Datadog","Technology"],
+  ["XEL",0.376,"Xcel Energy","Utilities"],["LULU",0.376,"Lululemon","Consumer Disc."],["KHC",0.376,"Kraft Heinz","Consumer Staples"],
+  ["GEHC",0.376,"GE HealthCare","Health Care"],["FAST",0.376,"Fastenal","Industrials"],["EXC",0.376,"Exelon","Utilities"],
+  ["CCEP",0.282,"Coca-Cola Europacific","Consumer Staples"],["TTWO",0.376,"Take-Two","Communications"],
+  ["IDXX",0.282,"IDEXX Labs","Health Care"],["CSGP",0.282,"CoStar Group","Real Estate"],["ZS",0.282,"Zscaler","Technology"],
+  ["ANSS",0.282,"Ansys","Technology"],["DXCM",0.282,"Dexcom","Health Care"],["WBD",0.282,"Warner Bros Discovery","Communications"],
+  ["TEAM",0.282,"Atlassian","Technology"],["BKR",0.282,"Baker Hughes","Energy"],["ON",0.282,"ON Semiconductor","Technology"],
+  ["CDW",0.282,"CDW Corp","Technology"],["GFS",0.188,"GlobalFoundries","Technology"],["MDB",0.282,"MongoDB","Technology"],
+  ["BIIB",0.188,"Biogen","Health Care"],["MCHP",0.282,"Microchip Tech","Technology"],["TTD",0.282,"Trade Desk","Technology"],
+  ["ILMN",0.188,"Illumina","Health Care"],["WBA",0.188,"Walgreens","Consumer Staples"],["ARM",0.376,"Arm Holdings","Technology"],
+  ["APP",0.376,"AppLovin","Technology"],
+];
+
+const DJI = [
+  ["UNH",8.696,"UnitedHealth","Health Care"],["GS",8.213,"Goldman Sachs","Financials"],
+  ["MSFT",6.28,"Microsoft","Technology"],["HD",5.797,"Home Depot","Consumer Disc."],
+  ["SHW",5.314,"Sherwin-Williams","Materials"],["CAT",5.024,"Caterpillar","Industrials"],
+  ["CRM",4.638,"Salesforce","Technology"],["V",4.348,"Visa","Financials"],
+  ["AXP",4.251,"American Express","Financials"],["MCD",3.865,"McDonald's","Consumer Disc."],
+  ["AMGN",3.768,"Amgen","Health Care"],["TRV",3.382,"Travelers","Financials"],
+  ["JPM",3.285,"JPMorgan","Financials"],["HON",3.092,"Honeywell","Industrials"],
+  ["IBM",3.382,"IBM","Technology"],["AAPL",2.705,"Apple","Technology"],
+  ["BA",2.609,"Boeing","Industrials"],["JNJ",2.512,"Johnson & Johnson","Health Care"],
+  ["PG",2.415,"Procter & Gamble","Consumer Staples"],["CVX",2.222,"Chevron","Energy"],
+  ["MMM",2.126,"3M","Industrials"],["DIS",1.932,"Disney","Communications"],
+  ["NVDA",1.836,"Nvidia","Technology"],["MRK",1.643,"Merck","Health Care"],
+  ["WMT",1.546,"Walmart","Consumer Staples"],["NKE",1.353,"Nike","Consumer Disc."],
+  ["KO",1.159,"Coca-Cola","Consumer Staples"],["CSCO",1.063,"Cisco","Technology"],
+  ["VZ",0.87,"Verizon","Communications"],["DOW",0.676,"Dow Inc.","Materials"],
+];
+
+const CAC = [
+  ["MC.PA",11.458,"LVMH","Consumer Disc."],["OR.PA",9.375,"L'Oréal","Consumer Staples"],
+  ["RMS.PA",7.812,"Hermès","Consumer Disc."],["TTE.PA",7.292,"TotalEnergies","Energy"],
+  ["SU.PA",6.771,"Schneider Electric","Industrials"],["AIR.PA",5.729,"Airbus","Industrials"],
+  ["SAF.PA",4.688,"Safran","Industrials"],["AI.PA",3.75,"Air Liquide","Materials"],
+  ["BNP.PA",3.646,"BNP Paribas","Financials"],["SAN.PA",3.125,"Sanofi","Health Care"],
+  ["CS.PA",2.917,"AXA","Financials"],["EL.PA",2.604,"EssilorLuxottica","Health Care"],
+  ["DG.PA",2.396,"VINCI","Industrials"],["ENGI.PA",2.083,"Engie","Utilities"],
+  ["STMPA.PA",1.979,"STMicroelectronics","Technology"],["ACA.PA",1.875,"Crédit Agricole","Financials"],
+  ["GLE.PA",1.771,"Société Générale","Financials"],["HO.PA",1.667,"Thales","Industrials"],
+  ["ORA.PA",1.562,"Orange","Communications"],["BN.PA",1.458,"Danone","Consumer Staples"],
+  ["KER.PA",1.354,"Kering","Consumer Disc."],["DSY.PA",1.25,"Dassault Systèmes","Technology"],
+  ["ML.PA",1.25,"Michelin","Consumer Disc."],["CAP.PA",1.146,"Capgemini","Technology"],
+  ["RI.PA",1.146,"Pernod Ricard","Consumer Staples"],["PUB.PA",1.042,"Publicis","Communications"],
+  ["SGO.PA",1.042,"Saint-Gobain","Industrials"],["LR.PA",0.938,"Legrand","Industrials"],
+  ["VIE.PA",0.938,"Veolia","Utilities"],["STLAP.PA",0.833,"Stellantis","Consumer Disc."],
+  ["EN.PA",0.729,"Bouygues","Industrials"],["CA.PA",0.625,"Carrefour","Consumer Staples"],
+  ["RNO.PA",0.625,"Renault","Consumer Disc."],["AC.PA",0.521,"Accor","Consumer Disc."],
+  ["EDEN.PA",0.521,"Edenred","Industrials"],["ERF.PA",0.521,"Eurofins Scientific","Health Care"],
+  ["BVI.PA",0.417,"Bureau Veritas","Industrials"],["TEP.PA",0.417,"Teleperformance","Industrials"],
+  ["URW.PA",0.417,"Unibail-Rodamco-Westfield","Real Estate"],["WLN.PA",0.312,"Worldline","Technology"],
+];
+
+const DAX = [
+  ["SAP.DE",15.091,"SAP","Technology"],["SIE.DE",9.054,"Siemens","Industrials"],
+  ["ALV.DE",7.042,"Allianz","Financials"],["DTE.DE",6.036,"Deutsche Telekom","Communications"],
+  ["MUV2.DE",4.527,"Munich Re","Financials"],["AIR.DE",4.024,"Airbus","Industrials"],
+  ["RHM.DE",4.024,"Rheinmetall","Industrials"],["DBK.DE",3.521,"Deutsche Bank","Financials"],
+  ["ADS.DE",3.018,"Adidas","Consumer Disc."],["BAS.DE",2.817,"BASF","Materials"],
+  ["MBG.DE",2.515,"Mercedes-Benz","Consumer Disc."],["BMW.DE",2.314,"BMW","Consumer Disc."],
+  ["MRK.DE",2.213,"Merck KGaA","Health Care"],["DHL.DE",2.515,"DHL Group","Industrials"],
+  ["VOW3.DE",2.012,"Volkswagen","Consumer Disc."],["IFX.DE",2.817,"Infineon","Technology"],
+  ["BAYN.DE",2.012,"Bayer","Health Care"],["EOAN.DE",2.012,"E.ON","Utilities"],
+  ["ENR.DE",2.515,"Siemens Energy","Industrials"],["RWE.DE",1.811,"RWE","Utilities"],
+  ["HEN3.DE",1.509,"Henkel","Consumer Staples"],["HEI.DE",1.509,"Heidelberg Materials","Materials"],
+  ["DTG.DE",1.207,"Daimler Truck","Industrials"],["MTX.DE",1.308,"MTU Aero Engines","Industrials"],
+  ["CBK.DE",1.509,"Commerzbank","Financials"],["SY1.DE",1.006,"Symrise","Materials"],
+  ["FRE.DE",1.006,"Fresenius","Health Care"],["VNA.DE",1.006,"Vonovia","Real Estate"],
+  ["BEI.DE",0.905,"Beiersdorf","Consumer Staples"],["PAH3.DE",0.704,"Porsche SE","Consumer Disc."],
+  ["P911.DE",0.805,"Porsche AG","Consumer Disc."],["HNR1.DE",0.704,"Hannover Re","Financials"],
+  ["DB1.DE",1.207,"Deutsche Börse","Financials"],["ZAL.DE",0.604,"Zalando","Consumer Disc."],
+  ["SHL.DE",1.006,"Siemens Healthineers","Health Care"],["QIA.DE",0.503,"Qiagen","Health Care"],
+  ["CON.DE",0.604,"Continental","Consumer Disc."],["SRT3.DE",0.503,"Sartorius","Health Care"],
+  ["BNR.DE",0.503,"Brenntag","Materials"],
+];
+
+const INDEX_DATA = { SPX, NDX, DJI, CAC, DAX };
 
 export default async (req) => {
-  const key = process.env.FMP_API_KEY;
-
-  // Extrait le symbole depuis /api/indices/SPX/components
-  const parts = new URL(req.url).pathname.split('/');
+  const parts  = new URL(req.url).pathname.split('/');
   const symbol = (parts[3] || '').toUpperCase();
-  const cfg = INDEX[symbol];
-  if (!cfg) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
+  const data   = INDEX_DATA[symbol];
+  if (!data) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
 
-  let out = null;
-
-  if (key) {
-    if (cfg.etf) {
-      const rows = await fmpJson(`${V3}/etf-holder/${cfg.etf}?apikey=${key}`)
-        || await fmpJson(`${STABLE}/etf/holdings?symbol=${cfg.etf}&apikey=${key}`);
-      if (rows) {
-        out = rows.filter(h => h.asset || h.symbol).map(h => blank({
-          ticker: h.asset || h.symbol,
-          name: h.name || h.asset || h.symbol,
-          weight: (h.weightPercentage ?? h.weight) != null ? Number(Number(h.weightPercentage ?? h.weight).toFixed(2)) : null,
-        }));
-      }
-    }
-    if (!out) {
-      const urls = [];
-      if (cfg.stable) urls.push(`${STABLE}/${cfg.stable}?apikey=${key}`);
-      if (cfg.v3) urls.push(`${V3}/${cfg.v3}?apikey=${key}`);
-      for (const u of urls) {
-        const rows = await fmpJson(u);
-        if (rows) {
-          out = rows.filter(c => c.symbol).map(c => blank({ ticker: c.symbol, name: c.name || c.symbol, sector: c.sector || null, weight: null }));
-          break;
-        }
-      }
-    }
-  }
-
-  if (!out && STATIC[symbol]) {
-    out = STATIC[symbol].map(([ticker, name, sector]) => blank({ ticker, name, sector, weight: null }));
-  }
-
-  if (!out || !out.length) return Response.json({ error: 'fmp_unavailable' }, { status: 502 });
-
-  out.sort((a, b) => (b.weight || 0) - (a.weight || 0));
+  const out = data.map(([ticker, weight, name, sector]) => blank(ticker, name, sector, weight));
   return Response.json(out.slice(0, MAX), { status: 200 });
 };
