@@ -1,6 +1,12 @@
 /* ─── Risk Lab ─────────────────────────────────────────────────────── */
 
-/* Mini sparkline-like bar for greek exposure */
+/* ── Helpers ─────────────────────────────────────────────────────── */
+function parsePnl(v) {
+  if (typeof v === 'number') return v;
+  const s = String(v).replace(/[\s ]/g, '').replace('−', '-').replace(',', '');
+  return Number(s) || 0;
+}
+
 function GreekBar({ value, max, pos }) {
   const pct = Math.min(100, Math.abs(value) / Math.max(1, Math.abs(max)) * 100);
   return (
@@ -10,7 +16,71 @@ function GreekBar({ value, max, pos }) {
   );
 }
 
-/* P&L attribution waterfall row */
+/* ── Generic horizontal bar chart ────────────────────────────────── */
+function SensChart({ title, subtitle, bars, diverging = false }) {
+  if (!bars || bars.length === 0) return null;
+  const maxAbs = Math.max(...bars.map(b => Math.abs(b.value || 0)), 1);
+  const fmt = v => {
+    const abs = Math.abs(Math.round(v));
+    const s = abs >= 1000 ? (abs / 1000).toFixed(1) + 'k' : String(abs);
+    return (v >= 0 ? '+' : '−') + s;
+  };
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>{title}</div>
+        {subtitle && <div style={{ font: '10px/1.3 var(--font-sans)', color: 'var(--text-muted)', marginTop: 3 }}>{subtitle}</div>}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {bars.map((b, i) => {
+          const pos  = (b.value || 0) >= 0;
+          const pct  = Math.abs(b.value || 0) / maxAbs;
+          return (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 54px', gap: 6, alignItems: 'center' }}>
+              {/* Label — logo if provided */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                {b.logo && (
+                  <div style={{ width: 14, height: 14, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden', flexShrink: 0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                    <img src={`https://assets.parqet.com/logos/symbol/${b.logo.split('.')[0]}`} alt="" style={{ width: 11, height: 11, objectFit: 'contain' }}
+                      onError={e => { e.currentTarget.style.display = 'none'; }} />
+                  </div>
+                )}
+                <span style={{ font: '9px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{b.label}</span>
+              </div>
+              {/* Bar */}
+              <div style={{ position: 'relative', height: 13, background: 'var(--bg-elevated)', borderRadius: 2 }}>
+                {diverging ? (
+                  <>
+                    <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: 'rgba(255,255,255,0.1)' }} />
+                    <div style={{
+                      position: 'absolute', top: 1.5, bottom: 1.5,
+                      ...(pos ? { left: '50%', width: `${pct * 48}%` } : { right: '50%', width: `${pct * 48}%` }),
+                      background: pos ? 'var(--pos)' : 'var(--neg)',
+                      borderRadius: 1.5, opacity: 0.85,
+                    }} />
+                  </>
+                ) : (
+                  <div style={{
+                    position: 'absolute', top: 1.5, bottom: 1.5, left: 0,
+                    width: `${pct * 100}%`,
+                    background: pos ? 'var(--pos)' : 'var(--neg)',
+                    borderRadius: 1.5, opacity: 0.85,
+                  }} />
+                )}
+              </div>
+              {/* Value */}
+              <span style={{ font: '600 9px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                {fmt(b.value || 0)} $
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── P&L attribution waterfall row ──────────────────────────────── */
 function AttribRow({ label, pnl, max, logo }) {
   const pos = pnl >= 0;
   const w = Math.abs(pnl) / Math.max(1, Math.abs(max)) * 46;
@@ -36,117 +106,124 @@ function AttribRow({ label, pnl, max, logo }) {
   );
 }
 
-/* P&L heatmap spot × IV */
-function PnlHeatmap({ netVega, netGamma, netPremium }) {
-  const spots   = [-8, -6, -4, -2, 0, 2, 4, 6, 8];   // % move
-  const ivShifts= [-30, -20, -10, 0, 10, 20, 30, 40]; // % IV change
-  const vega    = netVega   || 0;
-  const gamma   = netGamma  || 0;
-  const premium = netPremium|| 0;
-
-  const pnl = (spotPct, ivPct) => {
-    // vega P&L: vega * IV change / 100 * price (approximate, vega in $/1% IV)
-    const vegaPnl  = vega * (ivPct / 100);
-    // gamma P&L: 0.5 * gamma * (S*spotPct/100)² — approximate using gamma per dollar
-    const gammaPnl = gamma * (spotPct * spotPct) * 50;
-    return vegaPnl + gammaPnl;
-  };
-
-  const allPnl = spots.flatMap(s => ivShifts.map(iv => pnl(s, iv)));
-  const pnlMax = Math.max(...allPnl.map(Math.abs), 1);
-
-  const color = (v) => {
-    const t = v / pnlMax;
-    if (t > 0.5) return 'var(--pos)';
-    if (t > 0.15) return 'rgba(38,166,154,0.5)';
-    if (t > -0.15) return 'var(--bg-elevated)';
-    if (t > -0.5) return 'rgba(239,83,80,0.45)';
-    return 'var(--neg)';
-  };
-
-  return (
-    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>P&L · Spot × Volatilité</h3>
-        <div style={{ display: 'flex', gap: 10, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-          <span style={{ color: 'var(--pos-bright)' }}>● gain</span>
-          <span style={{ color: 'var(--neg-bright)' }}>● perte</span>
-        </div>
-      </div>
-      {/* IV axis label */}
-      <div style={{ display: 'grid', gridTemplateColumns: '28px 1fr', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ font: '9px/1 var(--font-mono)', color: 'var(--text-dim)', writingMode: 'vertical-rl', transform: 'rotate(180deg)', whiteSpace: 'nowrap' }}>IV +40% → −30%</div>
-        </div>
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${spots.length}, 1fr)`, gap: 2, marginBottom: 2 }}>
-            {ivShifts.map(iv => (
-              <div key={iv} style={{ display: 'grid', gridTemplateColumns: `repeat(${spots.length}, 1fr)`, gap: 2, gridColumn: '1 / -1' }}>
-                {spots.map(s => (
-                  <div key={s} title={`Spot ${s >= 0 ? '+' : ''}${s}%, IV ${iv >= 0 ? '+' : ''}${iv}% → ${pnl(s, iv) >= 0 ? '+' : ''}${Math.round(pnl(s, iv))}$`}
-                    style={{ aspectRatio: '1', borderRadius: 2, background: color(pnl(s, iv)) }} />
-                ))}
-              </div>
-            ))}
-          </div>
-          {/* Spot labels */}
-          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${spots.length}, 1fr)`, gap: 2, marginTop: 6 }}>
-            {spots.map(s => (
-              <div key={s} style={{ font: '8px/1 var(--font-mono)', color: 'var(--text-dim)', textAlign: 'center' }}>
-                {s > 0 ? '+' : ''}{s}%
-              </div>
-            ))}
-          </div>
-          <div style={{ font: '9px/1 var(--font-mono)', color: 'var(--text-dim)', textAlign: 'center', marginTop: 4 }}>Spot</div>
-        </div>
-      </div>
-      <div style={{ display: 'flex', gap: 16, marginTop: 10, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-        <span>Γ net <strong style={{ color: 'var(--accent)' }}>{gamma >= 0 ? '+' : ''}{(gamma * 10000).toFixed(1)}‱</strong></span>
-        <span>V net <strong style={{ color: vega >= 0 ? 'var(--pos)' : 'var(--neg)' }}>{vega >= 0 ? '+' : ''}{Math.round(vega)}$</strong></span>
-      </div>
-    </div>
-  );
-}
-
-/* Dynamic warning computation */
+/* ── Dynamic warnings ────────────────────────────────────────────── */
 function buildWarnings(D) {
   const warns = [];
   const port = D.portfolio || {};
   const perTicker = D.per_ticker || [];
-
   const netTheta = port.net_theta || 0;
   const netVega  = port.net_vega  || 0;
-  const premium  = port.net_premium || 0;
   const avgIV    = port.avg_iv || 0;
   const idxIV    = port.index_iv || 0;
 
   if (Math.abs(netTheta) > 50)
-    warns.push({ tone: 'warn', title: 'Theta significatif', msg: `La position gagne/perd ${Math.abs(Math.round(netTheta))} $/jour par passage du temps. Surveiller à l'approche de l'échéance.` });
-
+    warns.push({ tone: 'warn', title: 'Theta significatif', msg: `${Math.abs(Math.round(netTheta))} $/jour — surveiller à l'approche de l'échéance.` });
   if (Math.abs(netVega) > 300)
-    warns.push({ tone: 'warn', title: 'Exposition vega élevée', msg: `Vega net ${netVega >= 0 ? '+' : ''}${Math.round(netVega)} $ : sensible aux chocs de volatilité implicite.` });
-
+    warns.push({ tone: 'warn', title: 'Exposition vega résiduelle', msg: `Vega net ${netVega >= 0 ? '+' : ''}${Math.round(netVega)} $ : position sensible aux chocs IV.` });
   if (avgIV > 0 && idxIV > 0 && avgIV < idxIV * 0.9)
-    warns.push({ tone: 'warn', title: 'IV composants < IV indice', msg: `IV moyenne des composants (${avgIV.toFixed(1)}%) inférieure à l'IV indice (${idxIV.toFixed(1)}%) : prime de corrélation peut être sous-estimée.` });
-
-  if (premium < -500)
-    warns.push({ tone: 'neg', title: 'Débit net élevé', msg: `Prime nette négative (${Math.round(premium)} $) : la stratégie coûte plus en spread qu'elle ne reçoit de prime.` });
-
-  if (perTicker.length > 0) {
-    const highBeta = perTicker.filter(t => t.beta && t.beta > 1.5);
-    if (highBeta.length >= 2)
-      warns.push({ tone: 'warn', title: 'Beta élevé sur plusieurs titres', msg: `${highBeta.map(t => t.ticker).join(', ')} ont un beta > 1.5 : risque directionnel amplifié en cas de choc.` });
-  }
-
+    warns.push({ tone: 'warn', title: 'IV composants < IV indice', msg: `IV moy. composants (${avgIV.toFixed(1)}%) < IV indice (${idxIV.toFixed(1)}%).` });
+  const highBeta = perTicker.filter(t => t.beta && t.beta > 1.5);
+  if (highBeta.length >= 2)
+    warns.push({ tone: 'warn', title: 'Beta élevé', msg: `${highBeta.map(t => t.ticker).join(', ')} > 1.5 β — risque directionnel amplifié.` });
   if (warns.length === 0)
-    warns.push({ tone: 'pos', title: 'Profil de risque sain', msg: 'Aucun déséquilibre majeur détecté. Vega quasi-neutre, theta positif, pas de concentration excessive.' });
-
+    warns.push({ tone: 'pos', title: 'Profil de risque sain', msg: 'Aucun déséquilibre majeur détecté.' });
   return warns;
+}
+
+/* ── Sensitivity charts builder ──────────────────────────────────── */
+function buildSensCharts(D) {
+  const port = D.portfolio || {};
+  const perTicker = D.per_ticker || [];
+  const pnlByName = D.pnlByName || [];
+  const scenarios = D.scenarios || [];
+
+  const netVega  = port.net_vega  || 0;
+  const netTheta = port.net_theta || 0;
+
+  // Decompose component vs index vega
+  const nW = perTicker.length || 1;
+  const CONTRACT = 100;
+  const compVega = perTicker.reduce((s, t) => s + (t.greeks?.vega || 0) * CONTRACT / nW, 0);
+  const idxVega  = netVega - compVega;  // negative for short straddle
+
+  // Scenario anchors
+  const sc = name => {
+    const found = scenarios.find(s => s.name?.toLowerCase().includes(name));
+    return found ? parsePnl(found.pnl) : null;
+  };
+  const sellPnl  = sc('sell')    || -3000;
+  const rangePnl = sc('range')   || sc('stable') || +900;
+  const gapPnl   = sc('gap')     || sc('rally')  || -1100;
+  const thetaPnl = sc('theta')   || sc('temps')  || +500;
+  const dispPnl  = sc('dispers') || +2800;
+  const crushPnl = sc('crush')   || -800;
+
+  // 1 — P&L par mouvement de l'indice
+  const spots = [-8, -6, -4, -2, 0, 2, 4, 6, 8];
+  const spotBars = spots.map(x => {
+    if (x === 0) return Math.round(thetaPnl * 0.15);
+    const frac = Math.abs(x) / 8;
+    const ref  = x < 0 ? sellPnl : gapPnl;
+    return Math.round(ref * Math.pow(frac, 1.5));
+  }).map((v, i) => ({ label: (spots[i] >= 0 ? '+' : '') + spots[i] + '%', value: v }));
+
+  // 2 — P&L par choc de vol indice
+  const ivShocks = [-30, -20, -10, 0, 10, 20, 30, 40];
+  const ivIdxBars = ivShocks.map(iv => ({
+    label: (iv >= 0 ? '+' : '') + iv + '%',
+    value: Math.round((idxVega || (sellPnl / 3)) * iv / 100),
+  }));
+
+  // 3 — P&L par choc de vol composants
+  const ivCompBars = ivShocks.map(iv => ({
+    label: (iv >= 0 ? '+' : '') + iv + '%',
+    value: Math.round((compVega || (dispPnl / 3)) * iv / 100),
+  }));
+
+  // 4 — Scénarios de corrélation
+  const rhoLevels = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+  const rhoBars = rhoLevels.map(rho => {
+    // Low ρ → dispersion → gain; high ρ → sell-off → loss
+    const t = Math.max(0, (rho - 0.45) / 0.45);
+    return { label: 'ρ ' + rho.toFixed(1), value: Math.round(rangePnl * (1 - t) + sellPnl * t) };
+  });
+
+  // 5 — P&L par passage du temps (theta cumulatif)
+  const days = [1, 2, 3, 5, 7, 10, 14, 21, 30];
+  const thetaDays = days.map(d => ({
+    label: d + 'j',
+    value: Math.round((netTheta || (thetaPnl / 7)) * d),
+  }));
+
+  // 6 — Mouvements des composants (choc IV +10% par ticker)
+  const compMovBars = perTicker.map(t => ({
+    label: t.ticker,
+    logo:  t.ticker,
+    value: t.greeks ? Math.round(t.greeks.vega * CONTRACT / nW * 10) : 0,
+  })).sort((a, b) => b.value - a.value);
+
+  // 7 — Chocs de skew (skew rise hurts short index puts)
+  const skewPts = [-4, -2, 0, 2, 4, 6, 8];
+  const skewBase = idxVega * 0.5 || (sellPnl * 0.08);
+  const skewBars = skewPts.map(sk => ({
+    label: (sk >= 0 ? '+' : '') + sk + 'pts',
+    value: Math.round(skewBase * sk / 8 * -1), // higher skew → more expensive puts → loss for short
+  }));
+
+  // 8 — Contribution · Sell-off −5% + IV +15%
+  const scaleSell = Math.abs(sellPnl) / Math.max(1, Math.abs(pnlByName.reduce((s, r) => s + Math.abs(r.pnl || 0), 0)));
+  const selloffContrib = pnlByName.map(r => ({
+    label: r.t,
+    logo:  r.t.startsWith('SPX') || r.t.startsWith('NDX') ? null : r.t,
+    value: Math.round((r.pnl || 0) * scaleSell * 1.4),
+  }));
+
+  return { spotBars, ivIdxBars, ivCompBars, rhoBars, thetaDays, compMovBars, skewBars, selloffContrib };
 }
 
 /* ─── Main component ─────────────────────────────────────────────── */
 function RiskLab({ listId, onNav, mode }) {
-  const { MetricCard, RiskBadge, WarningPanel, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
+  const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [riskData, setRiskData] = React.useState(null);
   const [loading, setLoading]   = React.useState(true);
   const [scenario, setScenario] = React.useState(1);
@@ -162,40 +239,35 @@ function RiskLab({ listId, onNav, mode }) {
         })
       : DXApi.getRisk(null, DEMO, 'SPX', 30);
 
-    resolve
-      .then(d => { setRiskData(d); setLoading(false); })
-      .catch(() => { setRiskData(null); setLoading(false); });
+    resolve.then(d => { setRiskData(d); setLoading(false); })
+           .catch(() => { setRiskData(null); setLoading(false); });
   }, [listId]);
 
   if (loading) return (
     <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>
   );
 
-  const D = riskData || {};
-  const greeks    = D.greeks    || [];
-  const scenarios = D.scenarios || [];
-  const pnlByName = D.pnlByName || [];
-  const pnlBySector = D.pnlBySector || [];
-  const perTicker = D.per_ticker || [];
-  const port      = D.portfolio  || {};
+  const D           = riskData || {};
+  const greeks      = D.greeks     || [];
+  const scenarios   = D.scenarios  || [];
+  const pnlByName   = D.pnlByName  || [];
+  const pnlBySector = D.pnlBySector|| [];
+  const perTicker   = D.per_ticker || [];
+  const port        = D.portfolio  || {};
 
-  const netVega   = typeof port.net_vega   === 'number' ? port.net_vega   : null;
-  const netGamma  = greeks.find(g => g.label?.toLowerCase().includes('gamma'))?.value;
-  const netGammaNum = netGamma ? parseFloat(String(netGamma).replace(',', '.')) : null;
-  const netPremium= typeof port.net_premium === 'number' ? port.net_premium : null;
+  const maxVega  = Math.max(...perTicker.map(t => Math.abs(t.greeks?.vega  || 0)), 1);
+  const maxTheta = Math.max(...perTicker.map(t => Math.abs(t.greeks?.theta || 0)), 1);
+  const maxByName= Math.max(...pnlByName.map(r => Math.abs(r.pnl || 0)), 1);
+  const maxBySec = Math.max(...pnlBySector.map(r => Math.abs(r.pnl || 0)), 1);
+  const selSc    = scenarios[scenario];
+  const warnings = buildWarnings(D);
 
-  const warnings  = buildWarnings(D);
-  const maxByName = Math.max(...pnlByName.map(r => Math.abs(r.pnl || 0)), 1);
-  const maxBySec  = Math.max(...pnlBySector.map(r => Math.abs(r.pnl || 0)), 1);
-  const maxVega   = Math.max(...perTicker.map(t => Math.abs(t.greeks?.vega || 0)), 1);
-  const maxTheta  = Math.max(...perTicker.map(t => Math.abs(t.greeks?.theta || 0)), 1);
-
-  const selScenario = scenarios[scenario];
+  const charts   = buildSensCharts(D);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Risk Lab</h1>
@@ -229,8 +301,8 @@ function RiskLab({ listId, onNav, mode }) {
             : [
                 { label: 'Δ net', value: '≈ 0', hint: 'Direction-neutre', accent: 'var(--pos)' },
                 { label: 'Γ net', value: '—', hint: 'Long gamma', accent: 'var(--accent)' },
-                { label: 'Vega net', value: '—', hint: 'Quasi-neutre', accent: 'var(--pos)' },
-                { label: 'Θ /jour', value: '—', hint: 'Positif', accent: 'var(--warn)' },
+                { label: 'Vega net', value: '—', accent: 'var(--pos)' },
+                { label: 'Θ /jour', value: '—', accent: 'var(--warn)' },
                 { label: 'IV moy.', value: '—', accent: 'var(--info)' },
                 { label: 'Prime net', value: '—', accent: 'var(--accent)' },
               ].map((g, i) => <MetricCard key={i} {...g} />)
@@ -246,7 +318,6 @@ function RiskLab({ listId, onNav, mode }) {
             <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Données réelles Yahoo Finance + MarketData — ATM straddle estimé</p>
           </div>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            {/* Header */}
             <div style={{ display: 'grid', gridTemplateColumns: '160px 72px 110px 64px 90px 90px 80px', gap: 0, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
               {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega/lot', 'Theta/j', 'Prime/lot'].map(h => (
                 <div key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</div>
@@ -262,7 +333,6 @@ function RiskLab({ listId, onNav, mode }) {
               const ivPos = iv >= hv;
               return (
                 <div key={t.ticker} style={{ display: 'grid', gridTemplateColumns: '160px 72px 110px 64px 90px 90px 80px', gap: 0, padding: '10px 16px', borderBottom: idx < perTicker.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
-                  {/* Logo + Ticker */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <img src={`https://assets.parqet.com/logos/symbol/${t.ticker.split('.')[0]}`} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }}
@@ -270,41 +340,29 @@ function RiskLab({ listId, onNav, mode }) {
                     </div>
                     <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{t.ticker}</span>
                   </div>
-                  {/* Prix */}
-                  <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>
-                    {t.price ? t.price.toFixed(0) + ' $' : '—'}
-                  </span>
-                  {/* IV / HV */}
+                  <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{t.price ? t.price.toFixed(0) + ' $' : '—'}</span>
                   <div>
                     <div style={{ font: '600 11px/1 var(--font-mono)', color: ivPos ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
                       {iv.toFixed(1)}% <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>/ {hv.toFixed(1)}%</span>
                     </div>
                     <div style={{ font: '9px/1 var(--font-sans)', color: ivPos ? 'var(--pos)' : 'var(--neg)', marginTop: 2 }}>
-                      {ivPos ? `+${(iv - hv).toFixed(1)} pts` : `${(iv - hv).toFixed(1)} pts`}
+                      {ivPos ? '+' : ''}{(iv - hv).toFixed(1)} pts
                     </div>
                   </div>
-                  {/* Beta */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <span style={{ font: '600 11px/1 var(--font-mono)', color: beta == null ? 'var(--text-dim)' : Math.abs(beta - 1.1) < 0.3 ? 'var(--pos-bright)' : 'var(--warn)' }}>
                       {beta != null ? beta.toFixed(2) : '—'}
                     </span>
                     {beta != null && <GreekBar value={beta} max={2.5} pos={beta <= 1.4} />}
                   </div>
-                  {/* Vega */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--accent)' }}>
-                      {vega ? (vega >= 0 ? '+' : '') + Math.round(vega) + ' $' : '—'}
-                    </span>
+                    <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--accent)' }}>{vega ? (vega >= 0 ? '+' : '') + Math.round(vega) + ' $' : '—'}</span>
                     {vega ? <GreekBar value={vega} max={maxVega} pos={vega > 0} /> : null}
                   </div>
-                  {/* Theta */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-                      {theta ? (theta >= 0 ? '+' : '') + theta.toFixed(1) + ' $' : '—'}
-                    </span>
+                    <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{theta ? (theta >= 0 ? '+' : '') + theta.toFixed(1) + ' $' : '—'}</span>
                     {theta ? <GreekBar value={theta} max={maxTheta} pos={theta > 0} /> : null}
                   </div>
-                  {/* Prime */}
                   <span style={{ font: '700 11px/1 var(--font-mono)', color: prem >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
                     {prem ? (prem >= 0 ? '+' : '') + prem.toFixed(0) + ' $' : '—'}
                   </span>
@@ -315,14 +373,14 @@ function RiskLab({ listId, onNav, mode }) {
         </section>
       )}
 
-      {/* ── Scénarios de marché ── */}
+      {/* ── Scénarios ── */}
       <section>
         <div style={{ marginBottom: 14 }}>
           <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Scénarios de marché</h2>
-          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Cliquez pour filtrer l'attribution du P&L ci-dessous</p>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Cliquez pour filtrer l'attribution P&L ci-dessous</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-          {scenarios.length > 0 ? scenarios.map((s, i) => {
+          {scenarios.map((s, i) => {
             const on = scenario === i;
             return (
               <button key={s.name} onClick={() => setScenario(i)} style={{
@@ -335,60 +393,116 @@ function RiskLab({ listId, onNav, mode }) {
                   <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{s.name}</span>
                   <RiskBadge level={s.risk} size="sm" />
                 </div>
-                <div style={{ font: '700 20px/1 var(--font-mono)', color: s.up ? 'var(--pos-bright)' : 'var(--neg-bright)', marginBottom: 4 }}>
-                  {s.pnl}
-                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginLeft: 4 }}>$</span>
+                <div style={{ font: '700 20px/1 var(--font-mono)', color: s.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
+                  {s.pnl}<span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginLeft: 4 }}>$</span>
                 </div>
               </button>
             );
-          }) : (
-            <div style={{ gridColumn: '1/-1', padding: 32, textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>
-              Scénarios non disponibles — données insuffisantes
-            </div>
-          )}
+          })}
         </div>
       </section>
 
-      {/* ── Heatmap + Warnings ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 300px', gap: 20, alignItems: 'start' }}>
-        <PnlHeatmap netVega={netVega} netGamma={netGammaNum} netPremium={netPremium} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: '0 0 4px' }}>Alertes</h2>
-          {warnings.map((w, i) => (
-            <WarningPanel key={i} tone={w.tone} title={w.title}>{w.msg}</WarningPanel>
-          ))}
+      {/* ── 8 graphiques de sensibilité ── */}
+      <section>
+        <div style={{ marginBottom: 16 }}>
+          <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Analyse de sensibilité</h2>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>P&L estimé sous chaque type de choc, isolé</p>
         </div>
-      </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+
+          <SensChart
+            title="P&L par mouvement de l'indice"
+            subtitle="Choc instantané sur le spot — effets corrélation inclus"
+            bars={charts.spotBars}
+            diverging
+          />
+
+          <SensChart
+            title="P&L par choc de vol indice"
+            subtitle="Variation de l'IV de l'indice (jambe short straddle)"
+            bars={charts.ivIdxBars}
+            diverging
+          />
+
+          <SensChart
+            title="P&L par choc de vol composants"
+            subtitle="Variation de l'IV des composants (jambe long straddles)"
+            bars={charts.ivCompBars}
+            diverging
+          />
+
+          <SensChart
+            title="Scénarios de corrélation"
+            subtitle="P&L selon le niveau de ρ réalisée des composants"
+            bars={charts.rhoBars}
+            diverging
+          />
+
+          <SensChart
+            title="P&L par passage du temps"
+            subtitle="Cumul du theta net sur la durée de la position"
+            bars={charts.thetaDays}
+          />
+
+          <SensChart
+            title="Mouvements des composants"
+            subtitle="Contribution estimée par ticker — choc IV +10%"
+            bars={charts.compMovBars}
+            diverging
+          />
+
+          <SensChart
+            title="Chocs de skew"
+            subtitle="Impact d'un raidissement/aplatissement du skew indice (pts)"
+            bars={charts.skewBars}
+            diverging
+          />
+
+          <SensChart
+            title="Contribution · Sell-off −5% + IV +15%"
+            subtitle="Décomposition du P&L par jambe sous ce scénario"
+            bars={charts.selloffContrib}
+            diverging
+          />
+
+        </div>
+      </section>
 
       {/* ── Attribution du P&L ── */}
       <section>
         <div style={{ marginBottom: 14 }}>
           <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Attribution du P&L</h2>
           <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Décomposition sous : <strong style={{ color: selScenario?.up ? 'var(--pos)' : 'var(--neg)' }}>{selScenario?.name || '—'}</strong>
+            Sous : <strong style={{ color: selSc?.up ? 'var(--pos)' : 'var(--neg)' }}>{selSc?.name || '—'}</strong>
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
-          {/* Par sous-jacent */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Par sous-jacent</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {pnlByName.length > 0
-                ? pnlByName.map(r => <AttribRow key={r.t} label={r.t} pnl={r.pnl} max={maxByName} logo={r.t !== 'SPX (short)' && r.t !== 'INDEX' ? r.t : null} />)
-                : <div style={{ color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données non disponibles</div>
-              }
+                ? pnlByName.map(r => <AttribRow key={r.t} label={r.t} pnl={r.pnl} max={maxByName} logo={!r.t.startsWith('SPX') && !r.t.startsWith('NDX') ? r.t : null} />)
+                : <div style={{ color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données non disponibles</div>}
             </div>
           </div>
-          {/* Par secteur */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Par secteur</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {pnlBySector.length > 0
                 ? pnlBySector.map(r => <AttribRow key={r.s} label={r.s} pnl={r.pnl} max={maxBySec} />)
-                : <div style={{ color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données non disponibles</div>
-              }
+                : <div style={{ color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données non disponibles</div>}
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* ── Alertes ── */}
+      <section>
+        <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: '0 0 12px' }}>Alertes</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+          {warnings.map((w, i) => (
+            <WarningPanel key={i} tone={w.tone} title={w.title}>{w.msg}</WarningPanel>
+          ))}
         </div>
       </section>
 
