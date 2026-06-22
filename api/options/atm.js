@@ -1,16 +1,8 @@
 // GET /api/options/atm?symbol=AAPL&dte=30
-// Cascade : MarketData.app → Alpaca options v1beta1
+// Cascade : MarketData.app → Yahoo Finance options (IV ATM, sans grecs)
 export const config = { runtime: 'edge' };
 
 const MD_BASE = 'https://api.marketdata.app/v1/options/chain';
-const ALP_BASE = 'https://data.alpaca.markets';
-
-function alpacaHeaders() {
-  return {
-    'APCA-API-KEY-ID': process.env.ALPACA_API_KEY_ID,
-    'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET_KEY,
-  };
-}
 
 async function fetchMarketData(symbol, dte, token) {
   const r = await fetch(`${MD_BASE}/${symbol}/?dte=${encodeURIComponent(dte)}&side=call&strikeLimit=20`, {
@@ -39,59 +31,60 @@ async function fetchMarketData(symbol, dte, token) {
   };
 }
 
-async function fetchAlpacaOptions(symbol, dte) {
-  const headers = alpacaHeaders();
-  const feed = process.env.ALPACA_DATA_FEED || 'iex';
+async function fetchYahooOptions(symbol, dte) {
+  const headers = { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' };
 
-  // 1. Prix actuel du sous-jacent
-  const sRes = await fetch(`${ALP_BASE}/v2/stocks/${symbol}/snapshot?feed=${feed}`, { headers });
-  if (!sRes.ok) return null;
-  const snap = await sRes.json();
-  const price = snap.latestTrade?.p ?? snap.minuteBar?.c ?? snap.dailyBar?.c;
+  // 1. Dates d'expiration disponibles + prix actuel
+  const r1 = await fetch(`https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`, { headers });
+  if (!r1.ok) return null;
+  const d1 = await r1.json();
+  const res = d1?.optionChain?.result?.[0];
+  if (!res) return null;
+
+  const price = res.quote?.regularMarketPrice;
   if (!price) return null;
 
-  // 2. Contrats d'options proches du DTE demandé
-  const now = new Date();
-  const fmtDate = (d) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
-  const minExp = fmtDate(Math.max(1, dte - 7));
-  const maxExp = fmtDate(dte + 35);
+  const expirations = res.expirationDates || [];
+  if (!expirations.length) return null;
 
-  const cRes = await fetch(
-    `${ALP_BASE}/v1beta1/options/contracts?underlying_symbols=${symbol}&type=call&expiration_date_gte=${minExp}&expiration_date_lte=${maxExp}&limit=100`,
+  // 2. Expiration la plus proche du DTE demandé
+  const targetTs = Date.now() / 1000 + dte * 86400;
+  let bestExp = expirations[0], bestDiff = Infinity;
+  for (const ts of expirations) {
+    const diff = Math.abs(ts - targetTs);
+    if (diff < bestDiff) { bestDiff = diff; bestExp = ts; }
+  }
+
+  // 3. Chaîne d'options pour cette expiration
+  const r2 = await fetch(
+    `https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}?date=${bestExp}`,
     { headers }
   );
-  if (!cRes.ok) return null;
-  const contracts = (await cRes.json()).option_contracts || [];
-  if (!contracts.length) return null;
+  if (!r2.ok) return null;
+  const d2 = await r2.json();
+  const calls = d2?.optionChain?.result?.[0]?.options?.[0]?.calls || [];
+  if (!calls.length) return null;
 
-  // 3. Contrat ATM (strike le plus proche du prix actuel)
-  let best = null, bestDiff = Infinity;
-  for (const c of contracts) {
-    const diff = Math.abs((c.strike_price || 0) - price);
-    if (diff < bestDiff) { bestDiff = diff; best = c; }
+  // 4. Call ATM (strike le plus proche du prix actuel)
+  let atm = null, atmDiff = Infinity;
+  for (const c of calls) {
+    const diff = Math.abs((c.strike || 0) - price);
+    if (diff < atmDiff) { atmDiff = diff; atm = c; }
   }
-  if (!best) return null;
+  if (!atm?.impliedVolatility) return null;
 
-  // 4. Snapshot du contrat ATM (IV + grecs)
-  const oRes = await fetch(`${ALP_BASE}/v1beta1/options/snapshots?symbols=${best.symbol}`, { headers });
-  if (!oRes.ok) return null;
-  const oSnap = ((await oRes.json()).snapshots || {})[best.symbol];
-  if (!oSnap?.impliedVolatility) return null;
-
-  const iv = oSnap.impliedVolatility;
-  const g = oSnap.greeks || {};
-  const dteDays = Math.round((new Date(best.expiration_date) - now) / 86400000);
+  const expiry = new Date(bestExp * 1000).toISOString().slice(0, 10);
+  const dteDays = Math.round((bestExp - Date.now() / 1000) / 86400);
 
   return {
-    symbol, underlying_price: price, strike: best.strike_price,
-    expiry: best.expiration_date, dte: dteDays,
-    iv: Number((iv * 100).toFixed(1)),
-    greeks: {
-      delta: g.delta ?? null, gamma: g.gamma ?? null,
-      vega: g.vega ?? null, theta: g.theta ?? null,
-      strike: best.strike_price, expiry: best.expiration_date,
-    },
-    source: 'alpaca',
+    symbol,
+    underlying_price: price,
+    strike: atm.strike,
+    expiry,
+    dte: dteDays,
+    iv: Number((atm.impliedVolatility * 100).toFixed(1)),
+    greeks: null, // Yahoo Finance ne fournit pas les grecs
+    source: 'yahoo',
   };
 }
 
@@ -101,7 +94,7 @@ export default async (req) => {
   const dte = parseInt(q.get('dte') || '30', 10);
   if (!symbol) return Response.json({ error: 'no_symbol' }, { status: 400 });
 
-  // 1. MarketData.app
+  // 1. MarketData.app (IV + grecs)
   if (process.env.MARKETDATA_API_TOKEN) {
     try {
       const res = await fetchMarketData(symbol, dte, process.env.MARKETDATA_API_TOKEN);
@@ -109,13 +102,11 @@ export default async (req) => {
     } catch { /* fallback */ }
   }
 
-  // 2. Alpaca options v1beta1
-  if (process.env.ALPACA_API_KEY_ID) {
-    try {
-      const res = await fetchAlpacaOptions(symbol, dte);
-      if (res?.iv) return Response.json(res);
-    } catch { /* pas de données */ }
-  }
+  // 2. Yahoo Finance (IV ATM uniquement)
+  try {
+    const res = await fetchYahooOptions(symbol, dte);
+    if (res?.iv) return Response.json(res);
+  } catch { /* pas de données */ }
 
   return Response.json({ error: 'no_iv_data' }, { status: 502 });
 };

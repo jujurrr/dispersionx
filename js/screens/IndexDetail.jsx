@@ -112,7 +112,7 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
           {[
             { l: 'HV 30j', v: snap.hv30?.toFixed(1) + '%' },
             { l: 'HV 1 an', v: snap.hv1y?.toFixed(1) + '%' },
-            { l: snap.iv_source === 'alpaca' ? 'IV ATM' : 'IV est.', v: snap.iv_est?.toFixed(1) + '%' },
+            { l: (snap.iv_source === 'alpaca' || snap.iv_source === 'yahoo') ? 'IV ATM' : 'IV est.', v: snap.iv_est?.toFixed(1) + '%' },
             { l: '5 jours', v: (snap.perf5d >= 0 ? '+' : '') + snap.perf5d?.toFixed(1) + '%', up: snap.perf5d },
             { l: '30 jours', v: (snap.perf30d >= 0 ? '+' : '') + snap.perf30d?.toFixed(1) + '%', up: snap.perf30d },
             { l: 'YTD', v: (snap.ytd >= 0 ? '+' : '') + snap.ytd?.toFixed(1) + '%', up: snap.ytd },

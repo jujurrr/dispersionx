@@ -1,5 +1,6 @@
 // GET /api/indices/[symbol]/snapshot
-// Cascade : Alpaca bars → Yahoo Finance bars → erreur
+// Cascade barres : Alpaca → Yahoo Finance
+// Cascade IV ETF : Yahoo Finance options → HV×1.1
 export const config = { runtime: 'edge' };
 
 const DATA_BASE = 'https://data.alpaca.markets';
@@ -12,6 +13,9 @@ const PROXY = {
   CAC: { etf: 'EWQ',  scale: 196 },
   DAX: { etf: 'EWG',  scale: 565 },
 };
+
+// ETF avec options liquides sur Yahoo Finance
+const ETF_OPTIONS_LIQUID = ['SPY', 'QQQ', 'DIA'];
 
 function alpacaHeaders() {
   return {
@@ -82,39 +86,40 @@ function computeSnapshot(bars, scale) {
   };
 }
 
-// IV réelle depuis Alpaca options (ETF liquides seulement : SPY, QQQ, DIA)
-const ETF_OPTIONS_SUPPORTED = ['SPY', 'QQQ', 'DIA'];
+// IV réelle depuis Yahoo Finance options (ATM call, ~30j)
+async function getEtfIVYahoo(etf, price) {
+  if (!ETF_OPTIONS_LIQUID.includes(etf)) return null;
+  const headers = { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' };
 
-async function getEtfIVAlpaca(etf, price) {
-  if (!ETF_OPTIONS_SUPPORTED.includes(etf)) return null;
-  if (!process.env.ALPACA_API_KEY_ID) return null;
-  const headers = {
-    'APCA-API-KEY-ID': process.env.ALPACA_API_KEY_ID,
-    'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET_KEY,
-  };
-  const now = new Date();
-  const fmtDate = (d) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
-  // Options à ~30j d'échéance
-  const cRes = await fetch(
-    `https://data.alpaca.markets/v1beta1/options/contracts?underlying_symbols=${etf}&type=call&expiration_date_gte=${fmtDate(20)}&expiration_date_lte=${fmtDate(50)}&limit=100`,
-    { headers }
-  );
-  if (!cRes.ok) return null;
-  const contracts = (await cRes.json()).option_contracts || [];
-  if (!contracts.length) return null;
+  // Dates d'expiration disponibles
+  const r1 = await fetch(`https://query1.finance.yahoo.com/v7/finance/options/${etf}`, { headers });
+  if (!r1.ok) return null;
+  const d1 = await r1.json();
+  const expirations = d1?.optionChain?.result?.[0]?.expirationDates || [];
+  if (!expirations.length) return null;
 
-  let best = null, bestDiff = Infinity;
-  for (const c of contracts) {
-    const diff = Math.abs((c.strike_price || 0) - price);
-    if (diff < bestDiff) { bestDiff = diff; best = c; }
+  // Expiration la plus proche de 30j
+  const targetTs = Date.now() / 1000 + 30 * 86400;
+  let bestExp = expirations[0], bestDiff = Infinity;
+  for (const ts of expirations) {
+    const diff = Math.abs(ts - targetTs);
+    if (diff < bestDiff) { bestDiff = diff; bestExp = ts; }
   }
-  if (!best) return null;
 
-  const oRes = await fetch(`https://data.alpaca.markets/v1beta1/options/snapshots?symbols=${best.symbol}`, { headers });
-  if (!oRes.ok) return null;
-  const oSnap = ((await oRes.json()).snapshots || {})[best.symbol];
-  const iv = oSnap?.impliedVolatility;
-  return iv != null ? Number((iv * 100).toFixed(1)) : null;
+  // Chaîne d'options pour cette expiration
+  const r2 = await fetch(`https://query1.finance.yahoo.com/v7/finance/options/${etf}?date=${bestExp}`, { headers });
+  if (!r2.ok) return null;
+  const calls = r2.ok ? (await r2.json())?.optionChain?.result?.[0]?.options?.[0]?.calls || [] : [];
+  if (!calls.length) return null;
+
+  // Call ATM
+  let atm = null, atmDiff = Infinity;
+  for (const c of calls) {
+    const diff = Math.abs((c.strike || 0) - price);
+    if (diff < atmDiff) { atmDiff = diff; atm = c; }
+  }
+  if (!atm?.impliedVolatility) return null;
+  return Number((atm.impliedVolatility * 100).toFixed(1));
 }
 
 export default async (req) => {
@@ -131,7 +136,7 @@ export default async (req) => {
     try { bars = await getBarsAlpaca(map.etf); if (bars) barSource = 'alpaca'; } catch { /* fallback */ }
   }
 
-  // 2) Yahoo Finance fallback
+  // 2) Yahoo Finance bars (fallback)
   if (!bars) {
     try { bars = await getBarsYahoo(map.etf); if (bars) barSource = 'yahoo'; } catch { /* erreur */ }
   }
@@ -139,14 +144,14 @@ export default async (req) => {
   if (!bars) return Response.json({ error: 'no_data' }, { status: 502 });
 
   const snap = computeSnapshot(bars, map.scale);
+  const etfPrice = bars[bars.length - 1].c;
 
-  // 3) IV réelle depuis Alpaca options (remplace iv_est si dispo)
+  // 3) IV réelle via Yahoo Finance options (SPY/QQQ/DIA uniquement)
   try {
-    const etfPrice = bars[bars.length - 1].c;
-    const ivReal = await getEtfIVAlpaca(map.etf, etfPrice);
+    const ivReal = await getEtfIVYahoo(map.etf, etfPrice);
     if (ivReal != null) {
-      snap.iv_est = ivReal;
-      snap.iv_source = 'alpaca';
+      snap.iv_est   = ivReal;
+      snap.iv_source = 'yahoo';
     }
   } catch { /* iv_est HV×1.1 conservée */ }
 

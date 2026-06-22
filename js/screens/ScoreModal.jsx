@@ -212,7 +212,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
 
               {/* IV source */}
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', textAlign: 'center' }}>
-                Source IV : {stock.iv_source === 'ibkr' ? '✓ IBKR (réelle)' : stock.iv_source === 'marketdata' ? '✓ MarketData (réelle)' : stock.iv_source === 'alpaca' ? '✓ Alpaca (réelle)' : stock.iv_source === 'thetadata' ? '✓ ThetaData (réelle)' : stock.iv_source === 'estimated_from_hv' ? '⚠ Estimée depuis HV' : stock.iv_source || 'Inconnue'}
+                Source IV : {stock.iv_source === 'ibkr' ? '✓ IBKR (réelle)' : stock.iv_source === 'marketdata' ? '✓ MarketData (réelle)' : stock.iv_source === 'alpaca' ? '✓ Alpaca (réelle)' : stock.iv_source === 'yahoo' ? '✓ Yahoo Finance (réelle)' : stock.iv_source === 'thetadata' ? '✓ ThetaData (réelle)' : stock.iv_source === 'estimated_from_hv' ? '⚠ Estimée depuis HV' : stock.iv_source || 'Inconnue'}
               </div>
             </div>
           );
