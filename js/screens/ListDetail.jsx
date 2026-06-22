@@ -13,8 +13,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
       setList(l);
 
       // Analyse calculée à partir des vrais items (pas du mock figé)
+      // Préférer score_data.score (autoScore réel) si disponible
       const items  = l?.items || [];
-      const scores = items.map(i => i.score).filter(s => s != null);
+      const scores = items.map(i => i.score_data?.score ?? i.score).filter(s => s != null);
       setAnalysis({
         ...a,
         avg_score: scores.length ? Number((scores.reduce((x, y) => x + y, 0) / scores.length).toFixed(1)) : (a?.avg_score ?? null),
@@ -42,7 +43,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
         }).then(r => r.ok ? r.json() : null).then(d => {
           if (d?.per_ticker) {
             const vm = {};
-            d.per_ticker.forEach(t => { if (t.ticker) vm[t.ticker] = { iv: t.iv, hv: t.hv, src: t.iv_src }; });
+            d.per_ticker.forEach(t => { if (t.ticker) vm[t.ticker] = { iv: t.iv, hv: t.hv, beta: t.beta, src: t.iv_src }; });
             setVolData(vm);
           }
         }).catch(() => {});
@@ -202,11 +203,13 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
                 const comp = (window.DXMock.getComponents(list.index_symbol) || []).find(c => c.ticker === item.ticker) || {};
                 const q    = quotes[item.ticker];
 
-                // IV/HV : données temps réel (risk/portfolio) > comp mock
+                // IV/HV/beta : données temps réel (risk/portfolio) > comp mock
                 const vol  = volData[item.ticker];
-                const iv   = vol?.iv  ?? comp.iv  ?? null;
-                const hv   = vol?.hv  ?? comp.hv  ?? null;
-                const beta = comp.beta ?? null;
+                const iv   = vol?.iv   ?? comp.iv   ?? null;
+                const hv   = vol?.hv   ?? comp.hv   ?? null;
+                const beta = vol?.beta ?? comp.beta ?? null;
+                // Score : préférer score_data.score (autoScore réel) > item.score (stocké)
+                const displayScore = item.score_data?.score ?? item.score;
 
                 return (
                   <tr key={item.ticker}
@@ -266,8 +269,8 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
 
                     {/* Score */}
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                      {item.score != null && (
-                        <span style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: item.score >= 70 ? 'var(--pos-soft)' : item.score >= 50 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(item.score), border: `1px solid ${item.score >= 70 ? 'var(--pos)' : item.score >= 50 ? 'var(--warn)' : 'var(--neg)'}` }}>{item.score}</span>
+                      {displayScore != null && (
+                        <span style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: displayScore >= 70 ? 'var(--pos-soft)' : displayScore >= 50 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(displayScore), border: `1px solid ${displayScore >= 70 ? 'var(--pos)' : displayScore >= 50 ? 'var(--warn)' : 'var(--neg)'}` }}>{displayScore}</span>
                       )}
                     </td>
 

@@ -223,8 +223,16 @@
     addListItem: (id, ticker, score_data) => {
       const l = _findList(id); if (!l) return { success: false };
       l.items = l.items || [];
-      if (!l.items.some(i => i.ticker === ticker)) {
-        l.items.push({ ticker, weight: compWeight(ticker), score: scoreFor(ticker), score_data: score_data || null, added: new Date().toISOString().slice(0, 10) });
+      // Utiliser le score réel de score_data (autoScore) plutôt que scoreFor (hash arbitraire)
+      const realScore = score_data?.score ?? score_data?.composite_score?.score ?? scoreFor(ticker);
+      const existing = l.items.find(i => i.ticker === ticker);
+      if (existing) {
+        // Mise à jour du score et score_data si un nouveau scoring est fourni
+        if (score_data?.score != null) existing.score = realScore;
+        if (score_data != null) existing.score_data = score_data;
+        _recompute(l); _saveLists();
+      } else {
+        l.items.push({ ticker, weight: compWeight(ticker), score: realScore, score_data: score_data || null, added: new Date().toISOString().slice(0, 10) });
         _recompute(l); _saveLists();
       }
       return { success: true };
