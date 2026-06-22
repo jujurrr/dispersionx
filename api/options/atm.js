@@ -94,6 +94,21 @@ export default async (req) => {
   const dte = parseInt(q.get('dte') || '30', 10);
   if (!symbol) return Response.json({ error: 'no_symbol' }, { status: 400 });
 
+  // Mode comparaison : retourne les deux sources simultanément
+  if (q.get('compare') === '1') {
+    const [md, yh] = await Promise.allSettled([
+      process.env.MARKETDATA_API_TOKEN
+        ? fetchMarketData(symbol, dte, process.env.MARKETDATA_API_TOKEN)
+        : Promise.resolve(null),
+      fetchYahooOptions(symbol, dte),
+    ]);
+    return Response.json({
+      symbol, dte,
+      marketdata: md.status === 'fulfilled' ? md.value : { error: String(md.reason) },
+      yahoo: yh.status === 'fulfilled' ? yh.value : { error: String(yh.reason) },
+    });
+  }
+
   // 1. MarketData.app (IV + grecs)
   if (process.env.MARKETDATA_API_TOKEN) {
     try {
