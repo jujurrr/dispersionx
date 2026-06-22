@@ -194,26 +194,28 @@ function buildSensCharts(D) {
   const days = [1, 2, 3, 5, 7, 10, 14, 21, 30];
   const thetaDays = days.map(d => ({ label: d + 'j', value: Math.round(thetaDay * d) }));
 
-  // 6 — Mouvements des composants : choc IV +10% = vega_i * 0.10 * CONTRACT / nW
+  // 6 — Mouvements des composants : P&L si IV de CE ticker +10% (1 contrat = vega * Δσ * 100)
   const compMovBars = perTicker.map(t => ({
     label: t.ticker,
     logo:  t.ticker,
-    value: t.greeks ? Math.round(t.greeks.vega * 0.10 * CONTRACT / nW) : 0,
+    value: t.greeks ? Math.round(t.greeks.vega * 0.10 * CONTRACT) : 0,
   })).sort((a, b) => b.value - a.value);
 
   // 7 — Chocs de skew : hausse du skew renchérit les puts → perd sur straddle court indice
   const skewPts  = [-4, -2, 0, 2, 4, 6, 8];
-  const skewUnit = (idxVegaPct || (sellPnl * 0.015)) * 0.25;
+  const skewUnit = (idxVegaPct || (sellPnl * 0.015)) * 0.30;
   const skewBars = skewPts.map(sk => ({
     label: (sk >= 0 ? '+' : '') + sk + 'pts',
     value: Math.round(skewUnit * sk * -1),
   }));
 
-  // 8 — Contribution · Sell-off −5% + IV +15% (valeurs directes de l'API)
+  // 8 — Contribution · Sell-off : valeurs API rescalées pour sommer à |sellPnl|
+  const pnlRawTotal = pnlByName.reduce((s, r) => s + Math.abs(r.pnl || 0), 0);
+  const scaleToSell = pnlRawTotal > 0 ? Math.abs(sellPnl) / pnlRawTotal : 1;
   const selloffContrib = pnlByName.map(r => ({
     label: r.t,
     logo:  r.t.startsWith('SPX') || r.t.startsWith('NDX') ? null : r.t,
-    value: r.pnl || 0,
+    value: Math.round((r.pnl || 0) * scaleToSell),
   }));
 
   return { spotBars, ivIdxBars, ivCompBars, rhoBars, thetaDays, compMovBars, skewBars, selloffContrib };
