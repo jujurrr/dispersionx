@@ -82,25 +82,73 @@ function computeSnapshot(bars, scale) {
   };
 }
 
+// IV réelle depuis Alpaca options (ETF liquides seulement : SPY, QQQ, DIA)
+const ETF_OPTIONS_SUPPORTED = ['SPY', 'QQQ', 'DIA'];
+
+async function getEtfIVAlpaca(etf, price) {
+  if (!ETF_OPTIONS_SUPPORTED.includes(etf)) return null;
+  if (!process.env.ALPACA_API_KEY_ID) return null;
+  const headers = {
+    'APCA-API-KEY-ID': process.env.ALPACA_API_KEY_ID,
+    'APCA-API-SECRET-KEY': process.env.ALPACA_API_SECRET_KEY,
+  };
+  const now = new Date();
+  const fmtDate = (d) => new Date(now.getTime() + d * 86400000).toISOString().slice(0, 10);
+  // Options à ~30j d'échéance
+  const cRes = await fetch(
+    `https://data.alpaca.markets/v1beta1/options/contracts?underlying_symbols=${etf}&type=call&expiration_date_gte=${fmtDate(20)}&expiration_date_lte=${fmtDate(50)}&limit=100`,
+    { headers }
+  );
+  if (!cRes.ok) return null;
+  const contracts = (await cRes.json()).option_contracts || [];
+  if (!contracts.length) return null;
+
+  let best = null, bestDiff = Infinity;
+  for (const c of contracts) {
+    const diff = Math.abs((c.strike_price || 0) - price);
+    if (diff < bestDiff) { bestDiff = diff; best = c; }
+  }
+  if (!best) return null;
+
+  const oRes = await fetch(`https://data.alpaca.markets/v1beta1/options/snapshots?symbols=${best.symbol}`, { headers });
+  if (!oRes.ok) return null;
+  const oSnap = ((await oRes.json()).snapshots || {})[best.symbol];
+  const iv = oSnap?.impliedVolatility;
+  return iv != null ? Number((iv * 100).toFixed(1)) : null;
+}
+
 export default async (req) => {
   const parts  = new URL(req.url).pathname.split('/');
   const symbol = (parts[3] || '').toUpperCase();
   const map    = PROXY[symbol];
   if (!map) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
 
-  // 1) Alpaca
+  let bars = null;
+  let barSource = 'unknown';
+
+  // 1) Alpaca bars
   if (process.env.ALPACA_API_KEY_ID) {
-    try {
-      const bars = await getBarsAlpaca(map.etf);
-      if (bars) return Response.json({ ...computeSnapshot(bars, map.scale), source: 'alpaca' });
-    } catch { /* fallback */ }
+    try { bars = await getBarsAlpaca(map.etf); if (bars) barSource = 'alpaca'; } catch { /* fallback */ }
   }
 
-  // 2) Yahoo Finance (pas de clé requise)
-  try {
-    const bars = await getBarsYahoo(map.etf);
-    if (bars) return Response.json({ ...computeSnapshot(bars, map.scale), source: 'yahoo' });
-  } catch { /* erreur finale */ }
+  // 2) Yahoo Finance fallback
+  if (!bars) {
+    try { bars = await getBarsYahoo(map.etf); if (bars) barSource = 'yahoo'; } catch { /* erreur */ }
+  }
 
-  return Response.json({ error: 'no_data' }, { status: 502 });
+  if (!bars) return Response.json({ error: 'no_data' }, { status: 502 });
+
+  const snap = computeSnapshot(bars, map.scale);
+
+  // 3) IV réelle depuis Alpaca options (remplace iv_est si dispo)
+  try {
+    const etfPrice = bars[bars.length - 1].c;
+    const ivReal = await getEtfIVAlpaca(map.etf, etfPrice);
+    if (ivReal != null) {
+      snap.iv_est = ivReal;
+      snap.iv_source = 'alpaca';
+    }
+  } catch { /* iv_est HV×1.1 conservée */ }
+
+  return Response.json({ ...snap, source: barSource });
 };
