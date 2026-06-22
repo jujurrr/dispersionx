@@ -1,6 +1,105 @@
+/* ─── Gauge de prime de corrélation — remplace le composant bundle ─ */
+function PrimeGauge({ implied, realized, size = 240 }) {
+  const premium  = (implied - realized) * 100;
+  // norm : -20pts → 0, 0pts → 0.5, +20pts → 1
+  const target   = Math.max(0, Math.min(1, (premium + 20) / 40));
+  const [anim, setAnim] = React.useState(0);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => setAnim(target), 80);
+    return () => clearTimeout(t);
+  }, [target]);
+
+  let tone, verdict;
+  if (premium >= 6)       { tone = '#26a69a'; verdict = 'Favorable'; }
+  else if (premium >= 0)  { tone = '#ffa726'; verdict = 'Neutre'; }
+  else                    { tone = '#ef5350'; verdict = 'Défavorable'; }
+
+  const W = 200, CX = 100, CY = 100, R = 76;
+  // Angle du centre du repère : norm=0 → 180°, norm=1 → 0°
+  const deg = 180 * (1 - anim);
+
+  // Arc semicercle de gauche (π) vers droite (0)
+  const arcD = `M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`;
+
+  // Labels de bord sur l'arc
+  const arcLabel = (norm, txt) => {
+    const a = Math.PI * (1 - norm);
+    return { x: CX + (R + 14) * Math.cos(a), y: CY - (R + 14) * Math.sin(a), txt };
+  };
+  const labels = [arcLabel(0, '−20'), arcLabel(0.5, '0'), arcLabel(1, '+20')];
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: size }}>
+      <svg viewBox={`0 0 ${W} 118`} width={size} height={size * 118/W} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          {/* Gradient horizontal rouge → jaune → vert */}
+          <linearGradient id="pgGrad" x1={CX - R} y1="0" x2={CX + R} y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%"   stopColor="#ef5350" />
+            <stop offset="48%"  stopColor="#ffa726" />
+            <stop offset="55%"  stopColor="#ffc107" />
+            <stop offset="100%" stopColor="#26a69a" />
+          </linearGradient>
+        </defs>
+
+        {/* Piste de fond */}
+        <path d={arcD} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="13" strokeLinecap="round" />
+
+        {/* Arc coloré */}
+        <path d={arcD} fill="none" stroke="url(#pgGrad)" strokeWidth="13" strokeLinecap="round" opacity="0.9" />
+
+        {/* Ticks */}
+        {[0, 0.25, 0.5, 0.75, 1].map(n => {
+          const a = Math.PI * (1 - n);
+          const ix = CX + (R - 7) * Math.cos(a), iy = CY - (R - 7) * Math.sin(a);
+          const ox = CX + (R + 7) * Math.cos(a), oy = CY - (R + 7) * Math.sin(a);
+          return <line key={n} x1={ix} y1={iy} x2={ox} y2={oy} stroke="rgba(0,0,0,0.25)" strokeWidth={n === 0.5 ? 2 : 1} />;
+        })}
+
+        {/* Labels arc */}
+        {labels.map(l => (
+          <text key={l.txt} x={l.x} y={l.y} textAnchor="middle" dominantBaseline="middle"
+            fontSize="8" fontFamily="var(--font-mono)" fill="var(--text-dim)">{l.txt}</text>
+        ))}
+
+        {/* Aiguille animée */}
+        <g style={{ transform: `rotate(${deg}deg)`, transformOrigin: `${CX}px ${CY}px`, transition: 'transform 1s cubic-bezier(0.34,1.4,0.64,1)' }}>
+          <line x1={CX + 10} y1={CY} x2={CX + R - 4} y2={CY} stroke={tone} strokeWidth="2.5" strokeLinecap="round" />
+          <circle cx={CX + R - 4} cy={CY} r="4" fill={tone} />
+        </g>
+
+        {/* Hub central */}
+        <circle cx={CX} cy={CY} r="7" fill="var(--bg-card)" stroke={tone} strokeWidth="2.5" />
+
+        {/* Valeur numérique sous le centre */}
+        <text x={CX} y={CY + 20} textAnchor="middle" fontSize="11" fontFamily="var(--font-mono)"
+          fontWeight="700" fill={tone}>
+          {premium >= 0 ? '+' : ''}{premium.toFixed(1)} pts
+        </text>
+      </svg>
+
+      {/* Libellés sous le graphe */}
+      <div style={{ textAlign: 'center', marginTop: 4 }}>
+        <div style={{ font: '700 11px/1 var(--font-sans)', color: tone, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 10 }}>{verdict}</div>
+        <div style={{ display: 'flex', gap: 20 }}>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ font: '10px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 3 }}>ρ implicite</div>
+            <div style={{ font: '700 15px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>{implied.toFixed(2)}</div>
+          </div>
+          <div style={{ width: 1, background: 'var(--border)' }} />
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ font: '10px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 3 }}>ρ̂ réalisée</div>
+            <div style={{ font: '700 15px/1 var(--font-mono)', color: 'var(--info)' }}>{realized.toFixed(2)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ─── Correlation Lab: ρ matrix + implied vs realized history ───── */
 function CorrelationLab({ listId, onNav, mode }) {
-  const { MetricCard, Badge, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
+  const { MetricCard, Badge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
@@ -104,7 +203,7 @@ function CorrelationLab({ listId, onNav, mode }) {
         {/* Gauge + reading */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20, display: 'flex', justifyContent: 'center' }}>
-            <CorrelationGauge implied={rhoImpl} realized={rhoReal} size={240} />
+            <PrimeGauge implied={rhoImpl} realized={rhoReal} size={240} />
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {parseFloat(prime) > 3 && <Badge tone="pos" dot>Prime élevée</Badge>}

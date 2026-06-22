@@ -85,23 +85,38 @@ export default async (req) => {
   const avgIdxCorr = idxCnt > 0 ? idxCorrSum / idxCnt : rhoReal + 0.1;
   const rhoImpl    = Math.min(0.97, Math.max(rhoReal + 0.05, avgIdxCorr ** 2 * 1.15 + 0.05));
 
-  // Historique rolling : 8 fenêtres de ~10j glissantes
+  // Historique rolling : 8 fenêtres de ~12j glissantes
+  // ρ implicite calculée par fenêtre (corrélation moyenne vs ETF indice au carré)
   const minLen = Math.min(...valid.map(t => rets[t].length));
   const history = Array.from({ length: 8 }, (_, w) => {
     const wIdx = 7 - w;
     const end   = Math.max(10, minLen - wIdx * 5);
-    const start = end - 12;
-    if (start < 2) return { d: wIdx === 0 ? 'Auj.' : `J-${wIdx * 5}`, real: Number(rhoReal.toFixed(3)), impl: Number(rhoImpl.toFixed(3)) };
+    const start = Math.max(0, end - 12);
+    if (end - start < 4) return { d: wIdx === 0 ? 'Auj.' : `J-${wIdx * 5}`, real: Number(rhoReal.toFixed(3)), impl: Number(rhoImpl.toFixed(3)) };
+
+    // ρ réalisée de la fenêtre
     let wSum = 0, wCnt = 0;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
       const c = pearson(rets[valid[i]].slice(start, end), rets[valid[j]].slice(start, end));
       if (c !== null) { wSum += c; wCnt++; }
     }
     const wRho = wCnt > 0 ? wSum / wCnt : rhoReal;
+
+    // ρ implicite de la fenêtre : proxy via corrélation moyenne composants/indice
+    let wIdxSum = 0, wIdxCnt = 0;
+    if (rets[idxEtf]) {
+      for (const t of valid) {
+        const c = pearson(rets[t].slice(start, end), rets[idxEtf].slice(start, end));
+        if (c !== null) { wIdxSum += Math.abs(c); wIdxCnt++; }
+      }
+    }
+    const wAvgIdx = wIdxCnt > 0 ? wIdxSum / wIdxCnt : wRho + 0.12;
+    const wRhoImpl = Number(Math.min(0.97, Math.max(wRho + 0.04, wAvgIdx ** 2 * 1.12 + 0.04)).toFixed(3));
+
     return {
       d:    wIdx === 0 ? 'Auj.' : `J-${wIdx * 5}`,
       real: Number(wRho.toFixed(3)),
-      impl: Number((rhoImpl * (0.97 + w * 0.004)).toFixed(3)),
+      impl: wRhoImpl,
     };
   });
 
