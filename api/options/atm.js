@@ -37,10 +37,20 @@ async function fetchYahooOptions(symbol, dte, debug = false) {
   // 1. Dates d'expiration disponibles + prix actuel
   const r1 = await fetch(`https://query1.finance.yahoo.com/v7/finance/options/${encodeURIComponent(symbol)}`, { headers });
   if (!r1.ok) {
-    if (debug) return { _debug: `v7 status ${r1.status}`, error: `http_${r1.status}` };
+    if (debug) return { _debug: `v7 status=${r1.status}`, error: `http_${r1.status}` };
     return null;
   }
-  const d1 = await r1.json();
+  const raw = await r1.text();
+  if (debug) {
+    // Retourner les premiers 300 chars pour diagnostic
+    const parsed = JSON.parse(raw);
+    const res0 = parsed?.optionChain?.result?.[0];
+    return {
+      _debug: `status=200 expirations=${JSON.stringify(res0?.expirationDates?.slice(0,3))} price=${res0?.quote?.regularMarketPrice} calls_count=${res0?.options?.[0]?.calls?.length}`,
+      _raw_keys: Object.keys(parsed || {}),
+    };
+  }
+  const d1 = JSON.parse(raw);
   const res = d1?.optionChain?.result?.[0];
   if (!res) return null;
 
