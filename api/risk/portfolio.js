@@ -93,6 +93,10 @@ export default async (req) => {
 
   const ETF    = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA', CAC: 'EWQ', DAX: 'EWG' };
   const idxEtf = ETF[indexSym] || indexSym;
+  // ETF price × multiplier ≈ actual index level for proper index-option vega calculation
+  // SPY×10 ≈ SPX, QQQ×40 ≈ NDX — gives realistic vega-neutral lot counts
+  const ETF_MULT = { SPX: 10, NDX: 40, DJI: 100, CAC: 250, DAX: 600 };
+  const idxScale = ETF_MULT[indexSym] || 1;
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
@@ -136,10 +140,14 @@ export default async (req) => {
     return { ...r, greeks: { gamma: Number(g.gamma.toFixed(5)), vega: Number(g.vega.toFixed(3)), theta: Number(g.theta.toFixed(3)), premium: Number(g.premium.toFixed(2)) } };
   });
 
+  // ETF-level greeks for backward-compatible net portfolio metrics
   const idxG     = idxIVfn && idxClose ? bsAtm(idxClose, idxIVfn / 100, T) : null;
   const idxVega  = idxG ? -(idxG.vega   * CONTRACT) : 0;
   const idxTheta = idxG ? -(idxG.theta  * CONTRACT) : 0;
   const idxPrem  = idxG ?  (idxG.premium * CONTRACT) : 0;
+  // Index-level greeks (ETF price × multiplier) for vega-neutral sizing in Strategy Builder
+  const idxPriceScaled = (idxClose || 0) * idxScale;
+  const idxGscaled = idxIVfn && idxPriceScaled ? bsAtm(idxPriceScaled, idxIVfn / 100, T) : null;
 
   const netVega    = Number((portVega   + idxVega).toFixed(2));
   const netTheta   = Number((portTheta  + idxTheta).toFixed(2));
@@ -183,6 +191,14 @@ export default async (req) => {
     pnlBySector: [{ s: 'Composants', pnl: Math.round(portVega * 0.15) }, { s: indexSym, pnl: Math.round(idxVega * 0.15) }],
     portfolio:   { n_tickers: perTicker.length, avg_iv: avgIV, index_iv: idxIVfn ?? null, net_vega: netVegaPct, net_theta: netTheta, net_premium: netPremium, duration },
     per_ticker:  perTickerResult.map(r => ({ ticker: r.ticker, price: r.price, iv: r.iv, hv: r.hv, beta: r.beta, iv_src: r.ivSrc, greeks: r.greeks })),
+    // Index-level greeks for Strategy Builder vega-neutral sizing (uses scaled index price, not ETF price)
+    index_greeks: idxGscaled ? {
+      vega_per_lot:    Number((idxGscaled.vega    * CONTRACT).toFixed(1)),  // $/σ per 1 long contract
+      theta_per_lot:   Number((-idxGscaled.theta  * CONTRACT).toFixed(1)), // $/day gain per 1 short contract
+      premium_per_lot: Number((idxGscaled.premium * CONTRACT).toFixed(1)), // $ premium per 1 contract
+      iv:              idxIVfn,
+      scale:           idxScale,
+    } : null,
     source: mdTok ? 'marketdata+yahoo' : 'yahoo_hv_estimate',
   });
 };

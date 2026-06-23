@@ -11,6 +11,9 @@ function Builder({ listId, onNav, mode }) {
   const [building, setBuilding] = React.useState(false);
   const [nIndexContracts, setNIndexContracts] = React.useState(1);
   const [sizingMethod, setSizingMethod] = React.useState('vega_neutral');
+  const [previewData, setPreviewData] = React.useState(null);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [buildError, setBuildError] = React.useState(null);
 
   React.useEffect(() => {
     if (listId) {
@@ -22,6 +25,15 @@ function Builder({ listId, onNav, mode }) {
     }
   }, [listId]);
 
+  React.useEffect(() => {
+    if (step !== 5) return;
+    setPreviewLoading(true);
+    const tickers = list?.items?.map(i => i.ticker).filter(Boolean) || DEMO_TICKERS;
+    DXApi.getRisk(listId, tickers.length ? tickers : DEMO_TICKERS, selectedIndex, selectedDuration)
+      .then(d => { setPreviewData(d); setPreviewLoading(false); })
+      .catch(() => { setPreviewLoading(false); });
+  }, [step, selectedIndex, selectedDuration]);
+
   const D = window.DXData;
   const components = D?.components || [];
 
@@ -31,26 +43,23 @@ function Builder({ listId, onNav, mode }) {
   function computeStrategy(riskData, nIndex, sizing, idx, dur) {
     const perTicker = riskData.per_ticker || [];
     const nW        = perTicker.length || 1;
-    const netVegaPct  = riskData.portfolio?.net_vega  || 0;
-    const netThetaAPI = riskData.portfolio?.net_theta || 0;
+    const idxG      = riskData.index_greeks;
+    if (!idxG) return null;
 
-    // Reconstruct per-component totals (API used 1/nW weight per ticker)
-    const portVegaRaw  = perTicker.reduce((s, t) => s + (t.greeks?.vega    || 0) * CONTRACT / nW, 0);
-    const portThetaRaw = perTicker.reduce((s, t) => s + (t.greeks?.theta   || 0) * CONTRACT / nW, 0);
+    // Index-level greeks (SPX price ≈ SPY×10, etc.) — gives realistic lot counts
+    const idxVegaPerLot  = idxG.vega_per_lot;    // $/σ per 1 long index contract
+    const idxThetaPerLot = idxG.theta_per_lot;   // $/day gain per 1 short index contract
+    const idxPremPerLot  = idxG.premium_per_lot;  // $ premium per 1 index contract
 
-    // Index greeks per 1 contract (signed: negative vega because short straddle)
-    const idxVegaRaw1  = (netVegaPct / 0.01) - portVegaRaw;
-    const idxTheta1    = netThetaAPI - portThetaRaw;
-
-    // Vega-neutral: target = |index vega for nIndex contracts| / nW per ticker
-    const targetVega       = Math.abs(idxVegaRaw1 * nIndex);
-    const targetPerTicker  = targetVega / nW;
+    // Vega-neutral: each component targets 1/nW of total index vega
+    const targetVegaTotal = idxVegaPerLot * nIndex;
+    const targetPerComp   = targetVegaTotal / nW;
 
     const comps = perTicker.map(r => {
       if (!r.greeks) return { ticker: r.ticker, price: r.price, iv: r.iv, hv: r.hv, beta: r.beta, nContracts: 1, greeks: null };
-      const vegaPerLot = r.greeks.vega * CONTRACT;
+      const vegaPerLot = r.greeks.vega * CONTRACT;  // $/σ per 1 component contract
       const n = (sizing === 'vega_neutral' && vegaPerLot > 0)
-        ? Math.max(1, Math.round(targetPerTicker / vegaPerLot))
+        ? Math.max(1, Math.round(targetPerComp / vegaPerLot))
         : 1;
       return { ticker: r.ticker, price: r.price, iv: r.iv, hv: r.hv, beta: r.beta, nContracts: n, greeks: r.greeks };
     });
@@ -58,8 +67,6 @@ function Builder({ listId, onNav, mode }) {
     const compVegaRaw  = comps.reduce((s, c) => s + (c.greeks?.vega    || 0) * CONTRACT * c.nContracts, 0);
     const compThetaRaw = comps.reduce((s, c) => s + (c.greeks?.theta   || 0) * CONTRACT * c.nContracts, 0);
     const compPremRaw  = comps.reduce((s, c) => s + (c.greeks?.premium || 0) * CONTRACT * c.nContracts, 0);
-    const idxVegaActual  = idxVegaRaw1 * nIndex;
-    const idxThetaActual = idxTheta1   * nIndex;
 
     return {
       listId,
@@ -71,36 +78,40 @@ function Builder({ listId, onNav, mode }) {
       components:   comps,
       portfolio: {
         compVegaRaw,
-        compVegaPct:  compVegaRaw  * 0.01,
-        idxVegaRaw:   idxVegaActual,
-        idxVegaPct:   idxVegaActual * 0.01,
-        netVegaPct:  (compVegaRaw + idxVegaActual) * 0.01,
-        netTheta:     compThetaRaw + idxThetaActual,
-        netPremium:   compPremRaw,
-        idxTheta1,
+        compVegaPct:   compVegaRaw * 0.01,           // positive (long straddles)
+        idxVegaRaw:   -idxVegaPerLot * nIndex,        // negative (short straddle)
+        idxVegaPct:   -idxVegaPerLot * nIndex * 0.01,
+        netVegaPct:   (compVegaRaw - idxVegaPerLot * nIndex) * 0.01,
+        compTheta:     compThetaRaw,                  // negative (daily cost for long)
+        idxTheta:      idxThetaPerLot * nIndex,       // positive (daily gain from short)
+        netTheta:      compThetaRaw + idxThetaPerLot * nIndex,
+        netPremium:    compPremRaw - idxPremPerLot * nIndex,
+        idxVegaPerLot,
+        idxThetaPerLot,
+        idxPremPerLot,
       },
     };
   }
 
   async function handleBuild() {
     setBuilding(true);
+    setBuildError(null);
     try {
-      const listData   = list || (listId ? await DXApi.getList(listId).catch(() => null) : null);
-      const tickers    = (listData?.items || []).map(i => i.ticker).filter(Boolean);
-      const active     = tickers.length ? tickers : DEMO_TICKERS;
+      const listData = list || (listId ? await DXApi.getList(listId).catch(() => null) : null);
+      const tickers  = (listData?.items || []).map(i => i.ticker).filter(Boolean);
+      const active   = tickers.length ? tickers : DEMO_TICKERS;
 
-      const riskData   = await DXApi.getRisk(listId, active, selectedIndex, selectedDuration);
-      const strategy   = computeStrategy(riskData, nIndexContracts, sizingMethod, selectedIndex, selectedDuration);
+      const riskData = await DXApi.getRisk(listId, active, selectedIndex, selectedDuration);
+      const strategy = computeStrategy(riskData, nIndexContracts, sizingMethod, selectedIndex, selectedDuration);
 
-      if (listId) {
+      if (listId && strategy) {
         try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(strategy)); } catch {}
       }
 
       setStratData({ ...riskData, strategy });
       setStep(7);
-    } catch {
-      setStratData(window.DXMock?.strategy);
-      setStep(7);
+    } catch (err) {
+      setBuildError('Erreur lors du calcul — vérifiez votre connexion et réessayez. (' + (err?.message || 'network') + ')');
     } finally {
       setBuilding(false);
     }
@@ -145,8 +156,8 @@ function Builder({ listId, onNav, mode }) {
           {step < 6 ? (
             <button onClick={() => setStep(s => Math.min(6, s + 1))} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Continuer →</button>
           ) : (
-            <button onClick={handleBuild} disabled={building} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
-              {building ? 'Construction…' : 'Construire la stratégie →'}
+            <button onClick={handleBuild} disabled={building} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: building ? 'var(--text-dim)' : 'var(--accent)', color: '#fff', cursor: building ? 'not-allowed' : 'pointer' }}>
+              {building ? '⏳ Calcul en cours…' : 'Construire la stratégie →'}
             </button>
           )}
         </div>
@@ -157,7 +168,8 @@ function Builder({ listId, onNav, mode }) {
       {step === 2 && <StepUniverse index={selectedIndex} />}
       {step === 3 && <StepComposants components={components} selected={selectedItems} onToggle={t => setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; })} mode={mode} />}
       {step === 4 && <StepCorrelation index={selectedIndex} />}
-      {step === 5 && <StepConstruction nIndex={nIndexContracts} onNIndex={setNIndexContracts} sizingMethod={sizingMethod} onSizingMethod={setSizingMethod} index={selectedIndex} duration={selectedDuration} />}
+      {buildError && <div style={{ padding: '12px 16px', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--neg-bright)' }}>{buildError}</div>}
+      {step === 5 && <StepConstruction nIndex={nIndexContracts} onNIndex={setNIndexContracts} sizingMethod={sizingMethod} onSizingMethod={setSizingMethod} index={selectedIndex} duration={selectedDuration} previewData={previewData} previewLoading={previewLoading} />}
       {step === 6 && <StepRisque listId={listId} index={selectedIndex} />}
     </div>
   );
@@ -317,55 +329,119 @@ function Builder({ listId, onNav, mode }) {
     );
   }
 
-  function StepConstruction({ nIndex, onNIndex, sizingMethod, onSizingMethod, index, duration }) {
-    const fmtVega = v => (v >= 0 ? '+' : '') + Math.round(v);
+  function StepConstruction({ nIndex, onNIndex, sizingMethod, onSizingMethod, index, duration, previewData, previewLoading }) {
+    // Compute live lot preview from fetched greeks
+    const preview = React.useMemo(() => {
+      if (!previewData?.index_greeks || !previewData?.per_ticker) return null;
+      const idxG = previewData.index_greeks;
+      const perTicker = previewData.per_ticker;
+      const nW = perTicker.length || 1;
+      const targetPerComp = (idxG.vega_per_lot * nIndex) / nW;
+      const rows = perTicker.map(r => {
+        const vegaPerLot = (r.greeks?.vega || 0) * 100;
+        const vegaPct = Math.round(vegaPerLot * 0.01);  // $/1% per lot
+        const n = sizingMethod === 'vega_neutral' && vegaPerLot > 0
+          ? Math.max(1, Math.round(targetPerComp / vegaPerLot))
+          : 1;
+        return { ticker: r.ticker, vegaPct, n, totalVegaPct: vegaPct * n };
+      });
+      const idxVegaPct   = Math.round(idxG.vega_per_lot * nIndex * 0.01);
+      const compVegaPct  = rows.reduce((s, r) => s + r.totalVegaPct, 0);
+      const netVegaPct   = compVegaPct - idxVegaPct;
+      const idxThetaDay  = Math.round(idxG.theta_per_lot * nIndex);
+      return { rows, idxVegaPct, compVegaPct, netVegaPct, idxThetaDay };
+    }, [previewData, nIndex, sizingMethod]);
+
+    const BtnStyle = { width: 32, height: 32, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text)', font: '700 18px/1 var(--font-mono)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
+
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-
-        {/* Index contracts */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 22 }}>
-          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 18 }}>Jambe Indice — Straddle short {index}</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <button onClick={() => onNIndex(Math.max(1, nIndex - 1))} style={{ width: 34, height: 34, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text)', font: '700 18px/1 var(--font-mono)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
-              <span style={{ font: '800 36px/1 var(--font-mono)', color: 'var(--text)', minWidth: 48, textAlign: 'center' }}>{nIndex}</span>
-              <button onClick={() => onNIndex(Math.min(20, nIndex + 1))} style={{ width: 34, height: 34, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text)', font: '700 18px/1 var(--font-mono)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
-            </div>
-            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>contrat(s) short straddle · {duration} DTE</div>
-            <div style={{ marginLeft: 'auto', font: 'var(--type-caption)', color: 'var(--text-dim)', background: 'var(--bg-elevated)', padding: '6px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-              Les composants seront dimensionnés pour compenser ce vega.
-            </div>
-          </div>
-        </div>
-
-        {/* Sizing method */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 22 }}>
-          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 16 }}>Méthode de sizing des composants</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {[
-              { v: 'vega_neutral', label: 'Vega-neutral', desc: 'Nombre de contrats par composant calculé pour que la somme des vegas long égale le vega short de l\'indice. Recommandé.' },
-              { v: 'equal_weight', label: 'Poids égaux (1 contrat)', desc: '1 contrat par composant, indépendamment du vega. Plus simple mais position non-équilibrée.' },
-            ].map(opt => (
-              <div key={opt.v} onClick={() => onSizingMethod(opt.v)} style={{ display: 'flex', gap: 12, padding: '14px 16px', borderRadius: 'var(--radius)', border: `1px solid ${sizingMethod === opt.v ? 'var(--accent)' : 'var(--border)'}`, background: sizingMethod === opt.v ? 'var(--bg-elevated)' : 'var(--bg-card)', cursor: 'pointer', transition: 'all 0.12s' }}>
-                <div style={{ width: 18, height: 18, borderRadius: '50%', border: `2px solid ${sizingMethod === opt.v ? 'var(--accent)' : 'var(--text-dim)'}`, marginTop: 1, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {sizingMethod === opt.v && <div style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--accent)' }} />}
-                </div>
-                <div>
-                  <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 3 }}>{opt.label}</div>
-                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{opt.desc}</div>
-                </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' }}>
+          {/* Left: config */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {/* Index contracts */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
+              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Jambe indice · short straddle {index}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <button onClick={() => onNIndex(Math.max(1, nIndex - 1))} style={BtnStyle}>−</button>
+                <span style={{ font: '800 40px/1 var(--font-mono)', color: 'var(--text)', minWidth: 52, textAlign: 'center' }}>{nIndex}</span>
+                <button onClick={() => onNIndex(Math.min(20, nIndex + 1))} style={BtnStyle}>+</button>
+                <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginLeft: 4 }}>contrat{nIndex > 1 ? 's' : ''} · {duration} DTE</div>
               </div>
-            ))}
+              {preview && (
+                <div style={{ marginTop: 12, padding: '8px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                  Vega short indice : <strong style={{ color: 'var(--neg-bright)' }}>−{preview.idxVegaPct} $/1%</strong> · Theta : <strong style={{ color: 'var(--pos-bright)' }}>+{preview.idxThetaDay} $/j</strong>
+                </div>
+              )}
+            </div>
+
+            {/* Sizing method */}
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
+              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Méthode de sizing</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[
+                  { v: 'vega_neutral', label: 'Vega-neutral', desc: 'n_i = round(|vega_idx × N| / (nW × vega_i × 100)) — position insensible aux chocs IV parallèles.' },
+                  { v: 'equal_weight', label: 'Poids égaux · 1 lot', desc: '1 contrat par composant. Simple mais position déséquilibrée si les IVs diffèrent.' },
+                ].map(opt => (
+                  <div key={opt.v} onClick={() => onSizingMethod(opt.v)} style={{ display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 'var(--radius)', border: `1px solid ${sizingMethod === opt.v ? 'var(--accent)' : 'var(--border)'}`, background: sizingMethod === opt.v ? 'var(--bg-elevated)' : 'transparent', cursor: 'pointer' }}>
+                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${sizingMethod === opt.v ? 'var(--accent)' : 'var(--text-dim)'}`, marginTop: 1, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      {sizingMethod === opt.v && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />}
+                    </div>
+                    <div>
+                      <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 2 }}>{opt.label}</div>
+                      <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{opt.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Right: live preview */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Aperçu des quantités</span>
+              {previewLoading && <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Chargement…</span>}
+            </div>
+            {preview ? (
+              <>
+                {/* Header */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 50px 80px', padding: '7px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+                  {['Composant', 'Vega/lot', 'Lots', 'Total vega'].map(h => (
+                    <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: h === 'Composant' ? 'left' : 'right' }}>{h}</span>
+                  ))}
+                </div>
+                {preview.rows.map((r, i) => (
+                  <div key={r.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 50px 80px', padding: '9px 16px', borderBottom: i < preview.rows.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
+                    <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{r.ticker}</span>
+                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>+{r.vegaPct} $/1%</span>
+                    <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{r.n}</span>
+                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{r.totalVegaPct} $/1%</span>
+                  </div>
+                ))}
+                {/* Totals */}
+                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                    <span>Vega composants</span>
+                    <span style={{ color: 'var(--pos-bright)', fontWeight: 700 }}>+{preview.compVegaPct} $/1%</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                    <span>Vega indice (short)</span>
+                    <span style={{ color: 'var(--neg-bright)', fontWeight: 700 }}>−{preview.idxVegaPct} $/1%</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: '700 11px/1 var(--font-mono)', marginTop: 3, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-soft)' }}>Vega net</span>
+                    <span style={{ color: Math.abs(preview.netVegaPct) < 60 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{preview.netVegaPct >= 0 ? '+' : ''}{preview.netVegaPct} $/1%</span>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>
+                {previewLoading ? 'Récupération des données de marché…' : 'Données en cours de chargement'}
+              </div>
+            )}
           </div>
         </div>
-
-        <WarningPanel tone="info" title="Algorithme vega-neutral">
-          Pour chaque composant i : <strong>n_i = round(|Vega_indice × N| / (nW × vega_i × 100))</strong> où N = nombre de contrats indice, nW = nombre de composants. La stratégie est alors insensible aux chocs parallèles de volatilité.
-        </WarningPanel>
-
-        <WarningPanel tone="warn" title="Avant de construire">
-          Cliquez « Construire la stratégie » à l'étape suivante. Le calcul récupère les données de marché réelles (prix, IV, HV) et calcule les quantités exactes. Ces données seront utilisées par le Risk Lab.
-        </WarningPanel>
       </div>
     );
   }
@@ -378,8 +454,8 @@ function Builder({ listId, onNav, mode }) {
 
     if (saved) {
       const d = new Date(saved.builtAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-      const nW = (saved.components || []).length;
-      const netTheta = saved.portfolio?.netTheta || 0;
+      const nW         = (saved.components || []).length;
+      const netTheta   = saved.portfolio?.netTheta   || 0;
       const netVegaPct = saved.portfolio?.netVegaPct || 0;
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -405,8 +481,8 @@ function Builder({ listId, onNav, mode }) {
               <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 80px', gap: 0, padding: '9px 16px', borderBottom: i < saved.components.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
                 <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker}</span>
                 <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--accent)' }}>{c.nContracts}</span>
-                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{c.greeks ? '+' + Math.round(c.greeks.vega) + ' $' : '—'}</span>
-                <span style={{ font: '11px/1 var(--font-mono)', color: c.greeks?.theta < 0 ? 'var(--neg-bright)' : 'var(--pos-bright)' }}>{c.greeks ? (c.greeks.theta * 100).toFixed(1) + ' $' : '—'}</span>
+                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{c.greeks ? '+' + Math.round(c.greeks.vega * 100 * 0.01) + ' $/1%' : '—'}</span>
+                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>{c.greeks ? Math.round(c.greeks.theta * 100) + ' $/j' : '—'}</span>
               </div>
             ))}
           </div>
@@ -441,7 +517,6 @@ function TradeBrief({ data, onNav }) {
   const CONTRACT = 100;
 
   // Build legs from strategy if available, else fall back to static
-  const fmtN = n => n >= 0 ? '+' + Math.round(n) : String(Math.round(n));
   let L;
   if (strategy?.components) {
     const port = strategy.portfolio;
@@ -449,23 +524,23 @@ function TradeBrief({ data, onNav }) {
       index: {
         t:      strategy.index || 'SPX',
         strike: 'ATM',
-        prime:  fmtN(-(port.netPremium || 0)) + ' $',
-        vega:   fmtN(port.idxVegaPct || 0) + ' $/1%',
-        theta:  fmtN(-(port.idxTheta1 || 0) * strategy.nIndex) + ' $/j',
+        prime:  '−' + Math.round(Math.abs((port.idxPremPerLot || 0) * strategy.nIndex)).toLocaleString('fr-FR') + ' $',
+        vega:   '−' + Math.round(Math.abs(port.idxVegaPct || 0)) + ' $/1%',
+        theta:  '+' + Math.round(port.idxTheta || 0) + ' $/j',
         qty:    strategy.nIndex,
         action: 'Vendre straddle',
         exp:    strategy.duration + ' DTE',
       },
       basket: strategy.components.map(c => ({
         t:     c.ticker,
-        prime: c.greeks ? '+' + Math.round(c.greeks.premium * CONTRACT * c.nContracts) + ' $' : '—',
+        prime: c.greeks ? '+' + Math.round(c.greeks.premium * CONTRACT * c.nContracts).toLocaleString('fr-FR') + ' $' : '—',
         vega:  c.greeks ? '+' + Math.round(c.greeks.vega * CONTRACT * c.nContracts * 0.01) + ' $/1%' : '—',
-        theta: c.greeks ? (c.greeks.theta * CONTRACT * c.nContracts).toFixed(1) + ' $/j' : '—',
+        theta: c.greeks ? Math.round(c.greeks.theta * CONTRACT * c.nContracts) + ' $/j' : '—',
         qty:   c.nContracts,
       })),
     };
   } else {
-    L = D.legs || { index: { t: 'SPX', strike: '5300', prime: '−18.4', vega: '−620', theta: '+96', qty: '1', action: 'Sell straddle', exp: '21 Nov 2025' }, basket: [] };
+    L = D.legs || { index: { t: 'SPX', strike: 'ATM', prime: '−', vega: '−', theta: '+', qty: 1, action: 'Vendre straddle', exp: '30 DTE' }, basket: [] };
   }
 
   const Section = ({ n, title, children }) => (
@@ -599,8 +674,8 @@ function TradeBrief({ data, onNav }) {
       <Section n="05" title="Données clés">
         {(() => {
           const port = strategy?.portfolio;
-          const netV = port ? Math.round(port.netVegaPct) : -48;
-          const netT = port ? Math.round(port.netTheta)   : 96;
+          const netV = port ? Math.round(port.netVegaPct)  : -48;
+          const netT = port ? Math.round(port.netTheta || 0) : 96;
           const netP = port ? Math.round(port.netPremium) : 1240;
           const nW   = (L.basket || []).length || 5;
           const dur  = strategy?.duration || D.duration || 30;
