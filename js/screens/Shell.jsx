@@ -450,29 +450,30 @@ function ModuleCtxPicker({ lists, onCtx, title, subtitle }) {
   const [focused, setFocused]   = React.useState(-1);
   const [hoverList, setHoverList] = React.useState(null);
   const [selectedIndex, setSelectedIndex] = React.useState('SPX');
-  const inputRef = React.useRef(null);
+  const inputRef  = React.useRef(null);
+  const justPicked = React.useRef(false); // empêche le useEffect de rouvrir le dropdown
 
   const catalog     = useTickerCatalog(lists);
   const suggestions = React.useMemo(() => filterCatalog(catalog, q), [catalog, q]);
   const foundInCatalog = catalog.find(c => c.ticker === q.trim().toUpperCase()) || null;
-  const showIndexPicker = q.trim().length > 0; // toujours visible quand on tape
+  const showIndexPicker = q.trim().length > 0;
 
   React.useEffect(() => {
+    if (justPicked.current) { justPicked.current = false; return; } // skip après pick
     setShowSugg(q.trim().length > 0 && suggestions.length > 0);
     setFocused(-1);
   }, [q, suggestions.length]);
 
-  // Quand on trouve l'actif dans le catalogue, pré-sélectionner son indice
   React.useEffect(() => {
     if (foundInCatalog) setSelectedIndex(foundInCatalog.primaryIndex);
   }, [foundInCatalog?.primaryIndex]);
 
-  // Cliquer sur suggestion = remplir l'input (pas naviguer immédiatement)
+  // Cliquer une suggestion = remplir l'input seulement (ne pas naviguer)
   function pick(item) {
+    justPicked.current = true;
     setQ(item.ticker);
     setSelectedIndex(item.primaryIndex);
     setShowSugg(false);
-    inputRef.current?.focus();
   }
 
   function submit(e) {
@@ -550,10 +551,9 @@ function ModuleCtxPicker({ lists, onCtx, title, subtitle }) {
               <input
                 ref={inputRef}
                 value={q}
-                onChange={e => setQ(e.target.value)}
+                onChange={e => { justPicked.current = false; setQ(e.target.value); }}
                 onKeyDown={onKeyDown}
-                onBlur={() => setTimeout(() => setShowSugg(false), 160)}
-                onFocus={() => q.trim() && suggestions.length > 0 && setShowSugg(true)}
+                onBlur={() => setTimeout(() => setShowSugg(false), 180)}
                 placeholder="Tapez un ticker ou un nom : AAPL, Nvidia, SAP…"
                 autoComplete="off"
                 style={{

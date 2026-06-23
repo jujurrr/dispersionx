@@ -231,108 +231,176 @@ function SectorChart({ matrixTickers, matrix, rhoImpl }) {
 /* ─── Vue ticker individuel dans le Correlation Lab ─────────────── */
 function SingleTickerCorr({ ctx, onCtx, lists, mode }) {
   const { MetricCard, Badge } = window.DispersionXDesignSystem_cb86be;
-  const [vol, setVol]     = React.useState(null);
+  const [vol, setVol]         = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
   const ticker = ctx.ticker;
   const index  = ctx.index || ctx.listIndex || 'SPX';
 
   React.useEffect(() => {
+    if (!ticker) return;
     setLoading(true); setVol(null);
+
     DXApi.getTickerVol(ticker, index)
-      .then(d => { setVol(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(d => {
+        if (d && !d.error) {
+          setVol(d);
+        } else {
+          // Fallback : données des composantes connues (DXMock)
+          const comps = window.DXMock?.getComponents?.(index) || [];
+          const c = comps.find(x => x.ticker === ticker);
+          setVol(c ? {
+            ticker, index,
+            hv30: c.hv, hv60: null, hv90: null, hv252: null,
+            iv_est: c.iv, iv_atm: null,
+            iv_minus_hv: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
+            beta: c.beta ?? null,
+            correlation: c.rho ?? null,
+            source: 'reference',
+          } : null);
+        }
+        setLoading(false);
+      })
+      .catch(() => {
+        const comps = window.DXMock?.getComponents?.(index) || [];
+        const c = comps.find(x => x.ticker === ticker);
+        setVol(c ? {
+          ticker, index,
+          hv30: c.hv, hv60: null, hv90: null, hv252: null,
+          iv_est: c.iv, iv_atm: null,
+          iv_minus_hv: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
+          beta: c.beta ?? null,
+          correlation: c.rho ?? null,
+          source: 'reference',
+        } : null);
+        setLoading(false);
+      });
   }, [ticker, index]);
 
-  if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul corrélation {ticker} / {index}…</div>;
+  // onClear doit tout réinitialiser (pas juste ticker:null)
+  function handleClear() {
+    onCtx({ ticker: null, listId: null, listName: null, index: null, listIndex: null });
+  }
 
-  const V = vol || {};
+  if (loading) return (
+    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+      Chargement corrélation <strong style={{ color: 'var(--text)' }}>{ticker}</strong> / {index}…
+    </div>
+  );
+
+  if (!vol) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={onCtx} onClear={handleClear} />
+      <div style={{ padding: 40, textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+        <div style={{ font: 'var(--type-h3)', color: 'var(--text)', marginBottom: 8 }}>Données non disponibles pour {ticker} / {index}</div>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', maxWidth: 400, margin: '0 auto 16px' }}>
+          Ce ticker n'est pas disponible dans l'indice {index}. Essayez un autre indice ou une action connue de cet indice.
+        </p>
+        <button onClick={handleClear} style={{ padding: '8px 20px', font: '600 13px/1 var(--font-sans)', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer' }}>
+          ← Nouvelle recherche
+        </button>
+      </div>
+    </div>
+  );
+
+  const V    = vol;
   const beta = V.beta ?? null;
   const corr = V.correlation ?? null;
   const hv30 = V.hv30 ?? null;
   const iv   = V.iv_est ?? null;
+  const isMock = V.source === 'reference';
 
-  const corrTone = corr == null ? 'var(--text-muted)' : corr > 0.75 ? 'var(--neg-bright)' : corr > 0.5 ? 'var(--warn)' : 'var(--pos-bright)';
+  const corrTone  = corr == null ? 'var(--text-muted)' : corr > 0.75 ? 'var(--neg-bright)' : corr > 0.5 ? 'var(--warn)' : 'var(--pos-bright)';
   const corrLabel = corr == null ? '—' : corr > 0.75 ? 'Élevée' : corr > 0.5 ? 'Modérée' : 'Faible';
   const betaLabel = beta == null ? '—' : beta > 1.5 ? 'Amplifié' : beta > 0.8 ? 'Neutre' : 'Défensif';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={onCtx} onClear={() => onCtx({ ticker: null })} />
+      <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={onCtx} onClear={handleClear} />
 
-      <div>
-        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>
-          Corrélation <span style={{ color: 'var(--accent-hover)' }}>{ticker}</span> / {index}
-        </h1>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
-          Liaison statistique avec l'indice · 90 jours glissants · Yahoo Finance
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>
+            <span style={{ color: 'var(--accent-hover)' }}>{ticker}</span> vs {index}
+          </h1>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
+            Corrélation &amp; beta · {isMock ? 'Données de référence (indices)' : 'Yahoo Finance · 90 jours'}
+          </p>
+        </div>
+        {isMock && (
+          <div style={{ padding: '5px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
+            Données de référence
+          </div>
+        )}
       </div>
 
-      {/* Métriques principales */}
+      {/* Métriques */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <MetricCard label={`ρ vs ${index}`} value={corr != null ? corr.toFixed(2) : '···'} accent={corrTone} hint={corrLabel} />
-        <MetricCard label={`β vs ${index}`} value={beta != null ? beta.toFixed(2) : '···'} accent="var(--info)" hint={betaLabel} />
-        <MetricCard label="HV 30j" value={hv30 != null ? hv30.toFixed(1) : '···'} unit="%" accent="var(--text-soft)" hint="Vol. réalisée" />
-        <MetricCard label="IV Est." value={iv != null ? iv.toFixed(1) : '···'} unit="%" accent="var(--warn)" hint="Impl. ≈ HV×1.12" />
+        <MetricCard label={`ρ vs ${index}`} value={corr != null ? corr.toFixed(2) : '—'} accent={corrTone} hint={corrLabel} />
+        <MetricCard label={`β vs ${index}`} value={beta != null ? beta.toFixed(2) : '—'} accent="var(--info)" hint={betaLabel} />
+        <MetricCard label="HV 30j" value={hv30 != null ? hv30.toFixed(1) : '—'} unit="%" accent="var(--text-soft)" hint="Volatilité réalisée" />
+        <MetricCard label="IV Est." value={iv != null ? iv.toFixed(1) : '—'} unit="%" accent="var(--warn)" hint="Impl. ≈ HV×1.12" />
       </div>
 
       {/* Interprétation */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+        {/* Corrélation */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 12px' }}>Corrélation (ρ = {corr != null ? corr.toFixed(2) : '—'})</h3>
+          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 14px' }}>
+            Corrélation · ρ = {corr != null ? corr.toFixed(2) : '—'}
+          </h3>
           {corr != null ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1, height: 10, background: 'var(--bg-elevated)', borderRadius: 5, overflow: 'hidden' }}>
                   <div style={{ width: Math.abs(corr) * 100 + '%', height: '100%', background: corrTone, opacity: 0.85 }} />
                 </div>
-                <span style={{ font: '700 13px/1 var(--font-mono)', color: corrTone, width: 38, textAlign: 'right' }}>{(corr * 100).toFixed(0)}%</span>
+                <span style={{ font: '700 13px/1 var(--font-mono)', color: corrTone, width: 42 }}>{(corr * 100).toFixed(0)}%</span>
               </div>
               <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: 0 }}>
                 {corr > 0.75
-                  ? `${ticker} évolue très proche de l'${index} — diversification faible. La dispersion bénéficiera si ${ticker} diverge du marché.`
+                  ? `${ticker} suit de très près l'${index} — faible diversification. La dispersion profite si ${ticker} s'en écarte.`
                   : corr > 0.5
-                  ? `${ticker} suit modérément l'${index}. La stratégie de dispersion a un potentiel de profiter des écarts.`
+                  ? `${ticker} suit modérément l'${index}. Potentiel de dispersion présent lors des phases d'écart.`
                   : `${ticker} est peu corrélé à l'${index} — fort potentiel de dispersion individuelle.`}
               </p>
             </div>
           ) : (
-            <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: 0 }}>Données insuffisantes.</p>
+            <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: 0 }}>Non disponible pour cet indice.</p>
           )}
         </div>
 
+        {/* Beta */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 12px' }}>Beta (β = {beta != null ? beta.toFixed(2) : '—'})</h3>
+          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 14px' }}>
+            Beta · β = {beta != null ? beta.toFixed(2) : '—'}
+          </h3>
           {beta != null ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div style={{ flex: 1, height: 10, background: 'var(--bg-elevated)', borderRadius: 5, overflow: 'hidden', position: 'relative' }}>
-                  <div style={{ position: 'absolute', left: '33%', top: 0, bottom: 0, width: 1, background: 'var(--border-strong)' }} />
-                  <div style={{ width: Math.min(100, Math.abs(beta) / 2.5 * 100) + '%', height: '100%', background: 'var(--info)', opacity: 0.85 }} />
+                  <div style={{ position: 'absolute', left: '40%', top: 0, bottom: 0, width: 1, background: 'var(--border-strong)' }} />
+                  <div style={{ width: Math.min(100, Math.abs(beta) / 2.5 * 100) + '%', height: '100%', background: 'var(--info)', opacity: 0.8 }} />
                 </div>
-                <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--info)', width: 38, textAlign: 'right' }}>{beta.toFixed(2)}</span>
+                <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--info)', width: 42 }}>{beta.toFixed(2)}</span>
               </div>
               <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: 0 }}>
                 {beta > 1.5
-                  ? `Mouvement amplifié : +1% sur l'${index} → ~+${beta.toFixed(1)}% sur ${ticker}. Exposition directionnelle élevée.`
+                  ? `Mouvement amplifié : +1% ${index} → ~+${beta.toFixed(1)}% ${ticker}. Exposition directionnelle forte.`
                   : beta > 0.8
-                  ? `Mouvement proche de l'${index}. Beta proche de 1 — position quasi-neutre au marché.`
-                  : `${ticker} est défensif (β < 1) — évolue moins que l'${index}.`}
+                  ? `Beta proche de 1 — ${ticker} évolue de pair avec l'${index}.`
+                  : `${ticker} défensif (β < 1) — moins volatil que l'${index}.`}
               </p>
             </div>
           ) : (
-            <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: 0 }}>Données insuffisantes.</p>
+            <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: 0 }}>Non disponible pour cet indice.</p>
           )}
         </div>
       </div>
 
-      {/* Conseil pour voir le score complet */}
-      <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ font: '20px/1', opacity: 0.6 }}>💡</span>
-        <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-          Pour le <strong style={{ color: 'var(--text)' }}>score de dispersion complet</strong> (IV/HV, ρ pondéré, beta, liquidité), ouvrez la fiche de l'action depuis <em>Accueil → Indice → {ticker}</em> ou ajoutez-le à une liste et analysez-la ici.
-        </div>
+      {/* Conseil */}
+      <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 16px', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+        Pour le <strong style={{ color: 'var(--text)' }}>score de dispersion complet</strong> incluant IV/HV, liquidité et ρ pondéré, consultez la fiche de l'action depuis <em>Accueil → Indice</em> ou ajoutez-la à une liste.
       </div>
     </div>
   );
