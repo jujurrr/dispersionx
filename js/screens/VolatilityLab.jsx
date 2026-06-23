@@ -41,16 +41,55 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
   const ticker = ctx.ticker;
   const index  = ctx.index || ctx.listIndex || 'SPX';
 
+  function mockFallback(idx) {
+    const comps = window.DXMock?.getComponents?.(idx) || [];
+    const c = comps.find(x => x.ticker === ticker);
+    return c ? {
+      ticker, index: idx,
+      hv30: c.hv, hv60: null, hv90: null, hv252: null,
+      iv_est: c.iv, iv_atm: null,
+      iv_minus_hv: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
+      beta: c.beta ?? null,
+      correlation: c.rho ?? null,
+      hv_history: [], term: null,
+      source: 'reference',
+    } : null;
+  }
+
   React.useEffect(() => {
+    if (!ticker) return;
     setLoading(true); setData(null);
     DXApi.getTickerVol(ticker, index)
-      .then(d => { setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(d => {
+        setData((d && !d.error) ? d : mockFallback(index));
+        setLoading(false);
+      })
+      .catch(() => { setData(mockFallback(index)); setLoading(false); });
   }, [ticker, index]);
 
-  if (loading) return <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement {ticker}…</div>;
+  if (loading) return (
+    <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+      Chargement <strong style={{ color: 'var(--text)' }}>{ticker}</strong>…
+    </div>
+  );
 
-  const D = data || {};
+  if (!data) return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={onCtx} onClear={() => onCtx({ ticker: null })} />
+      <div style={{ padding: 40, textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+        <div style={{ font: 'var(--type-h3)', color: 'var(--text)', marginBottom: 8 }}>{ticker} non disponible pour l'indice {index}</div>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', maxWidth: 400, margin: '0 auto 16px' }}>
+          Ce ticker n'est pas dans l'indice {index}. Essayez un autre indice ou une action connue.
+        </p>
+        <button onClick={() => onCtx({ ticker: null, listId: null, listName: null, index: null, listIndex: null })}
+          style={{ padding: '8px 20px', font: '600 13px/1 var(--font-sans)', background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer' }}>
+          ← Nouvelle recherche
+        </button>
+      </div>
+    </div>
+  );
+
+  const D = data;
   const hv30  = D.hv30  ?? null;
   const hv60  = D.hv60  ?? null;
   const hv90  = D.hv90  ?? null;
@@ -62,7 +101,8 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
   const corr   = D.correlation ?? null;
   const hvHist = D.hv_history || [];
   const term   = D.term || null;
-  const src    = D.source === 'marketdata+yahoo' ? 'MarketData · IV réelle' : 'Yahoo Finance · IV estimée (×1.12)';
+  const isMock = D.source === 'reference';
+  const src    = D.source === 'marketdata+yahoo' ? 'MarketData · IV réelle' : isMock ? 'Données de référence (indices)' : 'Yahoo Finance · IV estimée (×1.12)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -76,7 +116,7 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
           </h1>
           <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>vs {index} · {src}</div>
         </div>
-        <Badge tone="neutral" size="sm">{D.source === 'marketdata+yahoo' ? 'IV réelle' : 'IV estimée'}</Badge>
+        <Badge tone="neutral" size="sm">{D.source === 'marketdata+yahoo' ? 'IV réelle' : isMock ? 'Référence' : 'IV estimée'}</Badge>
       </div>
 
       {/* Métriques */}
@@ -184,12 +224,30 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
       .then(list => {
         setListMeta(list);
         const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
+        const idx = list?.index_symbol || index;
         if (!tickers.length) { setLoading(false); return; }
-        return DXApi.getBatchVol(tickers, list?.index_symbol || index);
-      })
-      .then(d => {
-        if (d?.results) setRows(d.results.filter(r => !r.error));
-        setLoading(false);
+
+        return DXApi.getBatchVol(tickers, idx).then(d => {
+          const live = (d?.results || []).filter(r => !r.error);
+          if (live.length > 0) {
+            setRows(live);
+          } else {
+            // Fallback : données des composantes connues (DXMock)
+            const comps = window.DXMock?.getComponents?.(idx) || [];
+            const mock = tickers.map(t => {
+              const c = comps.find(x => x.ticker === t);
+              return c ? {
+                ticker: t, hv30: c.hv, hv60: null,
+                iv_est: c.iv,
+                spread: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
+                beta: c.beta ?? null, correlation: c.rho ?? null,
+                source: 'reference',
+              } : null;
+            }).filter(Boolean);
+            setRows(mock);
+          }
+          setLoading(false);
+        });
       })
       .catch(() => setLoading(false));
   }, [listId]);
@@ -219,13 +277,22 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={onCtx} onClear={() => onCtx({ listId: null, listName: null })} />
 
-      <div>
-        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>
-          Volatility Lab — <span style={{ color: 'var(--accent-hover)' }}>{listMeta?.name || '…'}</span>
-        </h1>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
-          HV calculée sur Yahoo Finance · IV estimée = HV×1.12 · Cliquez sur un ticker pour l'analyser en détail.
-        </p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
+        <div>
+          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>
+            Volatility Lab — <span style={{ color: 'var(--accent-hover)' }}>{listMeta?.name || '…'}</span>
+          </h1>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
+            {rows.some(r => r.source === 'reference')
+              ? 'Données de référence (indices) · Cliquez sur un ticker pour l\'analyser en détail.'
+              : 'HV calculée sur Yahoo Finance · IV estimée = HV×1.12 · Cliquez sur un ticker pour l\'analyser en détail.'}
+          </p>
+        </div>
+        {rows.some(r => r.source === 'reference') && (
+          <div style={{ padding: '5px 10px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-dim)', flexShrink: 0 }}>
+            Données de référence
+          </div>
+        )}
       </div>
 
       {/* Résumé */}
