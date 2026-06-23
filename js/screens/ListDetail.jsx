@@ -1,5 +1,5 @@
 /* ─── List Detail: basket analysis + sortable items + score modal ─ */
-function ListDetail({ listId, onNav, onScore, addToast, mode }) {
+function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [list, setList]       = React.useState(null);
   const [analysis, setAnalysis] = React.useState(null);
@@ -129,7 +129,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
   }
 
   const pctColor  = v => parseFloat(v) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
-  const scoreColor = s => s >= 70 ? 'var(--pos-bright)' : s >= 50 ? 'var(--warn)' : 'var(--neg-bright)';
+  const scoreColor = s => s >= 75 ? 'var(--pos-bright)' : s >= 55 ? 'var(--warn)' : 'var(--neg-bright)';
   const sigColors  = { FAVORABLE: 'var(--pos)', NEUTRE: 'var(--warn)', DÉFAVORABLE: 'var(--neg)' };
 
   const items = list?.items || [];
@@ -251,8 +251,8 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
                 const iv   = vol?.iv   ?? comp.iv   ?? null;
                 const hv   = vol?.hv   ?? comp.hv   ?? null;
                 const beta = vol?.beta ?? comp.beta ?? null;
-                // Score : préférer score_data.score (autoScore réel) > item.score (stocké)
-                const displayScore = item.score_data?.score ?? item.score;
+                // Score : préférer score_data.score (autoScore réel) > item.score (stocké) > cache modal
+                const displayScore = item.score_data?.score ?? item.score ?? scoreCache?.[item.ticker];
 
                 return (
                   <tr key={item.ticker}
@@ -313,7 +313,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode }) {
                     {/* Score */}
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                       {displayScore != null && (
-                        <span style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: displayScore >= 70 ? 'var(--pos-soft)' : displayScore >= 50 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(displayScore), border: `1px solid ${displayScore >= 70 ? 'var(--pos)' : displayScore >= 50 ? 'var(--warn)' : 'var(--neg)'}` }}>{displayScore}</span>
+                        <span style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: displayScore >= 75 ? 'var(--pos-soft)' : displayScore >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(displayScore), border: `1px solid ${displayScore >= 75 ? 'var(--pos)' : displayScore >= 55 ? 'var(--warn)' : 'var(--neg)'}` }}>{displayScore}</span>
                       )}
                     </td>
 

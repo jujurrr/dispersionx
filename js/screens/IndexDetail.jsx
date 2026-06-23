@@ -5,12 +5,47 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
   const [snap, setSnap] = React.useState(null);
   const [components, setComponents] = React.useState([]);
   const [quotes, setQuotes] = React.useState({});
+  const [liveScores, setLiveScores] = React.useState({});
+  const [scoreProgress, setScoreProgress] = React.useState({ done: 0, total: 0, running: false });
   const [search, setSearch] = React.useState('');
   const [sort, setSort] = React.useState({ key: null, dir: 0 }); // dir: 0=none, 1=asc, -1=desc
   const [loading, setLoading] = React.useState(true);
+  const abortRef = React.useRef(null);
+  const compsRef = React.useRef([]);
+
+  function startScoring(comps, sym, dur) {
+    if (abortRef.current) abortRef.current.cancelled = true;
+    const abort = { cancelled: false };
+    abortRef.current = abort;
+    if (!comps || !comps.length) return;
+    const BATCH = 5;
+    const tickers = comps.map(c => c.ticker);
+    setLiveScores({});
+    setScoreProgress({ done: 0, total: tickers.length, running: true });
+    let done = 0;
+    (async () => {
+      for (let i = 0; i < tickers.length; i += BATCH) {
+        if (abort.cancelled) break;
+        await Promise.allSettled(tickers.slice(i, i + BATCH).map(async ticker => {
+          if (abort.cancelled) return;
+          try {
+            const r = await DXApi.autoScore(sym, ticker, dur);
+            const sc = r?.scoring?.score;
+            if (sc != null && !abort.cancelled) setLiveScores(prev => ({ ...prev, [ticker]: sc }));
+          } catch {}
+          done++;
+          if (!abort.cancelled) setScoreProgress(prev => ({ ...prev, done }));
+        }));
+      }
+      if (!abort.cancelled) setScoreProgress(prev => ({ ...prev, running: false }));
+    })();
+  }
 
   React.useEffect(() => {
     setLoading(true);
+    setLiveScores({});
+    setScoreProgress({ done: 0, total: 0, running: false });
+    if (abortRef.current) abortRef.current.cancelled = true;
     Promise.all([
       DXApi.getIndex(symbol),
       DXApi.getSnapshot(symbol),
@@ -19,6 +54,7 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
       setIndex(idx);
       setSnap(sn);
       setComponents(comps);
+      compsRef.current = comps;
       setLoading(false);
       // Load quotes in chunks of 40
       const tickers = comps.map(c => c.ticker);
@@ -31,8 +67,15 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
           });
         }).catch(() => {});
       }
+      startScoring(comps, symbol, duration);
     }).catch(() => setLoading(false));
+    return () => { if (abortRef.current) abortRef.current.cancelled = true; };
   }, [symbol]);
+
+  // Re-score when duration changes (without reloading components)
+  React.useEffect(() => {
+    if (compsRef.current.length) startScoring(compsRef.current, symbol, duration);
+  }, [duration]);
 
   // Filter
   const q = search.toLowerCase().trim();
@@ -40,8 +83,8 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
     !q || c.ticker.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
   );
 
-  // Score réel uniquement — null si non encore calculé (autoScore requis)
-  const effScore = (c) => c.score != null ? c.score : (scoreCache?.[c.ticker] ?? null);
+  // Score réel : priorité composant API → score live calculé → cache modal
+  const effScore = (c) => c.score != null ? c.score : (liveScores[c.ticker] ?? scoreCache?.[c.ticker] ?? null);
 
   // Sort
   const getSortVal = (c) => {
@@ -156,6 +199,30 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
         <span style={{ font: 'var(--type-data-sm)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{filtered.length} / {components.length}</span>
       </div>
 
+      {/* Score progress bar */}
+      {scoreProgress.total > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+          {scoreProgress.running
+            ? <span style={{ fontSize: 14, color: 'var(--accent-hover)', animation: 'pulse 1.2s infinite', lineHeight: 1 }}>⟳</span>
+            : <span style={{ fontSize: 13, color: 'var(--pos)', lineHeight: 1 }}>✓</span>}
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {scoreProgress.running ? 'Calcul des scores…' : 'Scores calculés'}
+          </span>
+          <span style={{ font: 'var(--type-data-sm)', color: 'var(--accent-hover)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+            {scoreProgress.done} / {scoreProgress.total}
+          </span>
+          <div style={{ flex: 1, height: 3, background: 'var(--bg-elevated)', borderRadius: 2, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%',
+              background: scoreProgress.running ? 'var(--accent)' : 'var(--pos)',
+              borderRadius: 2,
+              width: scoreProgress.total > 0 ? `${Math.round(scoreProgress.done / scoreProgress.total * 100)}%` : '0%',
+              transition: 'width 0.2s ease',
+            }} />
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -238,8 +305,7 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
                   <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                     {(() => {
                       const sc = effScore(c);
-                      if (sc == null) return null;
-                      return (
+                      if (sc != null) return (
                         <span style={{
                           font: '700 12px/1 var(--font-mono)', padding: '4px 8px', borderRadius: 'var(--radius)',
                           background: sc >= 75 ? 'var(--pos-soft)' : sc >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)',
@@ -247,6 +313,10 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
                           border: `1px solid ${sc >= 75 ? 'var(--pos)' : sc >= 55 ? 'var(--warn)' : 'var(--neg)'}`,
                         }}>{sc}</span>
                       );
+                      if (scoreProgress.running) return (
+                        <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--text-dim)', letterSpacing: 3 }}>···</span>
+                      );
+                      return null;
                     })()}
                   </td>
                   {/* Action */}

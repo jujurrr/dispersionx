@@ -97,7 +97,7 @@ function App() {
       screenEl = <window.Lists onNav={onNav} onListsChange={setLists} addToast={addToast} />;
       break;
     case 'list-detail':
-      screenEl = <window.ListDetail listId={params.listId} onNav={onNav} onScore={onScore} addToast={addToast} mode={mode} />;
+      screenEl = <window.ListDetail listId={params.listId} onNav={onNav} onScore={onScore} addToast={addToast} mode={mode} scoreCache={scoreCache} />;
       break;
     case 'dashboard':
       screenEl = <window.Dashboard onNav={onNav} lists={lists} mode={mode} />;
