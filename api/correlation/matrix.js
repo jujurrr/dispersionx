@@ -1,17 +1,17 @@
 // POST /api/correlation/matrix
 // Body: { tickers: string[], index: string, days?: number }
-// Calcule la matrice de corrélation réalisée depuis Yahoo Finance + ρ implicite estimée
+// Calcule la matrice de corrélation réalisée depuis Yahoo Finance + ρ implicite via VIX
 export const config = { runtime: 'edge' };
 
 async function fetchCloses(symbol, days) {
   const range = days <= 35 ? '2mo' : days <= 90 ? '4mo' : '6mo';
   const r = await fetch(
     `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${range}`,
-    { headers: { 'User-Agent': 'Mozilla/5.0' } }
+    { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }
   );
   if (!r.ok) return null;
   const closes = (await r.json())?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
-  return closes.filter(c => c != null);
+  return closes.filter(c => c != null && isFinite(c) && c > 0);
 }
 
 function logReturns(closes) {
@@ -35,6 +35,25 @@ function pearson(x, y) {
   return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
 }
 
+// Volatilité historique annualisée (décimal, ex: 0.25 = 25%)
+function computeHV(rets, window = 30) {
+  if (!rets || rets.length < 5) return null;
+  const slice = rets.slice(-Math.min(window, rets.length));
+  const m = slice.reduce((a, b) => a + b, 0) / slice.length;
+  const v = slice.reduce((a, b) => a + (b - m) ** 2, 0) / (slice.length - 1);
+  return Math.sqrt(v * 252);
+}
+
+// ρ_impl = (σ_indice_impl / σ̄_composants_impl)²
+// Formule fondamentale : corrélation implicite = ratio des volatilités au carré.
+// σ_indice_impl = VIX/100 (données options réelles) ou HV_indice × 1.30 (proxy)
+// σ̄_comp_impl  = moyenne HV composants × 1.08
+function computeRhoImpl(sigmaIdxImpl, avgHvComp) {
+  if (!sigmaIdxImpl || !avgHvComp || avgHvComp <= 0) return null;
+  const sigmaCompImpl = avgHvComp * 1.08;
+  return Math.min(0.95, Math.max(0.05, (sigmaIdxImpl / sigmaCompImpl) ** 2));
+}
+
 export default async (req) => {
   let body = {};
   try { body = await req.json(); } catch {}
@@ -47,17 +66,32 @@ export default async (req) => {
   const ETF = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA', CAC: 'EWQ', DAX: 'EWG' };
   const idxEtf = ETF[indexSym] || indexSym;
 
-  const allSyms = [...tickers, idxEtf];
-  const fetched = await Promise.allSettled(allSyms.map(s => fetchCloses(s, days)));
+  // Indice de vol implicite (VIX / VXN)
+  const VOL_TICKER = { SPX: '^VIX', NDX: '^VXN', DJI: '^VIX' };
+  const vixSym = VOL_TICKER[indexSym] || null;
+
+  const priceSyms = [...tickers, idxEtf];
+  const fetchSyms = vixSym ? [...priceSyms, vixSym] : priceSyms;
+  const fetched   = await Promise.allSettled(fetchSyms.map(s => fetchCloses(s, days)));
+
+  const closesRaw = {};
   const rets = {};
-  allSyms.forEach((s, i) => {
+  fetchSyms.forEach((s, i) => {
     const closes = fetched[i].status === 'fulfilled' ? fetched[i].value : null;
-    rets[s] = closes && closes.length >= 10 ? logReturns(closes) : null;
+    closesRaw[s] = closes || [];
+    if (s !== vixSym) {
+      rets[s] = closes && closes.length >= 10 ? logReturns(closes) : null;
+    }
   });
+
+  // Closes VIX brutes (valeur = % vol annualisé directement, ex: 17.5 = 17.5%)
+  const vixCloses = vixSym ? closesRaw[vixSym] : null;
+  const lastVix   = vixCloses && vixCloses.length > 0 ? vixCloses[vixCloses.length - 1] / 100 : null;
 
   const valid = tickers.filter(t => rets[t]);
   if (valid.length < 2) return Response.json({ error: 'no_price_data' }, { status: 502 });
 
+  // ── Matrice Pearson N×N ───────────────────────────────────────────
   const n = valid.length;
   const matrix = valid.map((ti, i) =>
     valid.map((tj, j) => {
@@ -67,26 +101,29 @@ export default async (req) => {
     })
   );
 
-  let rhoSum = 0, cnt = 0;
-  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { rhoSum += matrix[i][j]; cnt++; }
-  const rhoReal = cnt > 0 ? rhoSum / cnt : 0;
+  let rhoSum = 0, rhoCount = 0;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { rhoSum += matrix[i][j]; rhoCount++; }
+  const rhoReal = rhoCount > 0 ? rhoSum / rhoCount : 0;
 
-  let idxCorrSum = 0, idxCnt = 0;
-  if (rets[idxEtf]) {
-    for (const t of valid) {
-      const c = pearson(rets[t], rets[idxEtf]);
-      if (c !== null) { idxCorrSum += Math.abs(c); idxCnt++; }
-    }
-  }
-  const avgIdxCorr = idxCnt > 0 ? idxCorrSum / idxCnt : rhoReal + 0.1;
-  const rhoImpl    = Math.min(0.97, Math.max(rhoReal + 0.05, avgIdxCorr ** 2 * 1.15 + 0.05));
+  // ── ρ implicite via formule de dispersion ─────────────────────────
+  const hvIdx = rets[idxEtf] ? computeHV(rets[idxEtf]) : null;
+  const sigmaIdxImpl = lastVix ?? (hvIdx ? hvIdx * 1.30 : null);
 
+  const hvComps = valid.map(t => computeHV(rets[t])).filter(v => v != null);
+  const avgHvComp = hvComps.length > 0 ? hvComps.reduce((a, b) => a + b, 0) / hvComps.length : null;
+
+  const rhoImpl = computeRhoImpl(sigmaIdxImpl, avgHvComp)
+    ?? Math.min(0.92, rhoReal + 0.08);
+
+  // ── Historique rolling : 8 fenêtres de ~12j ──────────────────────
   const minLen = Math.min(...valid.map(t => rets[t].length));
   const history = Array.from({ length: 8 }, (_, w) => {
-    const wIdx = 7 - w;
+    const wIdx  = 7 - w;
     const end   = Math.max(10, minLen - wIdx * 5);
     const start = Math.max(0, end - 12);
-    if (end - start < 4) return { d: wIdx === 0 ? 'Auj.' : `J-${wIdx * 5}`, real: Number(rhoReal.toFixed(3)), impl: Number(rhoImpl.toFixed(3)) };
+    const label = wIdx === 0 ? 'Auj.' : `J-${wIdx * 5}`;
+
+    if (end - start < 4) return { d: label, real: Number(rhoReal.toFixed(3)), impl: Number(rhoImpl.toFixed(3)) };
 
     let wSum = 0, wCnt = 0;
     for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
@@ -95,29 +132,34 @@ export default async (req) => {
     }
     const wRho = wCnt > 0 ? wSum / wCnt : rhoReal;
 
-    let wIdxSum = 0, wIdxCnt = 0;
-    if (rets[idxEtf]) {
-      for (const t of valid) {
-        const c = pearson(rets[t].slice(start, end), rets[idxEtf].slice(start, end));
-        if (c !== null) { wIdxSum += Math.abs(c); wIdxCnt++; }
-      }
-    }
-    const wAvgIdx = wIdxCnt > 0 ? wIdxSum / wIdxCnt : wRho + 0.12;
-    const wRhoImpl = Number(Math.min(0.97, Math.max(wRho + 0.04, wAvgIdx ** 2 * 1.12 + 0.04)).toFixed(3));
+    const wVixSlice = vixCloses && vixCloses.length > end ? vixCloses.slice(start, end) : null;
+    const wVixAvg   = wVixSlice && wVixSlice.length > 0
+      ? wVixSlice.reduce((a, b) => a + b, 0) / wVixSlice.length / 100
+      : null;
+    const wHvIdx    = rets[idxEtf] ? computeHV(rets[idxEtf].slice(start, end), end - start) : null;
+    const wSigmaIdx = wVixAvg ?? (wHvIdx ? wHvIdx * 1.30 : null);
 
-    return { d: wIdx === 0 ? 'Auj.' : `J-${wIdx * 5}`, real: Number(wRho.toFixed(3)), impl: wRhoImpl };
+    const wHvComps   = valid.map(t => computeHV(rets[t].slice(start, end), end - start)).filter(v => v != null);
+    const wAvgHvComp = wHvComps.length > 0 ? wHvComps.reduce((a, b) => a + b, 0) / wHvComps.length : null;
+
+    const wRhoImpl = computeRhoImpl(wSigmaIdx, wAvgHvComp) ?? Number(Math.min(0.92, wRho + 0.06).toFixed(3));
+
+    return { d: label, real: Number(wRho.toFixed(3)), impl: Number(wRhoImpl.toFixed(3)) };
   });
+
+  const prime = (rhoImpl - rhoReal) * 100;
 
   return Response.json({
     matrixTickers: valid,
     matrix,
-    rho_real: Number(rhoReal.toFixed(3)),
-    rho_impl: Number(rhoImpl.toFixed(3)),
+    rho_real:   Number(rhoReal.toFixed(3)),
+    rho_impl:   Number(rhoImpl.toFixed(3)),
     history,
-    delta:    `${((rhoImpl - rhoReal) * 100) >= 0 ? '+' : ''}${((rhoImpl - rhoReal) * 100).toFixed(1)} pts`,
+    delta:      `${prime >= 0 ? '+' : ''}${prime.toFixed(1)} pts`,
     days,
-    n_tickers: valid.length,
-    source:   'yahoo',
-    skipped:  tickers.filter(t => !valid.includes(t)),
+    n_tickers:  valid.length,
+    source:     lastVix ? 'vix+yahoo' : 'yahoo',
+    vix_level:  lastVix ? Number((lastVix * 100).toFixed(2)) : null,
+    skipped:    tickers.filter(t => !valid.includes(t)),
   });
 };
