@@ -1,11 +1,14 @@
 [build]
   publish = "."
 
+[build.environment]
+  NODE_VERSION = "18"
+
 [functions]
   directory = "netlify/functions"
+  node_bundler = "esbuild"
 
-# ── API serverless (Phase 2) ── le frontend appelle /api/*, on redirige vers les functions.
-# status = 200 → rewrite (conserve la méthode POST et le corps de la requête).
+# ── Fonctions v1 : redirections explicites requises ──────────────────
 [[redirects]]
   from = "/api/health"
   to = "/.netlify/functions/health"
@@ -16,19 +19,18 @@
   to = "/.netlify/functions/quotes-batch"
   status = 200
 
-# /api/indices/:symbol/snapshot et /components sont routés directement par les
-# fonctions via leur `export const config = { path }` (paramètre de chemin fiable).
-
 [[redirects]]
   from = "/api/options/atm"
   to = "/.netlify/functions/options-atm"
   status = 200
 
-# Phase 3 — proxy vers le backend IBKR (FastAPI sur VPS). Tout /api/ib/* est relayé.
 [[redirects]]
   from = "/api/ib/*"
   to = "/.netlify/functions/backend-proxy/:splat"
   status = 200
+
+# ── Fonctions v2 : routées par export const config = { path } ────────
+# (pas de redirection nécessaire — Netlify les enregistre automatiquement)
 
 [[headers]]
   for = "/*"

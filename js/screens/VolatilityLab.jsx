@@ -91,9 +91,9 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
       </div>
 
       {mode === 'Débutant' && (
-        <window.BeginnerExplanationBox>
+        <BeginnerExplanationBox>
           La HV (historique) mesure la volatilité réellement observée. L'IV (implicite) est ce que le marché anticipe. Quand IV &gt; HV, la volatilité est «&nbsp;chère&nbsp;» — les vendeurs d'options sont avantagés. L'écart IV−HV est la prime de risque de vol.
-        </window.BeginnerExplanationBox>
+        </BeginnerExplanationBox>
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16 }}>
