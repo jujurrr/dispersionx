@@ -131,60 +131,60 @@ function buildWarnings(D) {
 }
 
 /* ── Sensitivity charts builder ──────────────────────────────────── */
-function buildSensCharts(D) {
+function buildSensCharts(D, strategy) {
   const port      = D.portfolio || {};
   const perTicker = D.per_ticker || [];
   const pnlByName = D.pnlByName  || [];
   const scenarios = D.scenarios   || [];
+  const CONTRACT  = 100;
+  const duration  = strategy?.duration || port.duration || 30;
 
-  // port.net_vega est maintenant en $/1% (corrigé dans l'API)
-  // port.net_theta est en $/jour
-  const netVegaPct = port.net_vega  || 0;
-  const netTheta   = port.net_theta || 0;
+  // ── Greek anchors: prefer actual strategy quantities ──────────────
+  let netVegaPct, compVegaPct, idxVegaPct, netTheta;
 
-  // Vegas en $/1% : per_ticker.greeks.vega = BS vega brut en $/σ
-  const nW         = perTicker.length || 1;
-  const CONTRACT   = 100;
-  const portVegaRaw  = perTicker.reduce((s, t) => s + (t.greeks?.vega || 0) * CONTRACT / nW, 0);
-  const compVegaPct  = portVegaRaw * 0.01;           // $ par 1% IV composants
-  const idxVegaPct   = netVegaPct - compVegaPct;     // $ par 1% IV indice (négatif = short)
+  if (strategy?.portfolio) {
+    // Strategy was built: use actual position Greeks
+    netVegaPct  = strategy.portfolio.netVegaPct;
+    compVegaPct = strategy.portfolio.compVegaPct;
+    idxVegaPct  = strategy.portfolio.idxVegaPct;
+    netTheta    = strategy.portfolio.netTheta;
+  } else {
+    // No strategy: equal-weight estimate (1/nW per ticker, 1 index contract)
+    netVegaPct  = port.net_vega  || 0;
+    netTheta    = port.net_theta || 0;
+    const nW    = perTicker.length || 1;
+    const portVegaRaw = perTicker.reduce((s, t) => s + (t.greeks?.vega || 0) * CONTRACT / nW, 0);
+    compVegaPct = portVegaRaw * 0.01;
+    idxVegaPct  = netVegaPct - compVegaPct;
+  }
 
-  // Ancres scénarios (l'API retourne des valeurs calibrées via theta)
-  const findSc = name => {
-    const s = scenarios.find(x => x.name?.toLowerCase().includes(name));
-    return s ? parsePnl(s.pnl) : null;
-  };
-  const sellPnl  = findSc('sell')    || Math.round(netVegaPct * 20 + netTheta * 7) || -2500;
-  const dispPnl  = findSc('dispers') || Math.round(-netVegaPct * 15)               || +2000;
-  const gapPnl   = findSc('gap')     || Math.round(sellPnl * 0.35)                 || -900;
-  const thetaPnl = findSc('theta')   || findSc('temps')                            || Math.round(Math.abs(netTheta) * 7) || +350;
-  const rangePnl = findSc('range')   || Math.round(Math.abs(netTheta) * 10)        || +500;
-  const thetaDay = netTheta || (thetaPnl / 7);
+  // ── Scenario P&L anchors (recomputed from actual Greeks) ─────────
+  const thetaRef = Math.max(40, Math.abs(netTheta) * duration);
+  const baseScale = Math.max(100, Math.min(thetaRef * 3, 2500));
+  const sellPnl  = -baseScale * 2.6;
+  const dispPnl  =  baseScale * 2.1;
+  const gapPnl   = -baseScale * 0.85;
+  const thetaDay = netTheta;
 
   // 1 — P&L par mouvement de l'indice
-  // Quadratic scaling : 5% = scénario de référence, sature au-delà
   const spots = [-8, -6, -4, -2, 0, 2, 4, 6, 8];
   const spotBars = spots.map(x => {
     if (x === 0) return Math.round(thetaDay);
     const absX = Math.abs(x);
-    const ref   = x < 0 ? sellPnl : gapPnl;
-    // Quadratique jusqu'à 5%, puis linéaire (saturation)
-    const frac  = absX <= 5
-      ? (absX / 5) ** 2
-      : 1 + (absX - 5) / 10;   // au-delà de 5% : +10% par point supplémentaire
-    // Theta aide pour les petits mouvements (s'efface à 4%)
+    const ref  = x < 0 ? sellPnl : gapPnl;
+    const frac = absX <= 5 ? (absX / 5) ** 2 : 1 + (absX - 5) / 10;
     const thetaContrib = thetaDay * Math.max(0, 1 - absX / 4);
     return Math.round(ref * frac + thetaContrib);
   }).map((v, i) => ({ label: (spots[i] >= 0 ? '+' : '') + spots[i] + '%', value: v }));
 
-  // 2 — P&L par choc de vol indice (idxVegaPct = $ par 1% IV indice)
+  // 2 — P&L par choc de vol indice
   const ivShocks = [-30, -20, -10, 0, 10, 20, 30, 40];
   const ivIdxBars = ivShocks.map(iv => ({
     label: (iv >= 0 ? '+' : '') + iv + '%',
     value: Math.round(idxVegaPct * iv),
   }));
 
-  // 3 — P&L par choc de vol composants (compVegaPct = $ par 1% IV composants)
+  // 3 — P&L par choc de vol composants
   const ivCompBars = ivShocks.map(iv => ({
     label: (iv >= 0 ? '+' : '') + iv + '%',
     value: Math.round(compVegaPct * iv),
@@ -197,18 +197,21 @@ function buildSensCharts(D) {
     return { label: 'ρ ' + rho.toFixed(1), value: Math.round(dispPnl * (1 - t) + sellPnl * t) };
   });
 
-  // 5 — P&L par passage du temps (theta cumulatif)
+  // 5 — P&L par passage du temps
   const days = [1, 2, 3, 5, 7, 10, 14, 21, 30];
   const thetaDays = days.map(d => ({ label: d + 'j', value: Math.round(thetaDay * d) }));
 
-  // 6 — Mouvements des composants : P&L si IV de CE ticker +10% (1 contrat = vega * Δσ * 100)
-  const compMovBars = perTicker.map(t => ({
-    label: t.ticker,
-    logo:  t.ticker,
-    value: t.greeks ? Math.round(t.greeks.vega * 0.10 * CONTRACT) : 0,
-  })).sort((a, b) => b.value - a.value);
+  // 6 — P&L si IV de CE composant +10% — utilise n_contracts réels si strategy présente
+  const compMovBars = perTicker.map(t => {
+    const n = strategy?.components?.find(c => c.ticker === t.ticker)?.nContracts || 1;
+    return {
+      label: t.ticker,
+      logo:  t.ticker,
+      value: t.greeks ? Math.round(t.greeks.vega * 0.10 * CONTRACT * n) : 0,
+    };
+  }).sort((a, b) => b.value - a.value);
 
-  // 7 — Chocs de skew : hausse du skew renchérit les puts → perd sur straddle court indice
+  // 7 — Chocs de skew
   const skewPts  = [-4, -2, 0, 2, 4, 6, 8];
   const skewUnit = (idxVegaPct || (sellPnl * 0.015)) * 0.30;
   const skewBars = skewPts.map(sk => ({
@@ -216,14 +219,29 @@ function buildSensCharts(D) {
     value: Math.round(skewUnit * sk * -1),
   }));
 
-  // 8 — Contribution · Sell-off : valeurs API rescalées pour sommer à |sellPnl|
-  const pnlRawTotal = pnlByName.reduce((s, r) => s + Math.abs(r.pnl || 0), 0);
-  const scaleToSell = pnlRawTotal > 0 ? Math.abs(sellPnl) / pnlRawTotal : 1;
-  const selloffContrib = pnlByName.map(r => ({
-    label: r.t,
-    logo:  r.t.startsWith('SPX') || r.t.startsWith('NDX') ? null : r.t,
-    value: Math.round((r.pnl || 0) * scaleToSell),
-  }));
+  // 8 — Contribution sell-off: utilise n_contracts réels si strategy présente
+  let selloffContrib;
+  if (strategy?.components) {
+    const indexSym = strategy.index || 'SPX';
+    const idxPnl   = Math.round(strategy.portfolio.idxVegaRaw * 0.15);
+    const compItems = strategy.components.map(c => ({
+      label: c.ticker,
+      logo:  c.ticker,
+      value: c.greeks ? Math.round(c.greeks.vega * 0.15 * CONTRACT * c.nContracts) : 0,
+    }));
+    const rawAll = [{ label: indexSym + ' (short)', logo: null, value: idxPnl }, ...compItems];
+    const rawTotal = rawAll.reduce((s, r) => s + Math.abs(r.value || 0), 0);
+    const scale    = rawTotal > 0 ? Math.abs(sellPnl) / rawTotal : 1;
+    selloffContrib = rawAll.map(r => ({ ...r, value: Math.round((r.value || 0) * scale) }));
+  } else {
+    const pnlRawTotal = pnlByName.reduce((s, r) => s + Math.abs(r.pnl || 0), 0);
+    const scaleToSell = pnlRawTotal > 0 ? Math.abs(sellPnl) / pnlRawTotal : 1;
+    selloffContrib = pnlByName.map(r => ({
+      label: r.t,
+      logo:  r.t.startsWith('SPX') || r.t.startsWith('NDX') ? null : r.t,
+      value: Math.round((r.pnl || 0) * scaleToSell),
+    }));
+  }
 
   return { spotBars, ivIdxBars, ivCompBars, rhoBars, thetaDays, compMovBars, skewBars, selloffContrib };
 }
@@ -231,24 +249,38 @@ function buildSensCharts(D) {
 /* ─── Main component ─────────────────────────────────────────────── */
 function RiskLab({ listId, onNav, mode }) {
   const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
-  const [riskData, setRiskData] = React.useState(null);
-  const [loading, setLoading]   = React.useState(true);
-  const [scenario, setScenario] = React.useState(1);
+  const [riskData,  setRiskData]  = React.useState(null);
+  const [loading,   setLoading]   = React.useState(true);
+  const [scenario,  setScenario]  = React.useState(1);
+  const [strategy,  setStrategy]  = React.useState(null);
 
   const DEMO = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
 
+  // Load strategy saved by Strategy Builder from localStorage
   React.useEffect(() => {
+    if (!listId) return;
+    try {
+      const raw = localStorage.getItem('dx-strategy-' + listId);
+      if (raw) setStrategy(JSON.parse(raw));
+    } catch {}
+  }, [listId]);
+
+  React.useEffect(() => {
+    const index    = strategy?.index || 'SPX';
+    const duration = strategy?.duration || 30;
+    const tickers  = strategy?.components?.map(c => c.ticker) || null;
+
     const resolve = listId
       ? DXApi.getList(listId).then(list => {
-          const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
-          const index   = list?.index_symbol || 'SPX';
-          return DXApi.getRisk(listId, tickers.length ? tickers : DEMO, index, 30);
+          const t   = tickers || (list?.items || []).map(i => i.ticker).filter(Boolean);
+          const idx = list?.index_symbol || index;
+          return DXApi.getRisk(listId, t.length ? t : DEMO, idx, duration);
         })
-      : DXApi.getRisk(null, DEMO, 'SPX', 30);
+      : DXApi.getRisk(null, DEMO, index, duration);
 
     resolve.then(d => { setRiskData(d); setLoading(false); })
            .catch(() => { setRiskData(null); setLoading(false); });
-  }, [listId]);
+  }, [listId, strategy]);
 
   if (loading) return (
     <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>
@@ -270,7 +302,7 @@ function RiskLab({ listId, onNav, mode }) {
   const selSc    = scenarios[scenario];
   const warnings = buildWarnings(D);
 
-  const charts   = buildSensCharts(D);
+  const charts   = buildSensCharts(D, strategy);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
@@ -291,6 +323,29 @@ function RiskLab({ listId, onNav, mode }) {
         )}
       </div>
 
+      {/* Strategy status banner */}
+      {listId && strategy ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
+          <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>✓</span>
+          <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+            Stratégie calculée le <strong style={{ color: 'var(--text)' }}>{new Date(strategy.builtAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</strong> · {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'} — P&L calculé sur les quantités réelles
+          </span>
+          {onNav && (
+            <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>Recalculer</button>
+          )}
+        </div>
+      ) : listId && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--warn)', borderLeft: '3px solid var(--warn)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
+          <span style={{ color: 'var(--warn)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>!</span>
+          <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+            Stratégie non encore calculée — les P&L utilisent 1 contrat par composant (estimation). <strong style={{ color: 'var(--text)' }}>Construisez la stratégie dans le Builder</strong> pour des calculs précis.
+          </span>
+          {onNav && (
+            <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>Builder →</button>
+          )}
+        </div>
+      )}
+
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
           Les grecs mesurent la sensibilité de la position aux mouvements du marché. Delta ≈ 0 signifie que la stratégie est direction-neutre. Gamma et Vega mesurent la sensibilité aux mouvements brusques et à la volatilité.
@@ -301,20 +356,38 @@ function RiskLab({ listId, onNav, mode }) {
       <section>
         <div style={{ marginBottom: 14 }}>
           <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Grecs agrégés</h2>
-          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Position nette indice + composants — ATM straddle {port.duration || 30}j</p>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            Position nette indice + composants — ATM straddle {strategy?.duration || port.duration || 30}j
+            {strategy ? ' · quantités réelles calculées' : ' · estimation 1 lot/composant'}
+          </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
-          {greeks.length > 0
-            ? greeks.map((g, i) => <MetricCard key={g.label || i} {...g} />)
-            : [
-                { label: 'Δ net', value: '≈ 0', hint: 'Direction-neutre', accent: 'var(--pos)' },
-                { label: 'Γ net', value: '—', hint: 'Long gamma', accent: 'var(--accent)' },
-                { label: 'Vega net', value: '—', accent: 'var(--pos)' },
-                { label: 'Θ /jour', value: '—', accent: 'var(--warn)' },
-                { label: 'IV moy.', value: '—', accent: 'var(--info)' },
-                { label: 'Prime net', value: '—', accent: 'var(--accent)' },
-              ].map((g, i) => <MetricCard key={i} {...g} />)
-          }
+          {(() => {
+            // Prefer strategy portfolio Greeks for the metric cards when available
+            if (strategy?.portfolio) {
+              const p = strategy.portfolio;
+              const fmtS = n => (n >= 0 ? '+' : '') + Math.round(n);
+              const stratGreeks = [
+                { label: 'Δ net',     value: '≈ 0',                           hint: 'ATM straddles delta-neutre',   accent: 'var(--pos)' },
+                { label: 'Vega net',  value: fmtS(p.netVegaPct) + ' $/1%',   hint: Math.abs(p.netVegaPct) < 30 ? 'Quasi-neutre ✓' : 'Vega résiduel', accent: 'var(--pos)' },
+                { label: 'Θ /jour',   value: fmtS(p.netTheta) + ' $',         hint: p.netTheta > 0 ? 'Gain quotidien (theta+)' : 'Coût quotidien', accent: 'var(--warn)' },
+                { label: 'Vega idx',  value: fmtS(p.idxVegaPct) + ' $/1%',   hint: 'Jambe indice short · ' + strategy.nIndex + ' contrat(s)', accent: 'var(--neg)' },
+                { label: 'Vega comp', value: '+' + Math.round(p.compVegaPct) + ' $/1%', hint: 'Panier composants long',  accent: 'var(--pos)' },
+                { label: 'Prime net', value: fmtS(p.netPremium) + ' $',       hint: p.netPremium > 0 ? 'Crédit net' : 'Débit net', accent: 'var(--accent)' },
+              ];
+              return stratGreeks.map((g, i) => <MetricCard key={i} {...g} />);
+            }
+            return greeks.length > 0
+              ? greeks.map((g, i) => <MetricCard key={g.label || i} {...g} />)
+              : [
+                  { label: 'Δ net', value: '≈ 0', hint: 'Direction-neutre', accent: 'var(--pos)' },
+                  { label: 'Γ net', value: '—', hint: 'Long gamma', accent: 'var(--accent)' },
+                  { label: 'Vega net', value: '—', accent: 'var(--pos)' },
+                  { label: 'Θ /jour', value: '—', accent: 'var(--warn)' },
+                  { label: 'IV moy.', value: '—', accent: 'var(--info)' },
+                  { label: 'Prime net', value: '—', accent: 'var(--accent)' },
+                ].map((g, i) => <MetricCard key={i} {...g} />);
+          })()}
         </div>
       </section>
 
@@ -326,8 +399,8 @@ function RiskLab({ listId, onNav, mode }) {
             <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Données réelles Yahoo Finance + MarketData — ATM straddle estimé</p>
           </div>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '160px 72px 110px 64px 90px 90px 80px', gap: 0, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-              {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega $/1%', 'Theta/j', 'Prime/lot'].map(h => (
+            <div style={{ display: 'grid', gridTemplateColumns: '148px 68px 110px 60px 88px 88px 48px 76px', gap: 0, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+              {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega $/1%', 'Theta/j', 'Lots', 'Prime/lot'].map(h => (
                 <div key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</div>
               ))}
             </div>
@@ -339,8 +412,9 @@ function RiskLab({ listId, onNav, mode }) {
               const theta = t.greeks?.theta || 0;
               const prem  = t.greeks?.premium || 0;
               const ivPos = iv >= hv;
+              const nLots = strategy?.components?.find(c => c.ticker === t.ticker)?.nContracts || null;
               return (
-                <div key={t.ticker} style={{ display: 'grid', gridTemplateColumns: '160px 72px 110px 64px 90px 90px 80px', gap: 0, padding: '10px 16px', borderBottom: idx < perTicker.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
+                <div key={t.ticker} style={{ display: 'grid', gridTemplateColumns: '148px 68px 110px 60px 88px 88px 48px 76px', gap: 0, padding: '10px 16px', borderBottom: idx < perTicker.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <img src={`https://assets.parqet.com/logos/symbol/${t.ticker.split('.')[0]}`} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }}
@@ -371,6 +445,9 @@ function RiskLab({ listId, onNav, mode }) {
                     <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{theta ? (theta >= 0 ? '+' : '') + (theta * CONTRACT).toFixed(1) + ' $' : '—'}</span>
                     {theta ? <GreekBar value={theta * CONTRACT} max={maxTheta} pos={theta > 0} /> : null}
                   </div>
+                  <span style={{ font: '700 11px/1 var(--font-mono)', color: nLots != null ? 'var(--accent)' : 'var(--text-dim)' }}>
+                    {nLots != null ? nLots : '—'}
+                  </span>
                   <span style={{ font: '700 11px/1 var(--font-mono)', color: prem >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
                     {prem ? (prem >= 0 ? '+' : '') + Math.round(prem * CONTRACT) + ' $' : '—'}
                   </span>
