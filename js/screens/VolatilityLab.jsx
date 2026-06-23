@@ -44,16 +44,23 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
   function mockFallback(idx) {
     const comps = window.DXMock?.getComponents?.(idx) || [];
     const c = comps.find(x => x.ticker === ticker);
-    return c ? {
+    if (!c) return null;
+    const hv = c.hv || 18;
+    // Historique HV synthétique (90 pts) pour que le graphique s'affiche
+    const hvHistory = Array.from({ length: 90 }, (_, i) =>
+      Math.max(3, hv + Math.sin(i * 0.31) * hv * 0.14 + Math.cos(i * 0.73) * hv * 0.07)
+    );
+    return {
       ticker, index: idx,
-      hv30: c.hv, hv60: null, hv90: null, hv252: null,
+      hv30: c.hv, hv60: c.hv ? +(c.hv * 1.04).toFixed(1) : null,
+      hv90: c.hv ? +(c.hv * 1.07).toFixed(1) : null, hv252: null,
       iv_est: c.iv, iv_atm: null,
       iv_minus_hv: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
       beta: c.beta ?? null,
       correlation: c.rho ?? null,
-      hv_history: [], term: null,
+      hv_history: hvHistory, term: null,
       source: 'reference',
-    } : null;
+    };
   }
 
   React.useEffect(() => {
@@ -232,7 +239,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
           if (live.length > 0) {
             setRows(live);
           } else {
-            // Fallback : données des composantes connues (DXMock)
+            // Fallback : DXMock pour les composantes connues, ligne vide pour les autres
             const comps = window.DXMock?.getComponents?.(idx) || [];
             const mock = tickers.map(t => {
               const c = comps.find(x => x.ticker === t);
@@ -242,8 +249,13 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
                 spread: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
                 beta: c.beta ?? null, correlation: c.rho ?? null,
                 source: 'reference',
-              } : null;
-            }).filter(Boolean);
+              } : {
+                // Ticker absent du mock : on l'affiche quand même avec "—"
+                ticker: t, hv30: null, hv60: null, iv_est: null,
+                spread: null, beta: null, correlation: null,
+                source: 'unavailable',
+              };
+            });
             setRows(mock);
           }
           setLoading(false);
@@ -261,9 +273,12 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
     return 0;
   });
 
-  const avgHV   = rows.length ? rows.reduce((s, r) => s + (r.hv30 || 0), 0) / rows.length : null;
-  const avgIV   = rows.length ? rows.reduce((s, r) => s + (r.iv_est || 0), 0) / rows.length : null;
-  const avgSprd = rows.length ? rows.reduce((s, r) => s + (r.spread || 0), 0) / rows.length : null;
+  const hvRows   = rows.filter(r => r.hv30 != null);
+  const ivRows   = rows.filter(r => r.iv_est != null);
+  const sprdRows = rows.filter(r => r.spread != null);
+  const avgHV   = hvRows.length   ? hvRows.reduce((s, r) => s + r.hv30, 0) / hvRows.length : null;
+  const avgIV   = ivRows.length   ? ivRows.reduce((s, r) => s + r.iv_est, 0) / ivRows.length : null;
+  const avgSprd = sprdRows.length ? sprdRows.reduce((s, r) => s + r.spread, 0) / sprdRows.length : null;
 
   const ThBtn = ({ k, label }) => (
     <th onClick={() => setSortKey(k)} style={{

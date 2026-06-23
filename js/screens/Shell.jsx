@@ -684,7 +684,7 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
     : (activeList?.n_items || '—') + ' actions · ' + (ctx.listIndex || ctx.index || 'SPX');
 
   return (
-    <div style={{ position: 'relative', marginBottom: 4 }}>
+    <div style={{ position: 'relative', zIndex: 400, marginBottom: 4 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: open ? 'var(--radius-lg) var(--radius-lg) 0 0' : 'var(--radius-lg)', flexWrap: 'wrap' }}>
         {/* Contexte actif */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
@@ -710,7 +710,7 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
       {/* Dropdown */}
       {open && (
         <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, marginTop: 0,
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 800, marginTop: 0,
           background: 'var(--bg-card)', border: '1px solid var(--border)',
           borderTop: 'none', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
           boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
