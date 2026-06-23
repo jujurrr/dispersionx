@@ -1,5 +1,5 @@
 /* ─── Dashboard: what deserves my attention today? ─────────────── */
-function Dashboard({ onNav, lists, mode }) {
+function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const { MetricCard, ScoreBadge, RiskBadge, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [positions, setPositions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
@@ -47,8 +47,19 @@ function Dashboard({ onNav, lists, mode }) {
     { n: 'NDX 28j · dispersion', pnl: '−320 $', up: false, prime: '+3.1 pts', alert: 'Vega déséquilibré' },
   ];
 
+  const ctx = moduleCtx || {};
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+      {/* Contexte liste actif */}
+      {lists && onModuleCtx && (ctx.listId || ctx.ticker) && (
+        <window.ModuleCtxBar
+          ctx={ctx}
+          lists={lists}
+          onCtx={upd => onModuleCtx(upd)}
+          onClear={() => onModuleCtx({ listId: null, listName: null, ticker: null })}
+        />
+      )}
       {/* Hero */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>

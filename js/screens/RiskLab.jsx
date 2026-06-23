@@ -247,16 +247,21 @@ function buildSensCharts(D, strategy) {
 }
 
 /* ─── Main component ─────────────────────────────────────────────── */
-function RiskLab({ listId, onNav, mode }) {
+function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [riskData,  setRiskData]  = React.useState(null);
   const [loading,   setLoading]   = React.useState(true);
   const [scenario,  setScenario]  = React.useState(1);
   const [strategy,  setStrategy]  = React.useState(null);
 
+  // Utilise listId du param de navigation ou du contexte de module
+  const listId = listIdParam || moduleCtx?.listId || null;
+  const ctx    = moduleCtx || {};
+  const hasCtx = !!listId;
+
   const DEMO = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
 
-  // Load strategy saved by Strategy Builder from localStorage
+  // Hooks toujours appelés (règle React — pas de hooks après return conditionnel)
   React.useEffect(() => {
     if (!listId) return;
     try {
@@ -266,7 +271,8 @@ function RiskLab({ listId, onNav, mode }) {
   }, [listId]);
 
   React.useEffect(() => {
-    const index    = strategy?.index || 'SPX';
+    if (!hasCtx) return;
+    const index    = strategy?.index || ctx.listIndex || 'SPX';
     const duration = strategy?.duration || 30;
     const tickers  = strategy?.components?.map(c => c.ticker) || null;
 
@@ -281,6 +287,18 @@ function RiskLab({ listId, onNav, mode }) {
     resolve.then(d => { setRiskData(d); setLoading(false); })
            .catch(() => { setRiskData(null); setLoading(false); });
   }, [listId, strategy]);
+
+  // Pas de contexte → picker (après les hooks)
+  if (!hasCtx) {
+    return (
+      <window.ModuleCtxPicker
+        lists={lists}
+        onCtx={upd => onModuleCtx && onModuleCtx(upd)}
+        title="Risk Lab"
+        subtitle="Analysez les sensibilités (vega, theta, corrélation) de votre stratégie de dispersion pour une liste donnée."
+      />
+    );
+  }
 
   if (loading) return (
     <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>
@@ -306,6 +324,16 @@ function RiskLab({ listId, onNav, mode }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+      {/* Contexte liste */}
+      {lists && onModuleCtx && ctx.listId && (
+        <window.ModuleCtxBar
+          ctx={ctx}
+          lists={lists}
+          onCtx={upd => onModuleCtx(upd)}
+          onClear={() => onModuleCtx({ listId: null, listName: null })}
+        />
+      )}
 
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>

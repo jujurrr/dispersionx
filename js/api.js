@@ -191,6 +191,16 @@
     catch { return window.DXMock.strategy; }
   }
 
+  /* ── Volatility (par ticker ou batch) ───────────────────────── */
+  async function getTickerVol(ticker, index) {
+    try { return await _post('/vol/ticker', { ticker, index: index || 'SPX' }); }
+    catch { return null; }
+  }
+  async function getBatchVol(tickers, index) {
+    try { return await _post('/vol/ticker', { tickers, index: index || 'SPX' }); }
+    catch { return null; }
+  }
+
   /* ── Risk ────────────────────────────────────────────────────── */
   async function getRisk(list_id, tickers, index_symbol, duration) {
     const body = { tickers: tickers || [], index: index_symbol || 'SPX', duration: duration || 30 };
@@ -238,6 +248,7 @@
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
     getCorrelation,
+    getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
     getRisk,
     getChecklist, commitPosition,

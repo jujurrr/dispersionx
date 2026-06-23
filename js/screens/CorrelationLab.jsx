@@ -229,28 +229,44 @@ function SectorChart({ matrixTickers, matrix, rhoImpl }) {
 }
 
 /* ─── Correlation Lab ─────────────────────────────────────────────── */
-function CorrelationLab({ listId, onNav, mode }) {
+function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const { MetricCard, Badge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
 
+  // Contexte de module ou paramètre direct de navigation
+  const listId = listIdParam || moduleCtx?.listId || null;
+  const ctx    = moduleCtx || {};
+  const hasCtx = !!listId;
+
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN'];
 
+  // Hook toujours appelé — garde conditionnelle à l'intérieur
   React.useEffect(() => {
-    const resolve = listId
-      ? DXApi.getList(listId).then(list => {
-          const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
-          const index   = list?.index_symbol || 'SPX';
-          if (tickers.length < 2) return DXApi.getCorrelation(null, DEMO_TICKERS, index);
-          return DXApi.getCorrelation(listId, tickers, index);
-        })
-      : DXApi.getCorrelation(null, DEMO_TICKERS, 'SPX');
-
+    if (!hasCtx) return;
+    const resolve = DXApi.getList(listId).then(list => {
+      const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
+      const index   = list?.index_symbol || ctx.listIndex || 'SPX';
+      if (tickers.length < 2) return DXApi.getCorrelation(null, DEMO_TICKERS, index);
+      return DXApi.getCorrelation(listId, tickers, index);
+    });
     resolve.then(d => { setData(d); setLoading(false); }).catch(() => {
       setData(window.DXData?.corr);
       setLoading(false);
     });
   }, [listId]);
+
+  // Pas de contexte → sélecteur (après les hooks)
+  if (!hasCtx) {
+    return (
+      <window.ModuleCtxPicker
+        lists={lists}
+        onCtx={upd => onModuleCtx && onModuleCtx(upd)}
+        title="Correlation Lab"
+        subtitle="Calculez la matrice de corrélation réalisée et la prime de corrélation implicite (via VIX) pour une liste sélectionnée."
+      />
+    );
+  }
 
   const cellColor = (v) => {
     if (v >= 0.999) return 'var(--bg-elevated)';
@@ -274,6 +290,16 @@ function CorrelationLab({ listId, onNav, mode }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Contexte liste */}
+      {lists && onModuleCtx && ctx.listId && (
+        <window.ModuleCtxBar
+          ctx={ctx}
+          lists={lists}
+          onCtx={upd => onModuleCtx(upd)}
+          onClear={() => onModuleCtx({ listId: null, listName: null })}
+        />
+      )}
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
@@ -282,7 +308,7 @@ function CorrelationLab({ listId, onNav, mode }) {
             Le cœur de la stratégie : ce que le marché price (ρ implicite) face à ce qui a été observé (ρ̂ réalisée). L'écart est la prime de corrélation.
           </p>
         </div>
-        {listId && (
+        {listId && onNav && listIdParam && (
           <button onClick={() => onNav('list-detail', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>← Liste</button>
         )}

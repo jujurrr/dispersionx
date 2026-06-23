@@ -346,4 +346,186 @@ function useToasts() {
   return [toasts, add];
 }
 
-Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, SectionToggle, Sidebar, Topbar, Toast, useToasts });
+/* ─── ModuleCtxPicker : sélecteur de liste/ticker affiché quand aucun contexte n'est défini ─── */
+function ModuleCtxPicker({ lists, onCtx, title, subtitle }) {
+  const [tickerInput, setTickerInput] = React.useState('');
+  const [indexInput, setIndexInput]   = React.useState('SPX');
+  const [hover, setHover] = React.useState(null);
+
+  function submitTicker(e) {
+    e.preventDefault();
+    const t = tickerInput.trim().toUpperCase();
+    if (!t) return;
+    onCtx({ ticker: t, listId: null, listName: null, listIndex: indexInput, index: indexInput });
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 780, margin: '0 auto', padding: '48px 0 24px' }}>
+      <div>
+        <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: '0 0 8px', letterSpacing: 'var(--track-snug)' }}>{title || 'Choisir un contexte'}</h1>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 520 }}>{subtitle || 'Sélectionnez une liste sauvegardée ou entrez un ticker pour analyser un actif individuel.'}</p>
+      </div>
+
+      {/* Listes */}
+      {lists && lists.length > 0 ? (
+        <div>
+          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 12 }}>Mes listes</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+            {lists.map(list => (
+              <button key={list.id}
+                onClick={() => onCtx({ listId: list.id, listName: list.name, listIndex: list.index_symbol || 'SPX', index: list.index_symbol || 'SPX', ticker: null })}
+                onMouseEnter={() => setHover(list.id)} onMouseLeave={() => setHover(null)}
+                style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6,
+                  padding: '14px 16px', borderRadius: 'var(--radius-lg)', cursor: 'pointer',
+                  background: hover === list.id ? 'var(--bg-hover)' : 'var(--bg-card)',
+                  border: `1px solid ${hover === list.id ? 'var(--accent-border)' : 'var(--border)'}`,
+                  color: 'var(--text)', transition: 'all var(--dur-fast) var(--ease)', textAlign: 'left',
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: (list.avg_score || 0) > 60 ? 'var(--pos)' : 'var(--warn)' }} />
+                  <span style={{ font: '600 13px/1 var(--font-sans)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{list.name}</span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                  <span>{list.n_items || 0} actions</span>
+                  <span>·</span>
+                  <span>{list.index_symbol || 'SPX'}</span>
+                  {list.avg_score && <span>· score {list.avg_score.toFixed(0)}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 24, color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+          Aucune liste — créez d'abord une liste dans <strong style={{ color: 'var(--text)' }}>Mes listes</strong>.
+        </div>
+      )}
+
+      {/* Séparateur */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>ou analyser un actif individuel</span>
+        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+      </div>
+
+      {/* Ticker input */}
+      <form onSubmit={submitTicker} style={{ display: 'flex', gap: 8 }}>
+        <input
+          value={tickerInput}
+          onChange={e => setTickerInput(e.target.value.toUpperCase())}
+          placeholder="Ex: AAPL, NVDA, META…"
+          style={{
+            flex: 1, padding: '10px 14px', font: '500 14px/1 var(--font-mono)',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none',
+          }}
+          onFocus={e => { e.target.style.borderColor = 'var(--accent)'; }}
+          onBlur={e => { e.target.style.borderColor = 'var(--border)'; }}
+        />
+        <select value={indexInput} onChange={e => setIndexInput(e.target.value)}
+          style={{
+            padding: '10px 12px', font: '500 13px/1 var(--font-mono)',
+            background: 'var(--bg-card)', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', color: 'var(--text)', cursor: 'pointer',
+          }}>
+          {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map(idx => <option key={idx} value={idx}>{idx}</option>)}
+        </select>
+        <button type="submit" style={{
+          padding: '10px 20px', font: '600 13px/1 var(--font-sans)',
+          background: tickerInput.trim() ? 'var(--accent)' : 'var(--bg-elevated)',
+          color: tickerInput.trim() ? '#fff' : 'var(--text-muted)',
+          border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer',
+          transition: 'all var(--dur-fast) var(--ease)',
+        }}>Analyser →</button>
+      </form>
+    </div>
+  );
+}
+
+/* ─── ModuleCtxBar : barre compacte en haut des modules quand un contexte est actif ─── */
+function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
+  const [open, setOpen] = React.useState(false);
+
+  const label = ctx.ticker
+    ? ctx.ticker + (ctx.index ? ' / ' + ctx.index : '')
+    : ctx.listName || 'Liste sélectionnée';
+
+  const subLabel = ctx.ticker
+    ? 'Actif individuel'
+    : (lists?.find(l => l.id === ctx.listId)?.n_items || '—') + ' actions · ' + (ctx.listIndex || ctx.index || 'SPX');
+
+  return (
+    <div style={{ position: 'relative', marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
+        {/* Contexte actif */}
+        <div style={{ display: 'flex', align: 'center', gap: 8, flex: 1, minWidth: 0 }}>
+          <span style={{ font: '10px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>Contexte</span>
+          <span style={{ font: '600 13px/1 var(--font-mono)', color: 'var(--accent-hover)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{subLabel}</span>
+        </div>
+
+        {/* Boutons */}
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+          <button onClick={() => setOpen(o => !o)} style={{
+            font: '600 11px/1 var(--font-sans)', padding: '5px 10px',
+            background: 'transparent', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+            color: 'var(--text-soft)', cursor: 'pointer',
+          }}>⇄ Changer</button>
+          {onClear && <button onClick={onClear} style={{
+            font: '600 11px/1 var(--font-sans)', padding: '5px 8px',
+            background: 'transparent', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+            color: 'var(--text-dim)', cursor: 'pointer',
+          }}>×</button>}
+        </div>
+      </div>
+
+      {/* Dropdown de sélection rapide */}
+      {open && lists && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 4,
+          background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)',
+          boxShadow: 'var(--shadow-lg)', padding: 12, display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          {lists.map(list => (
+            <button key={list.id} onClick={() => {
+              onCtx({ listId: list.id, listName: list.name, listIndex: list.index_symbol || 'SPX', index: list.index_symbol || 'SPX', ticker: null });
+              setOpen(false);
+            }} style={{
+              display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px',
+              borderRadius: 'var(--radius)', background: list.id === ctx.listId ? 'var(--accent-soft)' : 'transparent',
+              border: `1px solid ${list.id === ctx.listId ? 'var(--accent-border)' : 'transparent'}`,
+              color: list.id === ctx.listId ? 'var(--accent-hover)' : 'var(--text-soft)',
+              cursor: 'pointer', font: '500 13px/1 var(--font-sans)', textAlign: 'left',
+            }}>
+              <span style={{ flex: 1 }}>{list.name}</span>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{list.n_items} · {list.index_symbol || 'SPX'}</span>
+            </button>
+          ))}
+          <div style={{ height: 1, background: 'var(--border)', margin: '4px 0' }} />
+          <div style={{ font: '11px/1 var(--font-sans)', color: 'var(--text-dim)', padding: '4px 12px' }}>ou entrez un ticker</div>
+          <form onSubmit={e => {
+            e.preventDefault();
+            const t = e.target.elements.t.value.trim().toUpperCase();
+            if (!t) return;
+            onCtx({ ticker: t, listId: null, listName: null, index: ctx.index || 'SPX', listIndex: ctx.index || 'SPX' });
+            setOpen(false);
+          }} style={{ display: 'flex', gap: 6, padding: '0 4px' }}>
+            <input name="t" placeholder="AAPL, NVDA…" style={{
+              flex: 1, padding: '7px 10px', font: '500 13px/1 var(--font-mono)',
+              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius)', color: 'var(--text)',
+            }} />
+            <button type="submit" style={{
+              padding: '7px 12px', font: '600 11px/1 var(--font-sans)',
+              background: 'var(--accent)', color: '#fff',
+              border: 'none', borderRadius: 'var(--radius)', cursor: 'pointer',
+            }}>→</button>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });

@@ -12,6 +12,11 @@ function App() {
   const [scoreModal, setScoreModal] = React.useState(null);
   const [scoreCache, setScoreCache] = React.useState({});
   const [duration, setDuration] = React.useState(30);
+  const [moduleCtx, setModuleCtx] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem('dx-module-ctx') || '{}') || {}; } catch { return {}; }
+  });
+  React.useEffect(() => { localStorage.setItem('dx-module-ctx', JSON.stringify(moduleCtx)); }, [moduleCtx]);
+  const onModuleCtx = (upd) => setModuleCtx(prev => ({ ...prev, ...upd }));
   const [splash, setSplash] = React.useState(null);
   const [user, setUser] = React.useState(() => {
     try { return JSON.parse(localStorage.getItem('dx-user') || 'null'); } catch { return null; }
@@ -100,16 +105,16 @@ function App() {
       screenEl = <window.ListDetail listId={params.listId} onNav={onNav} onScore={onScore} addToast={addToast} mode={mode} scoreCache={scoreCache} />;
       break;
     case 'dashboard':
-      screenEl = <window.Dashboard onNav={onNav} lists={lists} mode={mode} />;
+      screenEl = <window.Dashboard onNav={onNav} lists={lists} mode={mode} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'corr':
-      screenEl = <window.CorrelationLab listId={params.listId} onNav={onNav} mode={mode} />;
+      screenEl = <window.CorrelationLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'vol':
-      screenEl = <window.VolatilityLab mode={mode} />;
+      screenEl = <window.VolatilityLab mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} onNav={onNav} />;
       break;
     case 'risk':
-      screenEl = <window.RiskLab listId={params.listId} onNav={onNav} mode={mode} />;
+      screenEl = <window.RiskLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'builder':
       screenEl = <window.Builder listId={params.listId} onNav={onNav} mode={mode} />;
