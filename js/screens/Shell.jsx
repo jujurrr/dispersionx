@@ -350,6 +350,24 @@ function useToasts() {
 function useTickerCatalog(lists) {
   return React.useMemo(() => {
     const map = {};
+
+    // 1. Pré-remplir avec TOUS les composants connus des indices (noms inclus)
+    const INDEX_SYMS = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
+    if (window.DXMock?.getComponents) {
+      INDEX_SYMS.forEach(idx => {
+        (window.DXMock.getComponents(idx) || []).forEach(c => {
+          if (!c.ticker) return;
+          if (!map[c.ticker]) {
+            map[c.ticker] = { ticker: c.ticker, name: c.name || null, score: c.score ?? null, primaryIndex: idx, indices: [idx], inLists: [] };
+          } else {
+            if (!map[c.ticker].indices.includes(idx)) map[c.ticker].indices.push(idx);
+            if (!map[c.ticker].name && c.name) map[c.ticker].name = c.name;
+          }
+        });
+      });
+    }
+
+    // 2. Enrichir / surcharger avec les données des listes utilisateur
     (lists || []).forEach(list => {
       const idx = list.index_symbol || 'SPX';
       (list.items || []).forEach(item => {
@@ -361,13 +379,15 @@ function useTickerCatalog(lists) {
         if (!map[t]) {
           map[t] = { ticker: t, name, score, primaryIndex: idx, indices: [idx], inLists: [list.name] };
         } else {
+          if (name) map[t].name = name;                     // nom calculé > nom mock
+          if (score != null) map[t].score = score;          // score réel > score mock
           if (!map[t].indices.includes(idx)) map[t].indices.push(idx);
-          map[t].inLists.push(list.name);
-          if (!map[t].name  && name)  map[t].name  = name;
-          if (map[t].score == null && score != null) map[t].score = score;
+          map[t].primaryIndex = idx;                        // indice de la liste utilisateur en priorité
+          if (!map[t].inLists.includes(list.name)) map[t].inLists.push(list.name);
         }
       });
     });
+
     return Object.values(map).sort((a, b) => a.ticker.localeCompare(b.ticker));
   }, [lists]);
 }
@@ -425,33 +445,41 @@ function SuggestionItem({ item, focused, onPick }) {
 
 /* ─── ModuleCtxPicker : sélecteur de liste/ticker affiché quand aucun contexte n'est défini ─── */
 function ModuleCtxPicker({ lists, onCtx, title, subtitle }) {
-  const [q, setQ]             = React.useState('');
+  const [q, setQ]               = React.useState('');
   const [showSugg, setShowSugg] = React.useState(false);
-  const [focused, setFocused] = React.useState(-1);
+  const [focused, setFocused]   = React.useState(-1);
   const [hoverList, setHoverList] = React.useState(null);
-  const [manualIndex, setManualIndex] = React.useState('SPX');
+  const [selectedIndex, setSelectedIndex] = React.useState('SPX');
   const inputRef = React.useRef(null);
 
   const catalog     = useTickerCatalog(lists);
   const suggestions = React.useMemo(() => filterCatalog(catalog, q), [catalog, q]);
   const foundInCatalog = catalog.find(c => c.ticker === q.trim().toUpperCase()) || null;
+  const showIndexPicker = q.trim().length > 0; // toujours visible quand on tape
 
   React.useEffect(() => {
     setShowSugg(q.trim().length > 0 && suggestions.length > 0);
     setFocused(-1);
   }, [q, suggestions.length]);
 
+  // Quand on trouve l'actif dans le catalogue, pré-sélectionner son indice
+  React.useEffect(() => {
+    if (foundInCatalog) setSelectedIndex(foundInCatalog.primaryIndex);
+  }, [foundInCatalog?.primaryIndex]);
+
+  // Cliquer sur suggestion = remplir l'input (pas naviguer immédiatement)
   function pick(item) {
-    setShowSugg(false); setQ('');
-    onCtx({ ticker: item.ticker, listId: null, listName: null, listIndex: item.primaryIndex, index: item.primaryIndex });
+    setQ(item.ticker);
+    setSelectedIndex(item.primaryIndex);
+    setShowSugg(false);
+    inputRef.current?.focus();
   }
 
-  function submitManual(e) {
-    e.preventDefault();
+  function submit(e) {
+    e?.preventDefault();
     const t = q.trim().toUpperCase();
     if (!t) return;
-    if (foundInCatalog) { pick(foundInCatalog); return; }
-    onCtx({ ticker: t, listId: null, listName: null, listIndex: manualIndex, index: manualIndex });
+    onCtx({ ticker: t, listId: null, listName: null, listIndex: selectedIndex, index: selectedIndex });
   }
 
   function onKeyDown(e) {
@@ -461,8 +489,6 @@ function ModuleCtxPicker({ lists, onCtx, title, subtitle }) {
     else if (e.key === 'Enter' && focused >= 0) { e.preventDefault(); pick(suggestions[focused]); }
     else if (e.key === 'Escape') setShowSugg(false);
   }
-
-  const isUnknown = q.trim().length > 0 && !foundInCatalog && suggestions.length === 0;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 32, maxWidth: 820, margin: '0 auto', padding: '48px 0 24px' }}>
@@ -516,93 +542,92 @@ function ModuleCtxPicker({ lists, onCtx, title, subtitle }) {
 
       {/* Recherche avec autocomplete */}
       <div>
-        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 12 }}>Recherche par actif</div>
-        <form onSubmit={submitManual}>
-          <div style={{ position: 'relative' }}>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ position: 'relative', flex: 1 }}>
-                <input
-                  ref={inputRef}
-                  value={q}
-                  onChange={e => setQ(e.target.value)}
-                  onKeyDown={onKeyDown}
-                  onBlur={() => setTimeout(() => setShowSugg(false), 160)}
-                  onFocus={() => q.trim() && suggestions.length > 0 && setShowSugg(true)}
-                  placeholder="Tapez un ticker ou un nom : AAPL, Nvidia, SAP…"
-                  autoComplete="off"
-                  style={{
-                    width: '100%', padding: '11px 14px', font: '500 14px/1 var(--font-mono)',
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderRadius: showSugg ? 'var(--radius) var(--radius) 0 0' : 'var(--radius)',
-                    color: 'var(--text)', outline: 'none', boxSizing: 'border-box',
-                    borderColor: showSugg ? 'var(--accent)' : 'var(--border)',
-                    transition: 'border-color var(--dur-fast) var(--ease)',
-                  }}
-                />
-                {/* Dropdown suggestions */}
-                {showSugg && (
-                  <div style={{
-                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 400,
-                    background: 'var(--bg-card)', border: '1px solid var(--accent)',
-                    borderTop: 'none', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
-                    boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
-                  }}>
-                    {suggestions.map((s, i) => (
-                      <SuggestionItem key={s.ticker} item={s} focused={i === focused} onPick={pick} />
-                    ))}
-                    <div style={{ padding: '6px 14px', font: '10px/1 var(--font-sans)', color: 'var(--text-dim)', background: 'var(--bg-elevated)' }}>
-                      ↑↓ naviguer · Entrée sélectionner · Esc fermer
-                    </div>
-                  </div>
-                )}
-              </div>
-              <button type="submit"
-                disabled={!q.trim()}
+        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', marginBottom: 12 }}>Analyser un actif individuel</div>
+        <form onSubmit={submit}>
+          {/* Champ + bouton */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <div style={{ position: 'relative', flex: 1 }}>
+              <input
+                ref={inputRef}
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                onKeyDown={onKeyDown}
+                onBlur={() => setTimeout(() => setShowSugg(false), 160)}
+                onFocus={() => q.trim() && suggestions.length > 0 && setShowSugg(true)}
+                placeholder="Tapez un ticker ou un nom : AAPL, Nvidia, SAP…"
+                autoComplete="off"
                 style={{
-                  padding: '11px 22px', font: '600 13px/1 var(--font-sans)', flexShrink: 0,
-                  background: q.trim() ? 'var(--accent)' : 'var(--bg-elevated)',
-                  color: q.trim() ? '#fff' : 'var(--text-muted)',
-                  border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-                  cursor: q.trim() ? 'pointer' : 'default',
-                  transition: 'all var(--dur-fast) var(--ease)',
-                }}>Analyser →</button>
+                  width: '100%', padding: '11px 14px', font: '500 14px/1 var(--font-mono)',
+                  background: 'var(--bg-card)', border: '1px solid var(--border)',
+                  borderRadius: showSugg ? 'var(--radius) var(--radius) 0 0' : 'var(--radius)',
+                  color: 'var(--text)', outline: 'none', boxSizing: 'border-box',
+                  borderColor: showSugg ? 'var(--accent)' : 'var(--border)',
+                  transition: 'border-color var(--dur-fast) var(--ease)',
+                }}
+              />
+              {/* Dropdown suggestions */}
+              {showSugg && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 400,
+                  background: 'var(--bg-card)', border: '1px solid var(--accent)',
+                  borderTop: 'none', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
+                  boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+                }}>
+                  {suggestions.map((s, i) => (
+                    <SuggestionItem key={s.ticker} item={s} focused={i === focused} onPick={pick} />
+                  ))}
+                  <div style={{ padding: '6px 14px', font: '10px/1 var(--font-sans)', color: 'var(--text-dim)', background: 'var(--bg-elevated)' }}>
+                    ↑↓ naviguer · Entrée pour remplir · Esc fermer
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Ticker inconnu → sélection d'indice manuelle */}
-            {isUnknown && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
-                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                  Ticker non trouvé dans vos listes — choisir l'indice de référence :
-                </span>
-                {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map(idx => (
-                  <button key={idx} type="button"
-                    onClick={() => onCtx({ ticker: q.trim().toUpperCase(), listId: null, listName: null, listIndex: idx, index: idx })}
-                    style={{
-                      padding: '5px 10px', font: '700 11px/1 var(--font-mono)',
-                      background: manualIndex === idx ? 'var(--accent)' : 'var(--bg-elevated)',
-                      color: manualIndex === idx ? '#fff' : 'var(--text-soft)',
-                      border: `1px solid ${manualIndex === idx ? 'var(--accent)' : 'var(--border)'}`,
-                      borderRadius: 'var(--radius)', cursor: 'pointer',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                    onMouseLeave={e => e.currentTarget.style.borderColor = manualIndex === idx ? 'var(--accent)' : 'var(--border)'}
-                  >{idx}</button>
-                ))}
-              </div>
-            )}
-
-            {/* Ticker trouvé dans le catalogue → afficher son indice */}
-            {foundInCatalog && q.trim().length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                <span style={{ font: 'var(--type-caption)', color: 'var(--pos)' }}>✓</span>
-                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                  {foundInCatalog.ticker}{foundInCatalog.name ? ` — ${foundInCatalog.name}` : ''} ·
-                  comparé vs <strong style={{ color: 'var(--text)' }}>{foundInCatalog.primaryIndex}</strong>
-                  {foundInCatalog.indices.length > 1 ? ` (aussi ${foundInCatalog.indices.slice(1).join(', ')})` : ''}
-                </span>
-              </div>
-            )}
+            <button type="submit"
+              disabled={!q.trim()}
+              style={{
+                padding: '11px 22px', font: '600 13px/1 var(--font-sans)', flexShrink: 0,
+                background: q.trim() ? 'var(--accent)' : 'var(--bg-elevated)',
+                color: q.trim() ? '#fff' : 'var(--text-muted)',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                cursor: q.trim() ? 'pointer' : 'default',
+                transition: 'all var(--dur-fast) var(--ease)',
+              }}>Analyser →</button>
           </div>
+
+          {/* Sélecteur d'indice — toujours visible quand on tape */}
+          {showIndexPicker && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                Comparer vs :
+              </span>
+              {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map(idx => {
+                const isAuto = foundInCatalog?.indices?.includes(idx);
+                const isSel  = selectedIndex === idx;
+                return (
+                  <button key={idx} type="button"
+                    onClick={() => setSelectedIndex(idx)}
+                    style={{
+                      padding: '5px 12px', font: '700 11px/1 var(--font-mono)',
+                      background: isSel ? 'var(--accent)' : 'var(--bg-elevated)',
+                      color: isSel ? '#fff' : isAuto ? 'var(--accent-hover)' : 'var(--text-soft)',
+                      border: `1px solid ${isSel ? 'var(--accent)' : isAuto ? 'var(--accent-border)' : 'var(--border)'}`,
+                      borderRadius: 'var(--radius)', cursor: 'pointer',
+                      transition: 'all var(--dur-fast) var(--ease)',
+                    }}
+                  >
+                    {idx}
+                    {isAuto && !isSel && <span style={{ marginLeft: 3, font: '9px/1 var(--font-sans)', opacity: 0.7 }}>✓</span>}
+                  </button>
+                );
+              })}
+              {foundInCatalog && (
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginLeft: 4 }}>
+                  {foundInCatalog.name ? `· ${foundInCatalog.name}` : ''}
+                  {foundInCatalog.score != null ? ` · score ${Math.round(foundInCatalog.score)}` : ''}
+                </span>
+              )}
+            </div>
+          )}
         </form>
       </div>
     </div>
