@@ -243,7 +243,7 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
   );
 }
 
-function Topbar({ crumbs, mode, onMode, activeList, onNav, user }) {
+function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress }) {
   const [apiOn, setApiOn] = React.useState(window.DXApi ? window.DXApi.isConnected() : null);
 
   React.useEffect(() => {
@@ -290,6 +290,37 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user }) {
           <span style={{ width: 6, height: 6, borderRadius: '50%', background: apiOn ? 'var(--pos)' : 'var(--warn)' }} />
           {apiOn ? 'Marché ouvert · USD' : 'Mode démo'}
         </div>
+
+        {/* Indicateur de progression des données — discret */}
+        {dataProgress && dataProgress.queued > 0 && (() => {
+          const pct = Math.min(100, Math.round(dataProgress.done / dataProgress.queued * 100));
+          const done = dataProgress.done >= dataProgress.queued;
+          return (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 5,
+              padding: '3px 9px',
+              background: 'var(--bg-elevated)',
+              border: `1px solid ${done ? 'var(--pos)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius-pill)',
+              transition: 'border-color 0.5s ease',
+            }}>
+              {done ? (
+                <span style={{ font: '10px/1', color: 'var(--pos-bright)' }}>✓</span>
+              ) : (
+                <div style={{ width: 36, height: 2, background: 'var(--bg-base)', borderRadius: 1, overflow: 'hidden' }}>
+                  <div style={{ height: '100%', width: pct + '%', background: 'var(--accent)', borderRadius: 1, transition: 'width 0.35s ease' }} />
+                </div>
+              )}
+              <span style={{
+                font: '600 9px/1 var(--font-mono)', letterSpacing: '0.05em',
+                color: done ? 'var(--pos-bright)' : 'var(--text-dim)',
+                transition: 'color 0.5s ease',
+              }}>
+                {done ? 'CHARGÉ' : `${pct}%`}
+              </span>
+            </div>
+          );
+        })()}
         <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
           {['Débutant', 'Avancé'].map((m) => (
             <button key={m} onClick={() => onMode(m)} style={{

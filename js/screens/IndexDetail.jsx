@@ -1,5 +1,8 @@
+/* ─── Cache session par indice (persist tant que la page est ouverte) ─── */
+const _IDX_CACHE = {};
+
 /* ─── Index Detail: Components table with search, sort, quotes ── */
-function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, scoreCache }) {
+function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, scoreCache, onDataQueued, onDataDone }) {
   const { Badge, ScoreBadge } = window.DispersionXDesignSystem_cb86be;
   const [index, setIndex] = React.useState(null);
   const [snap, setSnap] = React.useState(null);
@@ -13,16 +16,27 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
   const abortRef = React.useRef(null);
   const compsRef = React.useRef([]);
 
-  function startScoring(comps, sym, dur) {
+  // startScoring : skip = Set de tickers déjà calculés, initialScores = objet déjà connu
+  function startScoring(comps, sym, dur, initialScores) {
     if (abortRef.current) abortRef.current.cancelled = true;
     const abort = { cancelled: false };
     abortRef.current = abort;
     if (!comps || !comps.length) return;
+
     const BATCH = 5;
-    const tickers = comps.map(c => c.ticker);
-    setLiveScores({});
-    setScoreProgress({ done: 0, total: tickers.length, running: true });
-    let done = 0;
+    const known = initialScores || {};
+    const tickers = comps.map(c => c.ticker).filter(t => known[t] == null);
+    const alreadyDone = comps.length - tickers.length;
+
+    if (tickers.length === 0) {
+      setScoreProgress({ done: comps.length, total: comps.length, running: false });
+      return;
+    }
+
+    setScoreProgress({ done: alreadyDone, total: comps.length, running: true });
+    onDataQueued?.(tickers.length);
+
+    let done = alreadyDone;
     (async () => {
       for (let i = 0; i < tickers.length; i += BATCH) {
         if (abort.cancelled) break;
@@ -31,21 +45,64 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
           try {
             const r = await DXApi.autoScore(sym, ticker, dur);
             const sc = r?.scoring?.score;
-            if (sc != null && !abort.cancelled) setLiveScores(prev => ({ ...prev, [ticker]: sc }));
+            if (sc != null && !abort.cancelled) {
+              setLiveScores(prev => ({ ...prev, [ticker]: sc }));
+              if (_IDX_CACHE[sym]) _IDX_CACHE[sym].liveScores[ticker] = sc;
+            }
           } catch {}
           done++;
-          if (!abort.cancelled) setScoreProgress(prev => ({ ...prev, done }));
+          if (!abort.cancelled) {
+            setScoreProgress(prev => ({ ...prev, done }));
+            onDataDone?.(1);
+          }
         }));
       }
-      if (!abort.cancelled) setScoreProgress(prev => ({ ...prev, running: false }));
+      if (!abort.cancelled) {
+        setScoreProgress(prev => ({ ...prev, running: false }));
+        if (_IDX_CACHE[sym]) _IDX_CACHE[sym].fullyScored = true;
+      }
     })();
   }
 
+  function loadQuotes(tickers, sym) {
+    for (let i = 0; i < tickers.length; i += 40) {
+      DXApi.batchQuotes(tickers.slice(i, i + 40), true, true).then(q => {
+        setQuotes(prev => { const next = { ...prev }; q.forEach(r => { next[r.ticker] = r; }); return next; });
+        if (_IDX_CACHE[sym]) q.forEach(r => { _IDX_CACHE[sym].quotes[r.ticker] = r; });
+      }).catch(() => {});
+    }
+  }
+
   React.useEffect(() => {
+    if (abortRef.current) abortRef.current.cancelled = true;
+    const cached = _IDX_CACHE[symbol];
+
+    if (cached) {
+      // Restauration immédiate depuis le cache — pas de spinner
+      setIndex(cached.index);
+      setSnap(cached.snap);
+      setComponents(cached.components);
+      compsRef.current = cached.components;
+      setQuotes(cached.quotes || {});
+      setLiveScores(cached.liveScores || {});
+      setLoading(false);
+
+      if (cached.fullyScored) {
+        setScoreProgress({ done: cached.components.length, total: cached.components.length, running: false });
+      } else {
+        // Continuer le scoring là où il s'était arrêté
+        startScoring(cached.components, symbol, duration, cached.liveScores || {});
+      }
+      // Rafraîchir les cours silencieusement
+      loadQuotes(cached.components.map(c => c.ticker), symbol);
+      return () => { if (abortRef.current) abortRef.current.cancelled = true; };
+    }
+
+    // Premier chargement
     setLoading(true);
     setLiveScores({});
     setScoreProgress({ done: 0, total: 0, running: false });
-    if (abortRef.current) abortRef.current.cancelled = true;
+
     Promise.all([
       DXApi.getIndex(symbol),
       DXApi.getSnapshot(symbol),
@@ -56,25 +113,23 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
       setComponents(comps);
       compsRef.current = comps;
       setLoading(false);
-      // Load quotes in chunks of 40
-      const tickers = comps.map(c => c.ticker);
-      for (let i = 0; i < tickers.length; i += 40) {
-        DXApi.batchQuotes(tickers.slice(i, i + 40), true, true).then(q => {
-          setQuotes(prev => {
-            const next = { ...prev };
-            q.forEach(r => { next[r.ticker] = r; });
-            return next;
-          });
-        }).catch(() => {});
-      }
+      _IDX_CACHE[symbol] = { index: idx, snap: sn, components: comps, quotes: {}, liveScores: {}, fullyScored: false };
+      loadQuotes(comps.map(c => c.ticker), symbol);
       startScoring(comps, symbol, duration);
     }).catch(() => setLoading(false));
+
     return () => { if (abortRef.current) abortRef.current.cancelled = true; };
   }, [symbol]);
 
-  // Re-score when duration changes (without reloading components)
+  // Changement de durée : invalidation du cache des scores et re-scoring complet
   React.useEffect(() => {
-    if (compsRef.current.length) startScoring(compsRef.current, symbol, duration);
+    if (!compsRef.current.length) return;
+    if (_IDX_CACHE[symbol]) {
+      _IDX_CACHE[symbol].liveScores = {};
+      _IDX_CACHE[symbol].fullyScored = false;
+    }
+    setLiveScores({});
+    startScoring(compsRef.current, symbol, duration);
   }, [duration]);
 
   // Filter

@@ -23,6 +23,11 @@ function App() {
   });
   const [toasts, addToast] = window.useToasts();
 
+  // Progression globale du chargement des données (scores, composantes)
+  const [dataProgress, setDataProgress] = React.useState({ queued: 0, done: 0 });
+  const onDataQueued = React.useCallback(n => setDataProgress(p => ({ queued: p.queued + n, done: p.done })), []);
+  const onDataDone   = React.useCallback(n => setDataProgress(p => ({ queued: p.queued, done: p.done + n })), []);
+
   function handleAuth(u) {
     setUser(u);
     if (u) localStorage.setItem('dx-user', JSON.stringify(u));
@@ -96,7 +101,7 @@ function App() {
       screenEl = <window.Home onNav={onNav} lists={lists} mode={mode} />;
       break;
     case 'index-detail':
-      screenEl = <window.IndexDetail symbol={params.symbol} onNav={onNav} onScore={onScore} duration={duration} onDuration={setDuration} mode={mode} scoreCache={scoreCache} />;
+      screenEl = <window.IndexDetail symbol={params.symbol} onNav={onNav} onScore={onScore} duration={duration} onDuration={setDuration} mode={mode} scoreCache={scoreCache} onDataQueued={onDataQueued} onDataDone={onDataDone} />;
       break;
     case 'lists':
       screenEl = <window.Lists onNav={onNav} onListsChange={setLists} addToast={addToast} />;
@@ -177,7 +182,7 @@ function App() {
     <div style={{ display: 'grid', gridTemplateColumns: 'var(--sidebar-w, 220px) 1fr', height: '100vh', overflow: 'hidden' }}>
       <window.Sidebar active={screen} onNav={onNav} lists={lists} />
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
-        <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} />
+        <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} dataProgress={dataProgress} />
         <main style={{
           flex: 1, overflowY: 'auto', padding: '24px 28px 64px',
           backgroundImage: 'radial-gradient(ellipse 70% 50% at 80% -5%, var(--accent-soft), transparent 60%), radial-gradient(ellipse 50% 40% at 0% 10%, var(--pos-soft), transparent 55%)',
@@ -204,6 +209,21 @@ function App() {
       {/* Toast notifications */}
       <window.Toast toasts={toasts} remove={() => {}} />
     </div>
+    {/* Barre de progression fine en haut (2px, au-dessus de tout) */}
+    {dataProgress.queued > 0 && (() => {
+      const pct = Math.min(100, Math.round(dataProgress.done / dataProgress.queued * 100));
+      return (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, height: 2, pointerEvents: 'none', background: 'var(--bg-elevated)' }}>
+          <div style={{
+            height: '100%', width: pct + '%',
+            background: pct >= 100 ? 'var(--pos)' : 'var(--accent)',
+            boxShadow: pct < 100 ? '0 0 7px var(--accent)' : 'none',
+            transition: 'width 0.4s ease, background 0.6s ease, box-shadow 0.6s ease',
+            borderRadius: '0 1px 1px 0',
+          }} />
+        </div>
+      );
+    })()}
     {splashEl}
     </React.Fragment>
   );
