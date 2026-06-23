@@ -1,5 +1,5 @@
 /* ─── Index Detail: Components table with search, sort, quotes ── */
-function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
+function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, scoreCache }) {
   const { Badge, ScoreBadge } = window.DispersionXDesignSystem_cb86be;
   const [index, setIndex] = React.useState(null);
   const [snap, setSnap] = React.useState(null);
@@ -40,8 +40,8 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode }) {
     !q || c.ticker.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
   );
 
-  // Score effectif (déterministe) — identique à celui du ScoreModal
-  const effScore = (c) => c.score != null ? c.score : (window.DXMock && window.DXMock.scoreFor ? window.DXMock.scoreFor(c.ticker) : null);
+  // Score réel uniquement — null si non encore calculé (autoScore requis)
+  const effScore = (c) => c.score != null ? c.score : (scoreCache?.[c.ticker] ?? null);
 
   // Sort
   const getSortVal = (c) => {

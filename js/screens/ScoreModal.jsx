@@ -1,5 +1,5 @@
 /* ─── Score Modal: full auto-score detail ─────────────────────── */
-function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAddedToList, addToast, mode }) {
+function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAddedToList, addToast, mode, onScoreLoaded }) {
   const { ScoreBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -11,6 +11,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
     DXApi.autoScore(indexSymbol, stockTicker, duration).then(d => {
       setData(d);
       setLoading(false);
+      onScoreLoaded && onScoreLoaded(stockTicker, d?.scoring?.score);
       // Surcouche : IV ATM + greeks réels (MarketData → Alpaca options)
       DXApi.getOptionAtm(stockTicker, duration).then(opt => {
         if (opt && opt.iv) {

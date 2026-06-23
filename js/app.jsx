@@ -10,6 +10,7 @@ function App() {
   const [mode, setMode] = React.useState(() => localStorage.getItem('dx-mode') || 'Débutant');
   const [lists, setLists] = React.useState([]);
   const [scoreModal, setScoreModal] = React.useState(null);
+  const [scoreCache, setScoreCache] = React.useState({});
   const [duration, setDuration] = React.useState(30);
   const [splash, setSplash] = React.useState(null);
   const [user, setUser] = React.useState(() => {
@@ -90,7 +91,7 @@ function App() {
       screenEl = <window.Home onNav={onNav} lists={lists} mode={mode} />;
       break;
     case 'index-detail':
-      screenEl = <window.IndexDetail symbol={params.symbol} onNav={onNav} onScore={onScore} duration={duration} onDuration={setDuration} mode={mode} />;
+      screenEl = <window.IndexDetail symbol={params.symbol} onNav={onNav} onScore={onScore} duration={duration} onDuration={setDuration} mode={mode} scoreCache={scoreCache} />;
       break;
     case 'lists':
       screenEl = <window.Lists onNav={onNav} onListsChange={setLists} addToast={addToast} />;
@@ -191,6 +192,7 @@ function App() {
           onAddedToList={onAddedToList}
           addToast={addToast}
           mode={mode}
+          onScoreLoaded={(ticker, score) => score != null && setScoreCache(prev => ({ ...prev, [ticker]: score }))}
         />
       )}
 
