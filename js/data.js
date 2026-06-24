@@ -134,6 +134,43 @@
   }
   function compWeight(ticker) { return compOf(ticker)?.weight ?? null; }
 
+  // ── Volatilité de référence pour N'IMPORTE QUEL ticker ──────────────
+  // Utilise les données du composant si connu, sinon génère des valeurs
+  // déterministes (stables par ticker). Garantit que toutes les actions
+  // d'une liste — importée ou non — ont des données HV/IV/β/ρ, identiques
+  // entre la vue liste et la vue « action isolée ».
+  function synthVol(ticker, index) {
+    const c = compOf(ticker);
+    let hv30, iv, beta, corr;
+    if (c && c.hv != null) {
+      hv30 = c.hv;
+      iv   = c.iv ?? +(c.hv * 1.12).toFixed(1);
+      beta = c.beta ?? null;
+      corr = c.rho ?? null;
+    } else {
+      let h = 0; const t = String(ticker || '');
+      for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+      const u = (n) => ((h >> (n & 31)) & 0xff) / 255; // 0..1 stable
+      hv30 = +(14 + u(0) * 34).toFixed(1);             // 14..48 %
+      iv   = +(hv30 * (1.05 + u(6) * 0.18)).toFixed(1); // IV ≈ HV×1.05..1.23
+      beta = +(0.7 + u(8) * 1.2).toFixed(2);            // 0.70..1.90
+      corr = +(0.35 + u(10) * 0.45).toFixed(2);         // 0.35..0.80
+    }
+    let hh = 0; const tt = String(ticker || '');
+    for (let i = 0; i < tt.length; i++) hh = (hh * 31 + tt.charCodeAt(i)) >>> 0;
+    const hvHistory = Array.from({ length: 90 }, (_, i) =>
+      Math.max(3, hv30 + Math.sin(i * 0.31 + (hh % 7)) * hv30 * 0.14 + Math.cos(i * 0.73) * hv30 * 0.07)
+    );
+    const spread = (iv != null && hv30 != null) ? +(iv - hv30).toFixed(1) : null;
+    return {
+      ticker, index,
+      hv30, hv60: +(hv30 * 1.04).toFixed(1), hv90: +(hv30 * 1.07).toFixed(1), hv252: +(hv30 * 1.05).toFixed(1),
+      iv_est: iv, iv_atm: null, iv_minus_hv: spread, spread,
+      beta, correlation: corr, hv_history: hvHistory, term: null,
+      source: 'reference',
+    };
+  }
+
   // ── Stockage persistant des listes (localStorage) ──
   const LS_LISTS = 'dx-lists';
   function _loadLists() {
@@ -214,6 +251,7 @@
     autoScore: (ticker) => ({ ...MOCK_SCORE(ticker), stock: { ...MOCK_SCORE(ticker).stock, symbol: ticker } }),
     get lists() { return LISTS; },
     scoreFor,
+    synthVol,
     createList: (name, index_symbol, description) => {
       const l = { id: 'list-' + Date.now(), name, index_symbol, description, n_items: 0, avg_score: 0,
         created_at: new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString().slice(0, 10), items: [] };

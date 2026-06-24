@@ -250,38 +250,17 @@ function SingleTickerCorr({ ctx, onCtx, lists, mode }) {
     if (!ticker) return;
     setLoading(true); setVol(null);
 
+    // Fallback : données de référence pour n'importe quel ticker (connu ou
+    // importé). Une action d'une liste basée sur cet indice s'affiche donc
+    // toujours, sans message « ne fait pas partie de l'indice ».
+    const fallback = () => window.DXMock?.synthVol ? window.DXMock.synthVol(ticker, index) : null;
     DXApi.getTickerVol(ticker, index)
       .then(d => {
-        if (d && !d.error) {
-          setVol(d);
-        } else {
-          // Fallback : données des composantes connues (DXMock)
-          const comps = window.DXMock?.getComponents?.(index) || [];
-          const c = comps.find(x => x.ticker === ticker);
-          setVol(c ? {
-            ticker, index,
-            hv30: c.hv, hv60: null, hv90: null, hv252: null,
-            iv_est: c.iv, iv_atm: null,
-            iv_minus_hv: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
-            beta: c.beta ?? null,
-            correlation: c.rho ?? null,
-            source: 'reference',
-          } : null);
-        }
+        setVol((d && !d.error) ? d : fallback());
         setLoading(false);
       })
       .catch(() => {
-        const comps = window.DXMock?.getComponents?.(index) || [];
-        const c = comps.find(x => x.ticker === ticker);
-        setVol(c ? {
-          ticker, index,
-          hv30: c.hv, hv60: null, hv90: null, hv252: null,
-          iv_est: c.iv, iv_atm: null,
-          iv_minus_hv: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
-          beta: c.beta ?? null,
-          correlation: c.rho ?? null,
-          source: 'reference',
-        } : null);
+        setVol(fallback());
         setLoading(false);
       });
   }, [ticker, index]);
