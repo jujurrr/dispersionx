@@ -89,12 +89,36 @@
   }
 
   /* ── Stocks (scoring) ────────────────────────────────────────── */
+  // Cache mémoïsé : une même (indice, action, durée) renvoie TOUJOURS le
+  // même résultat, pour que la table de l'indice, le ScoreModal et les
+  // listes affichent exactement le même score. Évite les valeurs qui
+  // « changent » entre l'affichage et le chargement.
+  const _scoreCache = {};     // key -> résultat résolu
+  const _scoreInflight = {};  // key -> promesse en cours (dédoublonnage)
+  function _scoreKey(i, s, d, x) { return [i, s, d, x ? 1 : 0].join('|'); }
+
   async function autoScore(index_symbol, stock_symbol, duration_days, use_ex_action = false) {
-    try {
-      return await _post('/stocks/auto-score', { index_symbol, stock_symbol, duration_days, use_ex_action });
-    } catch {
-      return window.DXMock.autoScore(stock_symbol);
-    }
+    const key = _scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action);
+    if (_scoreCache[key]) return _scoreCache[key];
+    if (_scoreInflight[key]) return _scoreInflight[key];
+    const p = (async () => {
+      try {
+        return await _post('/stocks/auto-score', { index_symbol, stock_symbol, duration_days, use_ex_action });
+      } catch {
+        return window.DXMock.autoScore(stock_symbol);
+      }
+    })().then(r => { _scoreCache[key] = r; delete _scoreInflight[key]; return r; },
+            e => { delete _scoreInflight[key]; throw e; });
+    _scoreInflight[key] = p;
+    return p;
+  }
+  // Lecture synchrone du score déjà calculé (null si pas encore en cache).
+  function getCachedScore(index_symbol, stock_symbol, duration_days, use_ex_action = false) {
+    const r = _scoreCache[_scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action)];
+    return r ? (r.scoring?.score ?? null) : null;
+  }
+  function clearScoreCache() {
+    for (const k in _scoreCache) delete _scoreCache[k];
   }
 
   /* ── Options (IV ATM + greeks) ───────────────────────────────── */
@@ -243,7 +267,7 @@
     checkHealth, isConnected,
     getIndices, getIndex, getSnapshot, getComponents, getSources,
     batchQuotes,
-    autoScore, getOptionAtm,
+    autoScore, getCachedScore, clearScoreCache, getOptionAtm,
     getLists, createList, getList, updateList, deleteList,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,

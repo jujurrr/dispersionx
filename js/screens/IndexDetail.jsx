@@ -1,136 +1,43 @@
-/* ─── Cache session par indice (persist tant que la page est ouverte) ─── */
-const _IDX_CACHE = {};
-
-/* ─── Index Detail: Components table with search, sort, quotes ── */
-function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, scoreCache, onDataQueued, onDataDone }) {
+/* ─── Index Detail: Components table with search, sort, quotes ──
+   Toutes les données (composants, cours, scores) proviennent du store
+   global (DXStore), préchargé au démarrage du site. Revenir sur un
+   indice après un changement d'onglet est donc instantané, et les
+   scores affichés ici sont EXACTEMENT ceux du ScoreModal (même cache
+   mémoïsé DXApi.autoScore). */
+function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, scoreCache }) {
   const { Badge, ScoreBadge } = window.DispersionXDesignSystem_cb86be;
-  const [index, setIndex] = React.useState(null);
-  const [snap, setSnap] = React.useState(null);
-  const [components, setComponents] = React.useState([]);
-  const [quotes, setQuotes] = React.useState({});
-  const [liveScores, setLiveScores] = React.useState({});
-  const [scoreProgress, setScoreProgress] = React.useState({ done: 0, total: 0, running: false });
   const [search, setSearch] = React.useState('');
   const [sort, setSort] = React.useState({ key: null, dir: 0 }); // dir: 0=none, 1=asc, -1=desc
-  const [loading, setLoading] = React.useState(true);
-  const abortRef = React.useRef(null);
-  const compsRef = React.useRef([]);
+  const [, setTick] = React.useState(0); // re-render quand le store met l'indice à jour
 
-  // startScoring : skip = Set de tickers déjà calculés, initialScores = objet déjà connu
-  function startScoring(comps, sym, dur, initialScores) {
-    if (abortRef.current) abortRef.current.cancelled = true;
-    const abort = { cancelled: false };
-    abortRef.current = abort;
-    if (!comps || !comps.length) return;
+  // ── Données dérivées du store global ──
+  const data = (window.DXStore && window.DXStore.getIndexData(symbol)) || null;
+  const index = data?.index || null;
+  const snap = data?.snap || null;
+  const components = data?.components || [];
+  const quotes = data?.quotes || {};
+  const scores = (window.DXStore && window.DXStore.getScores(symbol, duration)) || {};
+  const scoringRunning = !!(window.DXStore && window.DXStore.isScoring(symbol, duration));
+  const loading = !data || !data.loaded;
 
-    const BATCH = 5;
-    const known = initialScores || {};
-    const tickers = comps.map(c => c.ticker).filter(t => known[t] == null);
-    const alreadyDone = comps.length - tickers.length;
-
-    if (tickers.length === 0) {
-      setScoreProgress({ done: comps.length, total: comps.length, running: false });
-      return;
-    }
-
-    setScoreProgress({ done: alreadyDone, total: comps.length, running: true });
-    onDataQueued?.(tickers.length);
-
-    let done = alreadyDone;
-    (async () => {
-      for (let i = 0; i < tickers.length; i += BATCH) {
-        if (abort.cancelled) break;
-        await Promise.allSettled(tickers.slice(i, i + BATCH).map(async ticker => {
-          if (abort.cancelled) return;
-          try {
-            const r = await DXApi.autoScore(sym, ticker, dur);
-            const sc = r?.scoring?.score;
-            if (sc != null && !abort.cancelled) {
-              setLiveScores(prev => ({ ...prev, [ticker]: sc }));
-              if (_IDX_CACHE[sym]) _IDX_CACHE[sym].liveScores[ticker] = sc;
-            }
-          } catch {}
-          done++;
-          if (!abort.cancelled) {
-            setScoreProgress(prev => ({ ...prev, done }));
-            onDataDone?.(1);
-          }
-        }));
-      }
-      if (!abort.cancelled) {
-        setScoreProgress(prev => ({ ...prev, running: false }));
-        if (_IDX_CACHE[sym]) _IDX_CACHE[sym].fullyScored = true;
-      }
-    })();
-  }
-
-  function loadQuotes(tickers, sym) {
-    for (let i = 0; i < tickers.length; i += 40) {
-      DXApi.batchQuotes(tickers.slice(i, i + 40), true, true).then(q => {
-        setQuotes(prev => { const next = { ...prev }; q.forEach(r => { next[r.ticker] = r; }); return next; });
-        if (_IDX_CACHE[sym]) q.forEach(r => { _IDX_CACHE[sym].quotes[r.ticker] = r; });
-      }).catch(() => {});
-    }
-  }
-
+  // S'abonner aux mises à jour du store pour cet indice (cours, scores)
   React.useEffect(() => {
-    if (abortRef.current) abortRef.current.cancelled = true;
-    const cached = _IDX_CACHE[symbol];
-
-    if (cached) {
-      // Restauration immédiate depuis le cache — pas de spinner
-      setIndex(cached.index);
-      setSnap(cached.snap);
-      setComponents(cached.components);
-      compsRef.current = cached.components;
-      setQuotes(cached.quotes || {});
-      setLiveScores(cached.liveScores || {});
-      setLoading(false);
-
-      if (cached.fullyScored) {
-        setScoreProgress({ done: cached.components.length, total: cached.components.length, running: false });
-      } else {
-        // Continuer le scoring là où il s'était arrêté
-        startScoring(cached.components, symbol, duration, cached.liveScores || {});
-      }
-      // Rafraîchir les cours silencieusement
-      loadQuotes(cached.components.map(c => c.ticker), symbol);
-      return () => { if (abortRef.current) abortRef.current.cancelled = true; };
-    }
-
-    // Premier chargement
-    setLoading(true);
-    setLiveScores({});
-    setScoreProgress({ done: 0, total: 0, running: false });
-
-    Promise.all([
-      DXApi.getIndex(symbol),
-      DXApi.getSnapshot(symbol),
-      DXApi.getComponents(symbol),
-    ]).then(([idx, sn, comps]) => {
-      setIndex(idx);
-      setSnap(sn);
-      setComponents(comps);
-      compsRef.current = comps;
-      setLoading(false);
-      _IDX_CACHE[symbol] = { index: idx, snap: sn, components: comps, quotes: {}, liveScores: {}, fullyScored: false };
-      loadQuotes(comps.map(c => c.ticker), symbol);
-      startScoring(comps, symbol, duration);
-    }).catch(() => setLoading(false));
-
-    return () => { if (abortRef.current) abortRef.current.cancelled = true; };
+    const onUpd = (e) => { if (!e.detail || e.detail.symbol === symbol) setTick(t => t + 1); };
+    window.addEventListener('dx-index-update', onUpd);
+    return () => window.removeEventListener('dx-index-update', onUpd);
   }, [symbol]);
 
-  // Changement de durée : invalidation du cache des scores et re-scoring complet
+  // Garantir le chargement de l'indice + son scoring pour la durée courante.
+  // (Déjà préchargé en général → résolution immédiate, sans recalcul.)
   React.useEffect(() => {
-    if (!compsRef.current.length) return;
-    if (_IDX_CACHE[symbol]) {
-      _IDX_CACHE[symbol].liveScores = {};
-      _IDX_CACHE[symbol].fullyScored = false;
-    }
-    setLiveScores({});
-    startScoring(compsRef.current, symbol, duration);
-  }, [duration]);
+    if (!window.DXStore) return;
+    let cancelled = false;
+    (async () => {
+      await window.DXStore.loadIndex(symbol);
+      if (!cancelled) window.DXStore.scoreIndex(symbol, duration);
+    })();
+    return () => { cancelled = true; };
+  }, [symbol, duration]);
 
   // Filter
   const q = search.toLowerCase().trim();
@@ -138,8 +45,20 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
     !q || c.ticker.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
   );
 
-  // Score réel : priorité composant API → score live calculé → cache modal
-  const effScore = (c) => c.score != null ? c.score : (liveScores[c.ticker] ?? scoreCache?.[c.ticker] ?? null);
+  // Score affiché : on privilégie le score CALCULÉ (autoScore mémoïsé,
+  // identique au ScoreModal), puis le cache API, puis le score statique
+  // du composant, puis le cache du modal. → cohérence table ⇆ modal.
+  const effScore = (c) => {
+    if (scores[c.ticker] != null) return scores[c.ticker];
+    const cached = window.DXApi && window.DXApi.getCachedScore(symbol, c.ticker, duration);
+    if (cached != null) return cached;
+    return c.score != null ? c.score : (scoreCache?.[c.ticker] ?? null);
+  };
+
+  // Progression du scoring de CET indice (barre in-page, distincte de la
+  // barre globale du haut qui couvre tout le site).
+  const scoredCount = components.filter(c => effScore(c) != null).length;
+  const scoreProgress = { done: scoredCount, total: components.length, running: scoringRunning };
 
   // Sort
   const getSortVal = (c) => {

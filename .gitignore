@@ -5,3 +5,7 @@
 .env
 .env.local
 .env.txt
+
+# Python
+__pycache__/
+*.pyc

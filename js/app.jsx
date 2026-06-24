@@ -23,10 +23,31 @@ function App() {
   });
   const [toasts, addToast] = window.useToasts();
 
-  // Progression globale du chargement des données (scores, composantes)
-  const [dataProgress, setDataProgress] = React.useState({ queued: 0, done: 0 });
-  const onDataQueued = React.useCallback(n => setDataProgress(p => ({ queued: p.queued + n, done: p.done })), []);
-  const onDataDone   = React.useCallback(n => setDataProgress(p => ({ queued: p.queued, done: p.done + n })), []);
+  // Progression GLOBALE du chargement des données (tous les indices).
+  // Alimentée par DXStore, qui précharge l'ensemble du site au démarrage.
+  const [dataProgress, setDataProgress] = React.useState(
+    () => (window.DXStore ? window.DXStore.getProgress() : { queued: 0, done: 0 })
+  );
+  const [barVisible, setBarVisible] = React.useState(false);
+
+  React.useEffect(() => {
+    const onProg = (e) => setDataProgress(e.detail);
+    window.addEventListener('dx-data-progress', onProg);
+    // Précharge tout le site (indices, composants, cours, scores) une seule fois.
+    if (window.DXStore) window.DXStore.preloadAll(duration);
+    return () => window.removeEventListener('dx-data-progress', onProg);
+  }, []);
+
+  // Affiche la barre fine du haut pendant le chargement, puis la masque
+  // peu après l'achèvement (évite une barre verte permanente).
+  React.useEffect(() => {
+    if (dataProgress.queued > 0 && dataProgress.done < dataProgress.queued) {
+      setBarVisible(true);
+    } else if (dataProgress.queued > 0 && dataProgress.done >= dataProgress.queued) {
+      const t = setTimeout(() => setBarVisible(false), 900);
+      return () => clearTimeout(t);
+    }
+  }, [dataProgress]);
 
   function handleAuth(u) {
     setUser(u);
@@ -101,7 +122,7 @@ function App() {
       screenEl = <window.Home onNav={onNav} lists={lists} mode={mode} />;
       break;
     case 'index-detail':
-      screenEl = <window.IndexDetail symbol={params.symbol} onNav={onNav} onScore={onScore} duration={duration} onDuration={setDuration} mode={mode} scoreCache={scoreCache} onDataQueued={onDataQueued} onDataDone={onDataDone} />;
+      screenEl = <window.IndexDetail symbol={params.symbol} onNav={onNav} onScore={onScore} duration={duration} onDuration={setDuration} mode={mode} scoreCache={scoreCache} />;
       break;
     case 'lists':
       screenEl = <window.Lists onNav={onNav} onListsChange={setLists} addToast={addToast} />;
@@ -209,8 +230,9 @@ function App() {
       {/* Toast notifications */}
       <window.Toast toasts={toasts} remove={() => {}} />
     </div>
-    {/* Barre de progression fine en haut (2px, au-dessus de tout) */}
-    {dataProgress.queued > 0 && (() => {
+    {/* Barre de progression fine en haut (2px, au-dessus de tout) —
+        reflète le chargement GLOBAL du site (tous les indices). */}
+    {barVisible && dataProgress.queued > 0 && (() => {
       const pct = Math.min(100, Math.round(dataProgress.done / dataProgress.queued * 100));
       return (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 10000, height: 2, pointerEvents: 'none', background: 'var(--bg-elevated)' }}>
