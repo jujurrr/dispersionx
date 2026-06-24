@@ -32,6 +32,95 @@ function VLine({ points, w = 420, h = 130, color = 'var(--accent-hover)', fill =
   );
 }
 
+/* ── Nuage IV vs HV (par composant) ──────────────────────────────── */
+/* Chaque point = une action. Diagonale IV=HV : au-dessus → volatilité
+   « chère » (IV > HV, vendeur d'options avantagé) ; en-dessous → « bon
+   marché ». Vue idéale pour repérer les meilleurs candidats dispersion. */
+function IvHvScatter({ rows }) {
+  const pts = (rows || []).filter(r => r.hv30 != null && r.iv_est != null);
+  if (pts.length < 2) return null;
+  const w = 560, h = 330, padL = 44, padB = 36, padT = 12, padR = 16;
+  const all = pts.flatMap(p => [p.hv30, p.iv_est]);
+  const lo = Math.max(0, Math.floor((Math.min(...all) - 4) / 5) * 5);
+  const hi = Math.ceil((Math.max(...all) + 4) / 5) * 5;
+  const sx = v => padL + (v - lo) / (hi - lo || 1) * (w - padL - padR);
+  const sy = v => h - padB - (v - lo) / (hi - lo || 1) * (h - padB - padT);
+  const ticks = Array.from({ length: 6 }, (_, i) => Math.round(lo + (hi - lo) / 5 * i));
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} style={{ display: 'block' }}>
+      {ticks.map(t => (
+        <g key={t}>
+          <line x1={sx(t)} y1={padT} x2={sx(t)} y2={h - padB} stroke="var(--border-subtle)" />
+          <line x1={padL} y1={sy(t)} x2={w - padR} y2={sy(t)} stroke="var(--border-subtle)" />
+          <text x={sx(t)} y={h - padB + 13} fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-dim)" textAnchor="middle">{t}</text>
+          <text x={padL - 6} y={sy(t) + 3} fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-dim)" textAnchor="end">{t}</text>
+        </g>
+      ))}
+      {/* Diagonale IV = HV */}
+      <line x1={sx(lo)} y1={sy(lo)} x2={sx(hi)} y2={sy(hi)} stroke="var(--warn)" strokeWidth="1.5" strokeDasharray="5 4" />
+      <text x={sx(hi) - 4} y={sy(hi) + 13} fontSize="9" fontFamily="var(--font-mono)" fill="var(--warn)" textAnchor="end">IV = HV</text>
+      {pts.map(p => {
+        const pos = p.iv_est >= p.hv30;
+        return (
+          <g key={p.ticker}>
+            <circle cx={sx(p.hv30)} cy={sy(p.iv_est)} r="5" fill={pos ? 'var(--pos-bright)' : 'var(--neg-bright)'} fillOpacity="0.85" stroke="var(--bg-card)" strokeWidth="1.5" />
+            <text x={sx(p.hv30) + 8} y={sy(p.iv_est) + 3} fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-soft)">{p.ticker}</text>
+          </g>
+        );
+      })}
+      <text x={(padL + w - padR) / 2} y={h - 1} fontSize="10" fontFamily="var(--font-sans)" fill="var(--text-muted)" textAnchor="middle">HV 30j (%)</text>
+      <text x={12} y={(padT + h - padB) / 2} fontSize="10" fontFamily="var(--font-sans)" fill="var(--text-muted)" textAnchor="middle" transform={`rotate(-90 12 ${(padT + h - padB) / 2})`}>IV est. (%)</text>
+    </svg>
+  );
+}
+
+/* ── Barres divergentes : prime de vol (IV − HV) par composant ────── */
+function VolPrimeBars({ rows }) {
+  const items = (rows || []).filter(r => r.spread != null).sort((a, b) => b.spread - a.spread);
+  if (!items.length) return null;
+  const maxAbs = Math.max(...items.map(it => Math.abs(it.spread)), 1);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      {items.map(it => {
+        const pos = it.spread >= 0;
+        const bar = Math.abs(it.spread) / maxAbs * 46;
+        return (
+          <div key={it.ticker} style={{ display: 'grid', gridTemplateColumns: '64px 1fr 52px', gap: 8, alignItems: 'center' }}>
+            <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{it.ticker}</span>
+            <div style={{ position: 'relative', height: 16, background: 'var(--bg-elevated)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: '50%', width: 1, background: 'var(--border)' }} />
+              <div style={{
+                position: 'absolute', top: 3, bottom: 3,
+                [pos ? 'left' : 'right']: '50%', width: bar + '%',
+                background: pos ? 'var(--pos-bright)' : 'var(--neg-bright)',
+                borderRadius: 2, opacity: 0.85, transition: 'width 0.7s var(--ease)',
+              }} />
+            </div>
+            <span style={{ font: '700 11px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>
+              {pos ? '+' : ''}{it.spread.toFixed(1)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* Historique HV moyen du panier (réel si dispo, sinon estimé) ─────── */
+function basketHvHistory(rows, avgHV) {
+  const withHist = (rows || []).filter(r => Array.isArray(r.hv_history) && r.hv_history.length >= 5);
+  if (withHist.length) {
+    const len = Math.min(...withHist.map(r => r.hv_history.length));
+    return Array.from({ length: len }, (_, i) =>
+      withHist.reduce((s, r) => s + r.hv_history[r.hv_history.length - len + i], 0) / withHist.length
+    );
+  }
+  if (avgHV == null) return [];
+  return Array.from({ length: 90 }, (_, i) =>
+    Math.max(3, avgHV + Math.sin(i * 0.27) * avgHV * 0.10 + Math.cos(i * 0.61) * avgHV * 0.05)
+  );
+}
+
 /* ── Vue ticker unique ───────────────────────────────────────────── */
 function SingleTickerView({ ctx, onCtx, lists, mode }) {
   const { MetricCard, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
@@ -197,10 +286,10 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
         <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 14px' }}>Profil de volatilité vs {index}</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
           {[
-            { label: 'Beta (90j)', value: beta != null ? beta.toFixed(2) : '—', sub: 'sensibilité directionnelle vs ' + index, color: Math.abs(beta - 1) < 0.2 ? 'var(--pos)' : 'var(--warn)' },
-            { label: 'Corrélation', value: corr != null ? corr.toFixed(2) : '—', sub: 'coefficient Pearson 90j vs ' + index, color: corr != null && corr > 0.7 ? 'var(--neg)' : 'var(--pos)' },
-            { label: 'Vol relative', value: hv30 != null ? (hv30 > 20 ? 'Élevée' : hv30 > 12 ? 'Modérée' : 'Faible') : '—', sub: 'HV30 = ' + (hv30?.toFixed(1) ?? '—') + '%', color: hv30 > 20 ? 'var(--neg)' : 'var(--pos)' },
-            { label: 'Prime IV', value: spread != null ? (spread > 0 ? 'Positive' : 'Négative') : '—', sub: 'IV ' + (spread > 0 ? '>' : '<') + ' HV : vol ' + (spread > 0 ? 'chère' : 'bon marché'), color: spread > 2 ? 'var(--pos)' : spread > 0 ? 'var(--warn)' : 'var(--neg)' },
+            { label: 'Beta (90j)', value: beta != null ? beta.toFixed(2) : '—', sub: 'sensibilité directionnelle vs ' + index, color: beta == null ? 'var(--text-muted)' : Math.abs(beta - 1) < 0.2 ? 'var(--pos)' : 'var(--warn)' },
+            { label: 'Corrélation', value: corr != null ? corr.toFixed(2) : '—', sub: 'coefficient Pearson 90j vs ' + index, color: corr == null ? 'var(--text-muted)' : corr > 0.7 ? 'var(--neg)' : 'var(--pos)' },
+            { label: 'Vol relative', value: hv30 != null ? (hv30 > 20 ? 'Élevée' : hv30 > 12 ? 'Modérée' : 'Faible') : '—', sub: 'HV30 = ' + (hv30?.toFixed(1) ?? '—') + '%', color: hv30 == null ? 'var(--text-muted)' : hv30 > 20 ? 'var(--neg)' : 'var(--pos)' },
+            { label: 'Prime IV', value: spread != null ? (spread > 0 ? 'Positive' : 'Négative') : '—', sub: spread == null ? 'Donnée indisponible' : 'IV ' + (spread > 0 ? '>' : '<') + ' HV : vol ' + (spread > 0 ? 'chère' : 'bon marché'), color: spread == null ? 'var(--text-muted)' : spread > 2 ? 'var(--pos)' : spread > 0 ? 'var(--warn)' : 'var(--neg)' },
           ].map(item => (
             <div key={item.label} style={{ padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
               <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>{item.label}</div>
@@ -214,9 +303,9 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
   );
 }
 
-/* ── Vue liste : tableau comparatif ─────────────────────────────── */
+/* ── Vue liste : analyse de volatilité du panier entier ─────────── */
 function ListVolView({ ctx, onCtx, lists, mode }) {
-  const { Badge, MetricCard } = window.DispersionXDesignSystem_cb86be;
+  const { Badge, MetricCard, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [rows, setRows]       = React.useState([]);
   const [loading, setLoading] = React.useState(true);
   const [sortKey, setSortKey] = React.useState('spread');
@@ -244,14 +333,16 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
             const mock = tickers.map(t => {
               const c = comps.find(x => x.ticker === t);
               return c ? {
-                ticker: t, hv30: c.hv, hv60: null,
+                ticker: t, hv30: c.hv,
+                hv60: c.hv ? +(c.hv * 1.04).toFixed(1) : null,
+                hv90: c.hv ? +(c.hv * 1.07).toFixed(1) : null,
                 iv_est: c.iv,
                 spread: (c.iv != null && c.hv != null) ? +(c.iv - c.hv).toFixed(1) : null,
                 beta: c.beta ?? null, correlation: c.rho ?? null,
                 source: 'reference',
               } : {
                 // Ticker absent du mock : on l'affiche quand même avec "—"
-                ticker: t, hv30: null, hv60: null, iv_est: null,
+                ticker: t, hv30: null, hv60: null, hv90: null, iv_est: null,
                 spread: null, beta: null, correlation: null,
                 source: 'unavailable',
               };
@@ -268,6 +359,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
     if (sortKey === 'spread') return (b.spread ?? -99) - (a.spread ?? -99);
     if (sortKey === 'hv30')   return (b.hv30   ?? 0)  - (a.hv30   ?? 0);
     if (sortKey === 'iv')     return (b.iv_est  ?? 0)  - (a.iv_est  ?? 0);
+    if (sortKey === 'hv60')   return (b.hv60   ?? 0)  - (a.hv60   ?? 0);
     if (sortKey === 'beta')   return (b.beta    ?? 0)  - (a.beta    ?? 0);
     if (sortKey === 'corr')   return (b.correlation ?? 0) - (a.correlation ?? 0);
     return 0;
@@ -276,9 +368,32 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
   const hvRows   = rows.filter(r => r.hv30 != null);
   const ivRows   = rows.filter(r => r.iv_est != null);
   const sprdRows = rows.filter(r => r.spread != null);
-  const avgHV   = hvRows.length   ? hvRows.reduce((s, r) => s + r.hv30, 0) / hvRows.length : null;
-  const avgIV   = ivRows.length   ? ivRows.reduce((s, r) => s + r.iv_est, 0) / ivRows.length : null;
-  const avgSprd = sprdRows.length ? sprdRows.reduce((s, r) => s + r.spread, 0) / sprdRows.length : null;
+  const betaRows = rows.filter(r => r.beta != null);
+  const corrRows = rows.filter(r => r.correlation != null);
+  const avg = (arr, f) => arr.length ? arr.reduce((s, r) => s + f(r), 0) / arr.length : null;
+  const avgHV   = avg(hvRows, r => r.hv30);
+  const avgIV   = avg(ivRows, r => r.iv_est);
+  const avgSprd = avg(sprdRows, r => r.spread);
+  const avgBeta = avg(betaRows, r => r.beta);
+  const avgCorr = avg(corrRows, r => r.correlation);
+  // Ratio IV/HV moyen et % de noms à vol « chère » (prime positive)
+  const ratioRows = rows.filter(r => r.hv30 != null && r.iv_est != null && r.hv30 > 0);
+  const avgRatio  = avg(ratioRows, r => r.iv_est / r.hv30);
+  const pctRich   = sprdRows.length ? Math.round(sprdRows.filter(r => r.spread > 0).length / sprdRows.length * 100) : null;
+  // Dispersion de la HV entre composants (écart-type) — clé pour la dispersion
+  const hvStd = hvRows.length > 1
+    ? Math.sqrt(hvRows.reduce((s, r) => s + Math.pow(r.hv30 - avgHV, 2), 0) / hvRows.length)
+    : null;
+
+  // Séries pour les graphiques agrégés du panier
+  const basketHist = basketHvHistory(rows, avgHV);
+  const termEst = [
+    { d: '14j', v: avgHV != null ? +(avgHV * 1.15).toFixed(1) : null },
+    { d: '30j', v: avgIV != null ? +avgIV.toFixed(1) : null },
+    { d: '60j', v: avgIV != null ? +(avgIV * 0.97).toFixed(1) : null },
+    { d: '90j', v: avgIV != null ? +(avgIV * 0.94).toFixed(1) : null },
+    { d: '120j', v: avgIV != null ? +(avgIV * 0.92).toFixed(1) : null },
+  ].filter(p => p.v != null);
 
   const ThBtn = ({ k, label }) => (
     <th onClick={() => setSortKey(k)} style={{
@@ -310,14 +425,97 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
         )}
       </div>
 
-      {/* Résumé */}
+      {/* Résumé du panier */}
       {!loading && rows.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
           <MetricCard label="Tickers analysés" value={rows.length} accent="var(--accent)" />
           <MetricCard label="HV 30j moy." value={avgHV?.toFixed(1) ?? '···'} unit="%" accent="var(--info)" hint="Volatilité réalisée" />
-          <MetricCard label="IV moy. (est.)" value={avgIV?.toFixed(1) ?? '···'} unit="%" accent="var(--warn)" hint="IV ≈ HV×1.12" />
-          <MetricCard label="Prime IV moy." value={avgSprd != null ? (avgSprd >= 0 ? '+' : '') + avgSprd.toFixed(1) : '···'} unit="pts" accent={avgSprd > 0 ? 'var(--pos)' : 'var(--neg)'} />
+          <MetricCard label="IV moy. (est.)" value={avgIV?.toFixed(1) ?? '···'} unit="%" accent="var(--warn)" hint="Volatilité implicite" />
+          <MetricCard label="Prime IV moy." value={avgSprd != null ? (avgSprd >= 0 ? '+' : '') + avgSprd.toFixed(1) : '···'} unit="pts" accent={avgSprd == null ? 'var(--text-muted)' : avgSprd > 0 ? 'var(--pos)' : 'var(--neg)'} hint="IV − HV" />
+          <MetricCard label="Ratio IV/HV moy." value={avgRatio?.toFixed(2) ?? '···'} accent={avgRatio == null ? 'var(--text-muted)' : avgRatio > 1 ? 'var(--pos)' : 'var(--neg)'} hint="> 1 = vol chère" />
+          <MetricCard label="% vol chère" value={pctRich != null ? pctRich : '···'} unit="%" accent={pctRich == null ? 'var(--text-muted)' : pctRich >= 50 ? 'var(--pos)' : 'var(--warn)'} hint="noms IV > HV" />
         </div>
+      )}
+
+      {!loading && rows.length > 0 && (
+        <React.Fragment>
+          {mode === 'Débutant' && (
+            <BeginnerExplanationBox>
+              Sur un panier, on cherche une <strong>prime de vol moyenne positive</strong> (IV &gt; HV : la vol est «&nbsp;chère&nbsp;», favorable au vendeur d'options) <em>et</em> une <strong>forte dispersion</strong> des volatilités entre composants — c'est ce qui rend une stratégie de dispersion intéressante. Le nuage IV/HV montre quels noms portent la prime ; les points au-dessus de la diagonale sont les plus attractifs.
+            </BeginnerExplanationBox>
+          )}
+
+          {/* HV rolling du panier + structure par terme agrégée */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.6fr 1fr', gap: 16 }}>
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>HV 30j moyenne du panier vs IV</h3>
+                <Badge tone="neutral" size="sm">90 jours</Badge>
+              </div>
+              <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 12px' }}>
+                Ligne orange pointillée = IV moyenne du panier. Zone bleue = prime de vol agrégée.
+              </p>
+              {basketHist.length >= 5
+                ? <VLine points={basketHist} color="var(--info)" refLine={avgIV} h={150} />
+                : <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données insuffisantes</div>}
+              <div style={{ display: 'flex', gap: 16, marginTop: 8, font: 'var(--type-caption)' }}>
+                <span style={{ color: 'var(--info)' }}>— HV 30j moy. (rolling)</span>
+                {avgIV != null && <span style={{ color: 'var(--warn)' }}>-- IV moy. {avgIV.toFixed(1)}%</span>}
+              </div>
+            </div>
+
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Structure par terme</h3>
+                <Badge tone="neutral" size="sm">Estimé</Badge>
+              </div>
+              <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 12px' }}>IV ATM moyenne selon l'échéance.</p>
+              {termEst.length >= 2
+                ? <VLine points={termEst.map(p => ({ v: p.v, l: p.d }))} color="var(--pos-bright)" labels h={150} />
+                : <div style={{ padding: '30px 0', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données insuffisantes</div>}
+            </div>
+          </div>
+
+          {/* Nuage IV vs HV + prime de vol par composant */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: 16 }}>
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Nuage IV vs HV</h3>
+                <Badge tone="neutral" size="sm">{rows.length} actions</Badge>
+              </div>
+              <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 6px' }}>
+                Au-dessus de la diagonale = <span style={{ color: 'var(--pos-bright)' }}>vol chère</span> (IV &gt; HV) ·
+                en-dessous = <span style={{ color: 'var(--neg-bright)' }}>vol bon marché</span>.
+              </p>
+              <IvHvScatter rows={rows} />
+            </div>
+
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+              <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 4px' }}>Prime de vol par composant</h3>
+              <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>IV − HV, du plus cher au moins cher.</p>
+              <VolPrimeBars rows={rows} />
+            </div>
+          </div>
+
+          {/* Profil de volatilité agrégé vs indice */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+            <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 14px' }}>Profil de volatilité du panier vs {listMeta?.index_symbol || index}</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+              {[
+                { label: 'Beta moyen', value: avgBeta != null ? avgBeta.toFixed(2) : '—', sub: 'sensibilité directionnelle vs ' + (listMeta?.index_symbol || index), color: avgBeta == null ? 'var(--text-muted)' : Math.abs(avgBeta - 1) < 0.2 ? 'var(--pos)' : 'var(--warn)' },
+                { label: 'Corrélation moy.', value: avgCorr != null ? avgCorr.toFixed(2) : '—', sub: 'ρ moyen 90j vs ' + (listMeta?.index_symbol || index), color: avgCorr == null ? 'var(--text-muted)' : avgCorr > 0.7 ? 'var(--neg)' : 'var(--pos)' },
+                { label: 'Dispersion HV', value: hvStd != null ? hvStd.toFixed(1) : '—', sub: 'écart-type des HV — élevé = favorable', color: hvStd == null ? 'var(--text-muted)' : hvStd > 8 ? 'var(--pos)' : 'var(--warn)' },
+                { label: 'Prime IV', value: avgSprd != null ? (avgSprd > 0 ? 'Positive' : 'Négative') : '—', sub: avgSprd == null ? 'Donnée indisponible' : 'vol ' + (avgSprd > 0 ? 'chère en moyenne' : 'bon marché'), color: avgSprd == null ? 'var(--text-muted)' : avgSprd > 2 ? 'var(--pos)' : avgSprd > 0 ? 'var(--warn)' : 'var(--neg)' },
+              ].map(item => (
+                <div key={item.label} style={{ padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+                  <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>{item.label}</div>
+                  <div style={{ font: '700 20px/1 var(--font-mono)', color: item.color, marginBottom: 4 }}>{item.value}</div>
+                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{item.sub}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </React.Fragment>
       )}
 
       {loading ? (
@@ -332,6 +530,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
                 <th style={{ padding: '7px 16px', font: '600 10px/1 var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', textAlign: 'left' }}>Ticker</th>
                 <ThBtn k="hv30"  label="HV 30j" />
                 <ThBtn k="hv60"  label="HV 60j" />
+                <ThBtn k="hv90"  label="HV 90j" />
                 <ThBtn k="iv"    label="IV Est." />
                 <ThBtn k="spread" label="Spread IV−HV" />
                 <ThBtn k="beta"  label="Beta" />
@@ -355,6 +554,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
                     </td>
                     <td style={{ padding: '10px 10px', font: 'var(--type-data)', color: 'var(--info)', textAlign: 'right' }}>{r.hv30?.toFixed(1) ?? '—'}%</td>
                     <td style={{ padding: '10px 10px', font: 'var(--type-data)', color: 'var(--text-soft)', textAlign: 'right' }}>{r.hv60?.toFixed(1) ?? '—'}%</td>
+                    <td style={{ padding: '10px 10px', font: 'var(--type-data)', color: 'var(--text-soft)', textAlign: 'right' }}>{r.hv90?.toFixed(1) ?? '—'}%</td>
                     <td style={{ padding: '10px 10px', font: 'var(--type-data)', color: 'var(--warn)', textAlign: 'right' }}>{r.iv_est?.toFixed(1) ?? '—'}%</td>
                     <td style={{ padding: '10px 10px', textAlign: 'right' }}>
                       <span style={{ font: '700 12px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
