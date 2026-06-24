@@ -327,6 +327,9 @@ function ScenarioSimulator({ model, storageKey }) {
             ))}
           </div>
           <PnLLine points={curve} markIdx={markIdx >= 0 ? markIdx : null} />
+          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', textAlign: 'center', marginTop: -4 }}>
+            P&L vs mouvement de l'indice, à ρ = {p.rho.toFixed(2)} · un vrai mouvement de l'indice s'accompagne d'une ρ élevée (montez ρ pour le simuler)
+          </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom du scénario…"
               style={{ flex: 1, padding: '8px 10px', font: 'var(--type-body-sm)', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none' }} />
@@ -480,7 +483,9 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   // ── Courbes de sensibilité (mêmes formules que le simulateur) ──
   const base = { spot: 0, dIVidx: 0, dIVcomp: 0, rho: model.rhoBase, days: 0 };
   const charts = {
-    spotBars:  [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: scenarioPnL(model, { ...base, spot: x }).total })),
+    // Un vrai mouvement de l'indice est un mouvement CORRÉLÉ (ρ élevée) :
+    // la jambe short straddle indice domine → perte sur les gros mouvements.
+    spotBars:  [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: scenarioPnL(model, { ...base, spot: x, rho: 1 }).total })),
     ivIdxBars: [-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVidx: x }).total })),
     ivCompBars:[-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVcomp: x }).total })),
     rhoBars:   [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map(rho => ({ label: 'ρ ' + rho.toFixed(1), value: scenarioPnL(model, { ...base, spot: 5, rho }).total })),
@@ -656,7 +661,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>P&L estimé sous chaque type de choc, isolé (mêmes formules que le simulateur)</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <SensChart title="P&L par mouvement de l'indice" subtitle={`Choc instantané sur le spot · ρ ${model.rhoBase.toFixed(2)}`} bars={charts.spotBars} diverging />
+          <SensChart title="P&L par mouvement de l'indice" subtitle="Mouvement corrélé du marché — la jambe short straddle indice domine (perte quand l'indice bouge)" bars={charts.spotBars} diverging />
           <SensChart title="Scénarios de corrélation" subtitle={`P&L sur un mouvement de 5% selon ρ · équilibre ≈ ${model.rhoBreakeven.toFixed(2)}`} bars={charts.rhoBars} diverging />
           <SensChart title="P&L par choc de vol indice" subtitle="Variation de l'IV indice (jambe short straddle), en points" bars={charts.ivIdxBars} diverging />
           <SensChart title="P&L par choc de vol composants" subtitle="Variation de l'IV des composants (jambes long), en points" bars={charts.ivCompBars} diverging />
