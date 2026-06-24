@@ -306,8 +306,8 @@ function Builder({ listId, onNav, mode }) {
 
   function StepCorrelation({ index }) {
     const corr = window.DXMock?.correlation || {};
-    const rhoImpl = corr.rho_impl ?? 0.61;
-    const rhoReal = corr.rho_real ?? 0.48;
+    const rhoImpl = corr.rho_impl ?? 0.52;
+    const rhoReal = corr.rho_real ?? 0.45;
     const prime = ((rhoImpl - rhoReal) * 100).toFixed(1);
     return (
       <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 18, alignItems: 'start' }}>

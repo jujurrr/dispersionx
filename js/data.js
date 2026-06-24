@@ -253,17 +253,19 @@
       _saveLists(); return { imported: n, message: n + ' liste(s) importée(s)' };
     },
     getListAnalysis: () => ({
-      avg_score: 78.4, avg_edge: 11.2, rho_impl: 0.61, rho_real: 0.48, dispersion: 0.000418, n_items: 5,
+      avg_score: 78.4, avg_edge: 11.2, rho_impl: 0.52, rho_real: 0.45, dispersion: 0.000418, n_items: 5,
       signal: 'FAVORABLE', recommendations: [
-        'Prime de corrélation positive (+6.4 pts) — signal favorable à la dispersion.',
+        'Prime de corrélation positive (+7.0 pts) — signal favorable à la dispersion.',
         'Surveiller les earnings AAPL (6j) avant de construire la stratégie.',
         'Ratio IV/HV moyen de 1.12 — spread de volatilité positif.',
       ],
     }),
     correlation: {
-      rho_impl: 0.61, rho_real: 0.48, premium: 6.4, z_score: 1.8, basket_coverage: 82.4,
+      // Prime = (rho_impl − rho_real) × 100 = (0.52 − 0.45) × 100 = +7.0 pts.
+      // rho_real ≈ moyenne des corrélations par paires de la matrice (≈ 0.45).
+      rho_impl: 0.52, rho_real: 0.45, premium: 7.0, z_score: 1.8, basket_coverage: 82.4,
       interpretation: { color: 'green', verdict: 'Favorable', simple: 'Le marché price une synchronisation plus forte que celle observée.', warnings: [] },
-      rho_by_window: { w20: 0.51, w60: 0.48, w120: 0.46, w20_eq: 0.53, w60_eq: 0.50, w120_eq: 0.47 },
+      rho_by_window: { w20: 0.47, w60: 0.45, w120: 0.43, w20_eq: 0.49, w60_eq: 0.46, w120_eq: 0.44 },
       matrix: {
         tickers: ['SPX', 'NVDA', 'AAPL', 'MSFT', 'META', 'TSLA'],
         values: [
@@ -368,7 +370,7 @@
       { label: 'IV ATM SPX', value: '18.2', unit: '%', delta: '+0.4', accent: 'var(--accent)' },
       { label: 'ρ implicite moy.', value: '0.61', delta: '+0.03', accent: 'var(--info)' },
       { label: 'ρ̂ réalisée', value: '0.48', delta: '−0.02', accent: 'var(--info)' },
-      { label: 'Prime ρ', value: '+6.4', unit: 'pts', delta: '+1.2', accent: 'var(--pos)' },
+      { label: 'Prime ρ', value: '+7.0', unit: 'pts', delta: '+1.2', accent: 'var(--pos)' },
       { label: 'Vol du jour', value: '12.1', unit: '%', delta: '−0.6', accent: 'var(--warn)' },
     ],
     components: COMPONENTS.SPX,
@@ -389,7 +391,7 @@
       { name: 'Passage du temps', pnl: '+540', risk: 'faible', up: true },
     ],
     opportunities: [
-      { idx: 'SPX', dte: 31, prime: '+6.4', score: 82, risk: 'modéré' },
+      { idx: 'SPX', dte: 31, prime: '+7.0', score: 82, risk: 'modéré' },
       { idx: 'NDX', dte: 28, prime: '+4.1', score: 67, risk: 'élevé' },
       { idx: 'DJI', dte: 45, prime: '+2.0', score: 41, risk: 'modéré' },
     ],

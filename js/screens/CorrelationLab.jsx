@@ -99,14 +99,21 @@ function PrimeGauge({ implied, realized, size = 240 }) {
   );
 }
 
+/* Symboles d'indices : ne doivent jamais être traités comme un composant
+   du panier dans les calculs de contribution / décomposition. */
+const INDEX_SYMS = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
+
 /* ─── Contribution par composant ──────────────────────────────────── */
 function ContribChart({ matrixTickers, matrix, rhoImpl }) {
   if (!matrixTickers || !matrix || matrixTickers.length < 2) return null;
-  const n = matrixTickers.length;
-  const items = matrixTickers.map((t, i) => {
-    const others = matrix[i].filter((_, j) => j !== i);
-    const avgRho = others.reduce((a, b) => a + b, 0) / others.length;
-    return { ticker: t, avgRho, contrib: rhoImpl - avgRho };
+  // Positions des vrais composants (on exclut l'indice s'il figure dans la matrice).
+  const compPos = matrixTickers.map((_, i) => i).filter(i => !INDEX_SYMS.includes(matrixTickers[i]));
+  const pool = compPos.length >= 2 ? compPos : matrixTickers.map((_, i) => i);
+  // ρ̄ du composant = corrélation moyenne avec les AUTRES composants (hors indice).
+  const items = pool.map(i => {
+    const others = pool.filter(j => j !== i).map(j => matrix[i][j]);
+    const avgRho = others.reduce((a, b) => a + b, 0) / Math.max(1, others.length);
+    return { ticker: matrixTickers[i], avgRho, contrib: rhoImpl - avgRho };
   }).sort((a, b) => b.contrib - a.contrib);
 
   const maxAbs = Math.max(...items.map(it => Math.abs(it.contrib)), 0.01);
@@ -170,8 +177,11 @@ function getSector(ticker) {
 
 function SectorChart({ matrixTickers, matrix, rhoImpl }) {
   if (!matrixTickers || !matrix || matrixTickers.length < 2) return null;
+  // Colonnes des vrais composants (hors indice) pour les moyennes.
+  const compCols = matrixTickers.map((_, i) => i).filter(i => !INDEX_SYMS.includes(matrixTickers[i]));
   const sectorBuckets = {};
   matrixTickers.forEach((t, i) => {
+    if (INDEX_SYMS.includes(t)) return; // l'indice n'est pas un composant
     const sec = getSector(t);
     if (!sectorBuckets[sec]) sectorBuckets[sec] = [];
     sectorBuckets[sec].push({ ticker: t, idx: i });
@@ -181,8 +191,7 @@ function SectorChart({ matrixTickers, matrix, rhoImpl }) {
     const indices = members.map(m => m.idx);
     let avgRho;
     if (indices.length === 1) {
-      const row = matrix[indices[0]];
-      const others = row.filter((_, j) => j !== indices[0]);
+      const others = compCols.filter(j => j !== indices[0]).map(j => matrix[indices[0]][j]);
       avgRho = others.reduce((a, b) => a + b, 0) / Math.max(1, others.length);
     } else {
       let sum = 0, cnt = 0;
@@ -470,8 +479,9 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
   if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
 
   const C = data || {};
-  const rhoImpl = C.rho_impl ?? 0.61;
-  const rhoReal = C.rho_real ?? 0.48;
+  const rhoImpl = C.rho_impl ?? 0.52;
+  const rhoReal = C.rho_real ?? 0.45;
+  // Prime de corrélation = (ρ implicite − ρ̂ réalisée) en points.
   const prime = ((rhoImpl - rhoReal) * 100).toFixed(1);
   const matrixTickers = C.matrixTickers || ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
   const rawMatrix = C.matrix;

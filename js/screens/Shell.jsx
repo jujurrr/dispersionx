@@ -625,36 +625,39 @@ function ModuleCtxPicker({ lists, onCtx, title, subtitle }) {
               }}>Analyser →</button>
           </div>
 
-          {/* Sélecteur d'indice — toujours visible quand on tape */}
+          {/* Sélecteur d'indice — visible quand on tape.
+              Logique : une action ne peut être comparée qu'aux indices dont
+              elle fait partie. Si le ticker est connu, on restreint aux
+              indices membres ; sinon (ticker inconnu) on propose les 5. */}
           {showIndexPicker && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                 Comparer vs :
               </span>
-              {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map(idx => {
-                const isAuto = foundInCatalog?.indices?.includes(idx);
-                const isSel  = selectedIndex === idx;
+              {(foundInCatalog?.indices?.length ? foundInCatalog.indices : ['SPX', 'NDX', 'DJI', 'CAC', 'DAX']).map(idx => {
+                const isSel = selectedIndex === idx;
                 return (
                   <button key={idx} type="button"
                     onClick={() => setSelectedIndex(idx)}
                     style={{
                       padding: '5px 12px', font: '700 11px/1 var(--font-mono)',
                       background: isSel ? 'var(--accent)' : 'var(--bg-elevated)',
-                      color: isSel ? '#fff' : isAuto ? 'var(--accent-hover)' : 'var(--text-soft)',
-                      border: `1px solid ${isSel ? 'var(--accent)' : isAuto ? 'var(--accent-border)' : 'var(--border)'}`,
+                      color: isSel ? '#fff' : 'var(--text-soft)',
+                      border: `1px solid ${isSel ? 'var(--accent)' : 'var(--border)'}`,
                       borderRadius: 'var(--radius)', cursor: 'pointer',
                       transition: 'all var(--dur-fast) var(--ease)',
                     }}
-                  >
-                    {idx}
-                    {isAuto && !isSel && <span style={{ marginLeft: 3, font: '9px/1 var(--font-sans)', opacity: 0.7 }}>✓</span>}
-                  </button>
+                  >{idx}</button>
                 );
               })}
-              {foundInCatalog && (
+              {foundInCatalog ? (
                 <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginLeft: 4 }}>
                   {foundInCatalog.name ? `· ${foundInCatalog.name}` : ''}
                   {foundInCatalog.score != null ? ` · score ${Math.round(foundInCatalog.score)}` : ''}
+                </span>
+              ) : (
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginLeft: 4 }}>
+                  · ticker hors catalogue — choisissez un indice
                 </span>
               )}
             </div>
@@ -671,30 +674,49 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
   const [q, setQ]           = React.useState('');
   const [showSugg, setShowSugg] = React.useState(false);
   const [focused, setFocused]   = React.useState(-1);
+  const [selIndex, setSelIndex] = React.useState(null); // indice de comparaison choisi
+  const justPicked = React.useRef(false);
 
   const catalog     = useTickerCatalog(lists);
   const suggestions = React.useMemo(() => filterCatalog(catalog, q), [catalog, q]);
   const foundInCatalog = catalog.find(c => c.ticker === q.trim().toUpperCase()) || null;
+  // Indices proposés : uniquement ceux dont le ticker fait partie (logique),
+  // sinon (ticker hors catalogue) les 5 indices.
+  const availIndices = foundInCatalog?.indices?.length ? foundInCatalog.indices : ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
 
   React.useEffect(() => {
+    if (justPicked.current) { justPicked.current = false; return; } // ne pas rouvrir après un pick
     setShowSugg(q.trim().length > 0 && suggestions.length > 0);
     setFocused(-1);
   }, [q, suggestions.length]);
 
+  // Ticker connu → présélectionne son indice principal.
+  React.useEffect(() => {
+    if (foundInCatalog) setSelIndex(foundInCatalog.primaryIndex);
+  }, [foundInCatalog?.primaryIndex]);
+
+  // Choisir une suggestion = remplir le champ (sans valider) : l'utilisateur
+  // choisit ensuite l'indice de comparaison avant de confirmer.
   function pick(item) {
-    setShowSugg(false); setQ(''); setOpen(false);
-    onCtx({ ticker: item.ticker, listId: null, listName: null, listIndex: item.primaryIndex, index: item.primaryIndex });
+    justPicked.current = true;
+    setQ(item.ticker);
+    setSelIndex(item.primaryIndex);
+    setShowSugg(false);
+  }
+
+  // Valide le contexte « actif individuel » pour un ticker + un indice.
+  function commit(ticker, idx) {
+    if (!ticker || !idx) return;
+    onCtx({ ticker, listId: null, listName: null, listIndex: idx, index: idx });
+    setShowSugg(false); setQ(''); setOpen(false); setSelIndex(null);
   }
 
   function submitQ(e) {
     e.preventDefault();
     const t = q.trim().toUpperCase();
     if (!t) return;
-    if (foundInCatalog) { pick(foundInCatalog); return; }
-    // Unknown ticker: use first suggested index or current context index
-    const idx = ctx.index || ctx.listIndex || 'SPX';
-    onCtx({ ticker: t, listId: null, listName: null, listIndex: idx, index: idx });
-    setOpen(false); setQ('');
+    const idx = selIndex || (foundInCatalog ? foundInCatalog.primaryIndex : (availIndices[0] || ctx.index || 'SPX'));
+    commit(t, idx);
   }
 
   function onKeyDown(e) {
@@ -744,7 +766,7 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 800, marginTop: 0,
           background: 'var(--bg-card)', border: '1px solid var(--border)',
           borderTop: 'none', borderRadius: '0 0 var(--radius-lg) var(--radius-lg)',
-          boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+          boxShadow: 'var(--shadow-lg)', overflow: 'visible',
         }}>
           {/* Listes */}
           {lists && lists.length > 0 && (
@@ -814,22 +836,33 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
                   </div>
                 )}
 
-                {/* Ticker inconnu */}
-                {q.trim().length > 1 && !foundInCatalog && suggestions.length === 0 && (
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', alignSelf: 'center' }}>Indice :</span>
-                    {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map(idx => (
-                      <button key={idx} type="button"
-                        onClick={() => { onCtx({ ticker: q.trim().toUpperCase(), listId: null, listName: null, listIndex: idx, index: idx }); setOpen(false); setQ(''); }}
-                        style={{
-                          padding: '3px 8px', font: '700 10px/1 var(--font-mono)',
-                          background: 'var(--bg-elevated)', color: 'var(--text-soft)',
-                          border: '1px solid var(--border)', borderRadius: 'var(--radius)', cursor: 'pointer',
-                        }}
-                        onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--accent)'}
-                        onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
-                      >{idx}</button>
-                    ))}
+                {/* Choix de l'indice de comparaison — logique : on ne propose
+                    que les indices dont l'action fait partie. Cliquer un indice
+                    valide directement le contexte. */}
+                {q.trim().length > 0 && !showSugg && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, alignItems: 'center' }}>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', alignSelf: 'center', whiteSpace: 'nowrap' }}>Comparer vs :</span>
+                    {availIndices.map(idx => {
+                      const isSel = (selIndex || foundInCatalog?.primaryIndex) === idx;
+                      return (
+                        <button key={idx} type="button"
+                          onClick={() => commit(q.trim().toUpperCase(), idx)}
+                          style={{
+                            padding: '4px 10px', font: '700 11px/1 var(--font-mono)',
+                            background: isSel ? 'var(--accent)' : 'var(--bg-elevated)',
+                            color: isSel ? '#fff' : 'var(--text-soft)',
+                            border: `1px solid ${isSel ? 'var(--accent)' : 'var(--border)'}`,
+                            borderRadius: 'var(--radius)', cursor: 'pointer',
+                            transition: 'all var(--dur-fast) var(--ease)',
+                          }}
+                          onMouseEnter={e => { if (!isSel) e.currentTarget.style.borderColor = 'var(--accent)'; }}
+                          onMouseLeave={e => { if (!isSel) e.currentTarget.style.borderColor = 'var(--border)'; }}
+                        >{idx}</button>
+                      );
+                    })}
+                    {foundInCatalog
+                      ? <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{foundInCatalog.name || ''}</span>
+                      : <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· hors catalogue</span>}
                   </div>
                 )}
               </div>
