@@ -81,47 +81,61 @@ function buildRiskModel({ tickers, weightMap, priceMap, volMap, indexSym, indexP
     compVega, idxVega, netVega: compVega + idxVega,
     compTheta, idxTheta, netTheta: compTheta + idxTheta,
     Kcomp, Kidx, compPrem, idxPrem, netPremium: idxPrem - compPrem,
+    // Échelle de la prime de dispersion (carry attendu par unité de ρ).
+    Kdisp: Kidx * 0.005,
     avgIV,
-    // ρ d'équilibre du gamma : en-dessous la dispersion est convexe-positive
-    rhoBreakeven: Kidx > 0 ? Math.min(0.95, Kcomp / Kidx) : 0.5,
+    // ρ d'équilibre : en-dessous, la prime de dispersion est positive.
+    rhoBreakeven: Kidx > 0 ? Math.min(0.9, Math.max(0.4, Kcomp / Kidx)) : 0.55,
     rhoBase: 0.45,
     hasStrategy: !!strategy,
   };
 }
 
-/* ── P&L d'un scénario (partagé par toutes les courbes) ──────────── */
+/* ── P&L d'un scénario (partagé par toutes les courbes) ───────────
+   Quatre moteurs indépendants :
+   • vega    : short indice (IV indice ↓ = gain), long composants (IV ↑ = gain)
+   • theta   : portage temporel
+   • mouvement : un mouvement de l'indice est CORRÉLÉ → net short gamma →
+                 PERTE qui grandit avec |mouvement| (l'indice doit bouger peu)
+   • dispersion : carry de corrélation, gain si ρ réalisée < ρ d'équilibre,
+                  indépendant du mouvement de l'indice                          */
 function scenarioPnL(model, p) {
   const m = (p.spot || 0) / 100;
-  const rhoEff = Math.min(1, Math.max(0.15, p.rho != null ? p.rho : model.rhoBase));
+  const rho = p.rho != null ? p.rho : model.rhoBase;
   const vegaIdxPnL  = model.idxVega  * (p.dIVidx  || 0);
   const vegaCompPnL = model.compVega * (p.dIVcomp || 0);
-  const thetaPnL    = model.netTheta * (p.days || 0);
-  // Convexité : composants longs gagnent ∝ variance réalisée (amplifiée
-  // quand la corrélation baisse) ; indice short perd ∝ son mouvement.
-  const gammaPnL = model.Kcomp * m * m / rhoEff - model.Kidx * m * m;
+  const vegaPnL  = vegaIdxPnL + vegaCompPnL;
+  const thetaPnL = model.netTheta * (p.days || 0);
+  const movePnL  = (model.Kcomp - model.Kidx) * m * m;          // ≤ 0 : perte sur tout mouvement
+  const dispPnL  = model.Kdisp * (model.rhoBreakeven - rho);    // gain si ρ basse
   return {
-    vegaIdxPnL, vegaCompPnL, vegaPnL: vegaIdxPnL + vegaCompPnL,
-    thetaPnL, gammaPnL,
-    total: vegaIdxPnL + vegaCompPnL + thetaPnL + gammaPnL,
+    vegaIdxPnL, vegaCompPnL, vegaPnL, thetaPnL, movePnL, dispPnL,
+    total: vegaPnL + thetaPnL + movePnL + dispPnL,
   };
 }
 
 /* ── Attribution du P&L par jambe (somme = scenarioPnL.total) ────── */
 function legAttribution(model, p) {
   const m = (p.spot || 0) / 100;
-  const rhoEff = Math.min(1, Math.max(0.15, p.rho != null ? p.rho : model.rhoBase));
+  const rho = p.rho != null ? p.rho : model.rhoBase;
+  const dispTotal = model.Kdisp * (model.rhoBreakeven - rho);
+  const gammaWeight = model.Kcomp || 1; // = Σ gammaK·lots
   const indexLeg = {
     label: model.indexSym + ' (short)', logo: null, sector: 'Indice',
     value: Math.round(model.idxVega * (p.dIVidx || 0) - model.Kidx * m * m + model.idxTheta * (p.days || 0)),
   };
-  const comps = model.perTicker.map(t => ({
-    label: t.ticker, logo: t.ticker, sector: t.sector,
-    value: Math.round(
-      t.greeks.vega * t.nContracts * (p.dIVcomp || 0)
-      + t.greeks.gammaK * t.nContracts * m * m / rhoEff
-      + t.greeks.theta * t.nContracts * (p.days || 0)
-    ),
-  }));
+  const comps = model.perTicker.map(t => {
+    const gw = t.greeks.gammaK * t.nContracts;
+    return {
+      label: t.ticker, logo: t.ticker, sector: t.sector,
+      value: Math.round(
+        t.greeks.vega * t.nContracts * (p.dIVcomp || 0)   // vega long composant
+        + gw * m * m                                      // gamma systématique (mouvement)
+        + dispTotal * (gw / gammaWeight)                  // part de la prime de dispersion
+        + t.greeks.theta * t.nContracts * (p.days || 0)   // theta
+      ),
+    };
+  });
   return { indexLeg, comps };
 }
 
@@ -287,9 +301,10 @@ function ScenarioSimulator({ model, storageKey }) {
   }
 
   const decomp = [
-    { label: 'Vega', value: r.vegaPnL, color: 'var(--info)' },
-    { label: 'Theta', value: r.thetaPnL, color: 'var(--warn)' },
-    { label: 'Gamma/corr.', value: r.gammaPnL, color: 'var(--accent)' },
+    { label: 'Vega', value: r.vegaPnL },
+    { label: 'Theta', value: r.thetaPnL },
+    { label: 'Mouvement', value: r.movePnL },
+    { label: 'Dispersion', value: r.dispPnL },
   ];
 
   return (
@@ -328,7 +343,7 @@ function ScenarioSimulator({ model, storageKey }) {
           </div>
           <PnLLine points={curve} markIdx={markIdx >= 0 ? markIdx : null} />
           <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', textAlign: 'center', marginTop: -4 }}>
-            P&L vs mouvement de l'indice, à ρ = {p.rho.toFixed(2)} · un vrai mouvement de l'indice s'accompagne d'une ρ élevée (montez ρ pour le simuler)
+            P&L vs mouvement de l'indice : la jambe short straddle perd quand l'indice bouge — le gain vient de la dispersion (ρ basse) et de la vol composants, pas du mouvement
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom du scénario…"
@@ -460,7 +475,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   const dur = model.duration;
   const scenarioDefs = [
     { name: 'Sell-off corrélé',   risk: 'critique', params: { spot: -6, dIVidx: 18, dIVcomp: 8, rho: 0.85, days: 0 } },
-    { name: 'Dispersion réalisée', risk: 'faible',   params: { spot: 5, dIVidx: -4, dIVcomp: 5, rho: 0.30, days: 5 } },
+    { name: 'Dispersion réalisée', risk: 'faible',   params: { spot: 1.5, dIVidx: -4, dIVcomp: 5, rho: 0.28, days: 6 } },
     { name: 'Marché calme',        risk: 'modéré',   params: { spot: 0, dIVidx: -2, dIVcomp: -2, rho: 0.45, days: Math.round(dur / 2) } },
   ];
   const scenarios = scenarioDefs.map(s => {
@@ -483,12 +498,13 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   // ── Courbes de sensibilité (mêmes formules que le simulateur) ──
   const base = { spot: 0, dIVidx: 0, dIVcomp: 0, rho: model.rhoBase, days: 0 };
   const charts = {
-    // Un vrai mouvement de l'indice est un mouvement CORRÉLÉ (ρ élevée) :
-    // la jambe short straddle indice domine → perte sur les gros mouvements.
-    spotBars:  [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: scenarioPnL(model, { ...base, spot: x, rho: 1 }).total })),
+    // Mouvement de l'indice isolé (ρ à l'équilibre → pas d'effet dispersion) :
+    // la jambe short straddle perd, d'autant plus que le mouvement est grand.
+    spotBars:  [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: scenarioPnL(model, { ...base, spot: x, rho: model.rhoBreakeven }).total })),
     ivIdxBars: [-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVidx: x }).total })),
     ivCompBars:[-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVcomp: x }).total })),
-    rhoBars:   [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map(rho => ({ label: 'ρ ' + rho.toFixed(1), value: scenarioPnL(model, { ...base, spot: 5, rho }).total })),
+    // Dispersion isolée (sans mouvement) : ρ basse = gain, ρ élevée = perte.
+    rhoBars:   [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map(rho => ({ label: 'ρ ' + rho.toFixed(1), value: scenarioPnL(model, { ...base, spot: 0, rho }).total })),
     thetaDays: [1, 3, 5, 7, 10, 14, 21, dur].map(d => ({ label: d + 'j', value: scenarioPnL(model, { ...base, days: d }).total })),
     compMov:   model.perTicker.map(t => ({ label: t.ticker, logo: t.ticker, value: Math.round(t.greeks.vega * t.nContracts * 10) })).sort((a, b) => b.value - a.value),
     selloff:   [{ label: model.indexSym + ' (short)', logo: null, value: attrib.indexLeg.value }, ...attrib.comps.map(c => ({ label: c.label, logo: c.logo, value: c.value }))].sort((a, b) => b.value - a.value),
@@ -662,7 +678,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
           <SensChart title="P&L par mouvement de l'indice" subtitle="Mouvement corrélé du marché — la jambe short straddle indice domine (perte quand l'indice bouge)" bars={charts.spotBars} diverging />
-          <SensChart title="Scénarios de corrélation" subtitle={`P&L sur un mouvement de 5% selon ρ · équilibre ≈ ${model.rhoBreakeven.toFixed(2)}`} bars={charts.rhoBars} diverging />
+          <SensChart title="Prime de dispersion par corrélation" subtitle={`Carry selon la ρ réalisée · gain si ρ < équilibre (≈ ${model.rhoBreakeven.toFixed(2)})`} bars={charts.rhoBars} diverging />
           <SensChart title="P&L par choc de vol indice" subtitle="Variation de l'IV indice (jambe short straddle), en points" bars={charts.ivIdxBars} diverging />
           <SensChart title="P&L par choc de vol composants" subtitle="Variation de l'IV des composants (jambes long), en points" bars={charts.ivCompBars} diverging />
           <SensChart title="P&L par passage du temps" subtitle="Cumul du theta net sur la durée de la position" bars={charts.thetaDays} diverging />
