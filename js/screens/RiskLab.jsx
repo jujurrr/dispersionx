@@ -106,8 +106,12 @@ function scenarioPnL(model, p) {
   const vegaCompPnL = model.compVega * (p.dIVcomp || 0);
   const vegaPnL  = vegaIdxPnL + vegaCompPnL;
   const thetaPnL = model.netTheta * (p.days || 0);
-  const movePnL  = (model.Kcomp - model.Kidx) * m * m;          // ≤ 0 : perte sur tout mouvement
-  const dispPnL  = model.Kdisp * (model.rhoBreakeven - rho);    // gain si ρ basse
+  // Mouvement de l'indice = gamma de la jambe SHORT straddle indice :
+  // toujours une perte, qui grandit avec l'amplitude du mouvement.
+  const movePnL  = -model.Kidx * m * m;
+  // Le gain des composants vient de la dispersion (corrélation basse),
+  // pas du mouvement de l'indice.
+  const dispPnL  = model.Kdisp * (model.rhoBreakeven - rho);
   return {
     vegaIdxPnL, vegaCompPnL, vegaPnL, thetaPnL, movePnL, dispPnL,
     total: vegaPnL + thetaPnL + movePnL + dispPnL,
@@ -130,7 +134,6 @@ function legAttribution(model, p) {
       label: t.ticker, logo: t.ticker, sector: t.sector,
       value: Math.round(
         t.greeks.vega * t.nContracts * (p.dIVcomp || 0)   // vega long composant
-        + gw * m * m                                      // gamma systématique (mouvement)
         + dispTotal * (gw / gammaWeight)                  // part de la prime de dispersion
         + t.greeks.theta * t.nContracts * (p.days || 0)   // theta
       ),
