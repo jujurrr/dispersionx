@@ -1,12 +1,152 @@
-/* ─── Risk Lab ─────────────────────────────────────────────────────── */
+/* ─── Risk Lab ─────────────────────────────────────────────────────────
+   Moteur de risque local, cohérent et déterministe :
+   • Grecs d'un ATM straddle calculés depuis les prix + IV (synthVol),
+     par approximations Black-Scholes ATM (φ(0) ≈ 0.3989).
+   • Stratégie de dispersion : SHORT 1 straddle indice, LONG straddles
+     composants. Dimensionnement vega-neutre par défaut (ou quantités
+     réelles si une stratégie a été construite dans le Builder).
+   • Toutes les courbes ET le simulateur interactif partagent la MÊME
+     fonction de P&L → ordres de grandeur rationnels et cohérents.
+   ───────────────────────────────────────────────────────────────────── */
 
-/* ── Helpers ─────────────────────────────────────────────────────── */
-function parsePnl(v) {
-  if (typeof v === 'number') return v;
-  const s = String(v).replace(/[\s ]/g, '').replace('−', '-').replace(',', '');
-  return Number(s) || 0;
+const PHI0 = 0.3989;     // densité normale en 0 — approximation ATM
+const CONTRACT = 100;    // 1 contrat = 100 actions
+
+function fmtMoney(n) {
+  if (n == null || isNaN(n)) return '—';
+  const a = Math.abs(Math.round(n));
+  const s = a >= 10000 ? (a / 1000).toFixed(1) + 'k' : a.toLocaleString('fr-FR');
+  return (n >= 0 ? '+' : '−') + s + ' $';
 }
 
+/* ── Grecs d'un straddle ATM (par contrat) ───────────────────────── */
+function straddleGreeks(S, ivPct, days) {
+  const sigma = Math.max(0.02, (ivPct || 0) / 100);
+  const T = Math.max(1, days || 30) / 365;
+  const sqrtT = Math.sqrt(T);
+  return {
+    // Vega : $ gagné par +1 point d'IV (les deux jambes)
+    vega: 2 * S * PHI0 * sqrtT * 0.01 * CONTRACT,
+    // Theta : $/jour (négatif = perte de valeur temps d'un long straddle)
+    theta: -(S * PHI0 * sigma) / sqrtT / 365 * CONTRACT,
+    // Coefficient de convexité : P&L gamma = gammaK · (ΔS/S)²
+    gammaK: PHI0 * S / (sigma * sqrtT) * CONTRACT,
+    // Prime du straddle ($/contrat)
+    premium: 0.8 * S * sigma * sqrtT * CONTRACT,
+  };
+}
+
+/* ── Construction du modèle de portefeuille ──────────────────────── */
+function buildRiskModel({ tickers, weightMap, priceMap, volMap, indexSym, indexPrice, indexIV, duration, strategy }) {
+  const idxG = straddleGreeks(indexPrice, indexIV, duration);
+  const nIndex = strategy?.nIndex || 1;
+
+  const rawW = tickers.map(t => (weightMap[t] != null ? weightMap[t] : 1));
+  const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
+  const wNorm = rawW.map(w => w / sumW);
+
+  // Cible vega-neutre : vega total des composants ≈ vega de la jambe indice
+  const targetVega = idxG.vega * nIndex;
+
+  const perTicker = tickers.map((t, i) => {
+    const S = priceMap[t] || 100;
+    const v = volMap[t] || {};
+    const iv = v.iv_est != null ? v.iv_est : 30;
+    const hv = v.hv30 != null ? v.hv30 : 27;
+    const beta = v.beta != null ? v.beta : 1.0;
+    const g = straddleGreeks(S, iv, duration);
+    const strat = strategy?.components?.find(c => c.ticker === t);
+    const nContracts = strat?.nContracts || Math.max(1, Math.round(targetVega * wNorm[i] / g.vega));
+    return {
+      ticker: t, price: S, iv, hv, beta,
+      sector: v.sector || 'Autre', weight: wNorm[i] * 100,
+      greeks: { vega: g.vega, theta: g.theta, gammaK: g.gammaK, premium: g.premium },
+      nContracts,
+    };
+  });
+
+  const sum = (f) => perTicker.reduce((s, t) => s + f(t), 0);
+  const compVega  = sum(t => t.greeks.vega * t.nContracts);
+  const idxVega   = -idxG.vega * nIndex;
+  const compTheta = sum(t => t.greeks.theta * t.nContracts);
+  const idxTheta  = -idxG.theta * nIndex;                 // short → theta positif
+  const Kcomp     = sum(t => t.greeks.gammaK * t.nContracts);
+  const Kidx      = idxG.gammaK * nIndex;
+  const compPrem  = sum(t => t.greeks.premium * t.nContracts);
+  const idxPrem   = idxG.premium * nIndex;
+  const avgIV     = perTicker.length ? sum(t => t.iv) / perTicker.length : 0;
+
+  return {
+    indexSym, indexPrice, indexIV, duration, nIndex, idxG, perTicker,
+    compVega, idxVega, netVega: compVega + idxVega,
+    compTheta, idxTheta, netTheta: compTheta + idxTheta,
+    Kcomp, Kidx, compPrem, idxPrem, netPremium: idxPrem - compPrem,
+    avgIV,
+    // ρ d'équilibre du gamma : en-dessous la dispersion est convexe-positive
+    rhoBreakeven: Kidx > 0 ? Math.min(0.95, Kcomp / Kidx) : 0.5,
+    rhoBase: 0.45,
+    hasStrategy: !!strategy,
+  };
+}
+
+/* ── P&L d'un scénario (partagé par toutes les courbes) ──────────── */
+function scenarioPnL(model, p) {
+  const m = (p.spot || 0) / 100;
+  const rhoEff = Math.min(1, Math.max(0.15, p.rho != null ? p.rho : model.rhoBase));
+  const vegaIdxPnL  = model.idxVega  * (p.dIVidx  || 0);
+  const vegaCompPnL = model.compVega * (p.dIVcomp || 0);
+  const thetaPnL    = model.netTheta * (p.days || 0);
+  // Convexité : composants longs gagnent ∝ variance réalisée (amplifiée
+  // quand la corrélation baisse) ; indice short perd ∝ son mouvement.
+  const gammaPnL = model.Kcomp * m * m / rhoEff - model.Kidx * m * m;
+  return {
+    vegaIdxPnL, vegaCompPnL, vegaPnL: vegaIdxPnL + vegaCompPnL,
+    thetaPnL, gammaPnL,
+    total: vegaIdxPnL + vegaCompPnL + thetaPnL + gammaPnL,
+  };
+}
+
+/* ── Attribution du P&L par jambe (somme = scenarioPnL.total) ────── */
+function legAttribution(model, p) {
+  const m = (p.spot || 0) / 100;
+  const rhoEff = Math.min(1, Math.max(0.15, p.rho != null ? p.rho : model.rhoBase));
+  const indexLeg = {
+    label: model.indexSym + ' (short)', logo: null, sector: 'Indice',
+    value: Math.round(model.idxVega * (p.dIVidx || 0) - model.Kidx * m * m + model.idxTheta * (p.days || 0)),
+  };
+  const comps = model.perTicker.map(t => ({
+    label: t.ticker, logo: t.ticker, sector: t.sector,
+    value: Math.round(
+      t.greeks.vega * t.nContracts * (p.dIVcomp || 0)
+      + t.greeks.gammaK * t.nContracts * m * m / rhoEff
+      + t.greeks.theta * t.nContracts * (p.days || 0)
+    ),
+  }));
+  return { indexLeg, comps };
+}
+
+/* ── Dynamic warnings ────────────────────────────────────────────── */
+function buildWarnings(model) {
+  const w = [];
+  if (Math.abs(model.netVega) > 250)
+    w.push({ tone: 'warn', title: 'Vega résiduel', msg: `Vega net ${fmtMoney(model.netVega)}/1% — position sensible aux chocs d'IV. Rééquilibrer le dimensionnement.` });
+  if (model.netTheta < -150)
+    w.push({ tone: 'warn', title: 'Coût de portage', msg: `Theta net ${fmtMoney(model.netTheta)}/jour — la position perd de la valeur temps si le marché reste calme.` });
+  if (model.rhoBase < model.rhoBreakeven)
+    w.push({ tone: 'pos', title: 'Convexité favorable', msg: `ρ réalisée (${model.rhoBase.toFixed(2)}) < ρ d'équilibre (${model.rhoBreakeven.toFixed(2)}) — la dispersion gagne sur les mouvements.` });
+  else
+    w.push({ tone: 'warn', title: 'Convexité défavorable', msg: `ρ réalisée (${model.rhoBase.toFixed(2)}) ≥ ρ d'équilibre (${model.rhoBreakeven.toFixed(2)}) — un mouvement corrélé pénalise la position.` });
+  if (model.avgIV > 0 && model.indexIV > 0 && model.avgIV < model.indexIV * 0.95)
+    w.push({ tone: 'warn', title: 'IV composants faible', msg: `IV moy. composants (${model.avgIV.toFixed(1)}%) proche/inférieure à l'IV indice (${model.indexIV.toFixed(1)}%) — prime de dispersion réduite.` });
+  const hiBeta = model.perTicker.filter(t => t.beta > 1.5).map(t => t.ticker);
+  if (hiBeta.length >= 2)
+    w.push({ tone: 'warn', title: 'Beta élevé', msg: `${hiBeta.slice(0, 4).join(', ')} > 1.5 β — risque directionnel amplifié en sell-off.` });
+  if (w.length === 0)
+    w.push({ tone: 'pos', title: 'Profil de risque sain', msg: 'Aucun déséquilibre majeur détecté.' });
+  return w;
+}
+
+/* ── Bar simple pour les grecs par composant ─────────────────────── */
 function GreekBar({ value, max, pos }) {
   const pct = Math.min(100, Math.abs(value) / Math.max(1, Math.abs(max)) * 100);
   return (
@@ -16,15 +156,10 @@ function GreekBar({ value, max, pos }) {
   );
 }
 
-/* ── Generic horizontal bar chart ────────────────────────────────── */
+/* ── Graphique à barres horizontales générique ───────────────────── */
 function SensChart({ title, subtitle, bars, diverging = false }) {
   if (!bars || bars.length === 0) return null;
   const maxAbs = Math.max(...bars.map(b => Math.abs(b.value || 0)), 1);
-  const fmt = v => {
-    const abs = Math.abs(Math.round(v));
-    const s = abs >= 1000 ? (abs / 1000).toFixed(1) + 'k' : String(abs);
-    return (v >= 0 ? '+' : '−') + s;
-  };
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
       <div style={{ marginBottom: 12 }}>
@@ -33,21 +168,19 @@ function SensChart({ title, subtitle, bars, diverging = false }) {
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {bars.map((b, i) => {
-          const pos  = (b.value || 0) >= 0;
-          const pct  = Math.abs(b.value || 0) / maxAbs;
+          const pos = (b.value || 0) >= 0;
+          const pct = Math.abs(b.value || 0) / maxAbs;
           return (
             <div key={i} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 54px', gap: 6, alignItems: 'center' }}>
-              {/* Label — logo if provided */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
                 {b.logo && (
-                  <div style={{ width: 14, height: 14, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden', flexShrink: 0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <div style={{ width: 14, height: 14, borderRadius: 3, background: 'var(--bg-elevated)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <img src={`https://assets.parqet.com/logos/symbol/${b.logo.split('.')[0]}`} alt="" style={{ width: 11, height: 11, objectFit: 'contain' }}
                       onError={e => { e.currentTarget.style.display = 'none'; }} />
                   </div>
                 )}
                 <span style={{ font: '9px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{b.label}</span>
               </div>
-              {/* Bar */}
               <div style={{ position: 'relative', height: 13, background: 'var(--bg-elevated)', borderRadius: 2 }}>
                 {diverging ? (
                   <>
@@ -55,22 +188,18 @@ function SensChart({ title, subtitle, bars, diverging = false }) {
                     <div style={{
                       position: 'absolute', top: 1.5, bottom: 1.5,
                       ...(pos ? { left: '50%', width: `${pct * 48}%` } : { right: '50%', width: `${pct * 48}%` }),
-                      background: pos ? 'var(--pos)' : 'var(--neg)',
-                      borderRadius: 1.5, opacity: 0.85,
+                      background: pos ? 'var(--pos)' : 'var(--neg)', borderRadius: 1.5, opacity: 0.85,
                     }} />
                   </>
                 ) : (
                   <div style={{
-                    position: 'absolute', top: 1.5, bottom: 1.5, left: 0,
-                    width: `${pct * 100}%`,
-                    background: pos ? 'var(--pos)' : 'var(--neg)',
-                    borderRadius: 1.5, opacity: 0.85,
+                    position: 'absolute', top: 1.5, bottom: 1.5, left: 0, width: `${pct * 100}%`,
+                    background: pos ? 'var(--pos)' : 'var(--neg)', borderRadius: 1.5, opacity: 0.85,
                   }} />
                 )}
               </div>
-              {/* Value */}
               <span style={{ font: '600 9px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                {fmt(b.value || 0)} $
+                {fmtMoney(b.value || 0)}
               </span>
             </div>
           );
@@ -80,7 +209,156 @@ function SensChart({ title, subtitle, bars, diverging = false }) {
   );
 }
 
-/* ── P&L attribution waterfall row ──────────────────────────────── */
+/* ── Ligne P&L (simulateur) ──────────────────────────────────────── */
+function PnLLine({ points, w = 540, h = 180, markIdx }) {
+  if (!points || points.length < 2) return null;
+  const vals = points.map(p => p.v);
+  const lo = Math.min(...vals, 0), hi = Math.max(...vals, 0);
+  const padL = 46, padR = 12, padT = 12, padB = 24;
+  const xs = i => padL + i / (points.length - 1) * (w - padL - padR);
+  const ys = v => h - padB - (v - lo) / ((hi - lo) || 1) * (h - padB - padT);
+  const zeroY = ys(0);
+  const d = vals.map((v, i) => `${i === 0 ? 'M' : 'L'} ${xs(i)} ${ys(v)}`).join(' ');
+  const grid = [lo, lo + (hi - lo) / 2, hi];
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} width="100%" height={h} style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id="rlPnl" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--accent)" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="var(--accent)" stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+      {grid.map((g, i) => (
+        <g key={i}>
+          <line x1={padL} y1={ys(g)} x2={w - padR} y2={ys(g)} stroke="var(--border-subtle)" />
+          <text x={padL - 6} y={ys(g) + 3} fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-dim)" textAnchor="end">{fmtMoney(g).replace(' $', '')}</text>
+        </g>
+      ))}
+      <line x1={padL} y1={zeroY} x2={w - padR} y2={zeroY} stroke="var(--border-strong)" strokeDasharray="3 3" />
+      <path d={`${d} L ${xs(vals.length - 1)} ${zeroY} L ${xs(0)} ${zeroY} Z`} fill="url(#rlPnl)" />
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2.5" />
+      {points.map((p, i) => (
+        <text key={i} x={xs(i)} y={h - 6} fontSize="9" fontFamily="var(--font-mono)" fill={i === markIdx ? 'var(--accent-hover)' : 'var(--text-dim)'} textAnchor="middle" fontWeight={i === markIdx ? 700 : 400}>{p.l}</text>
+      ))}
+      {markIdx != null && points[markIdx] && (
+        <circle cx={xs(markIdx)} cy={ys(points[markIdx].v)} r="4" fill="var(--accent-hover)" stroke="var(--bg-card)" strokeWidth="1.5" />
+      )}
+    </svg>
+  );
+}
+
+/* ── Slider ──────────────────────────────────────────────────────── */
+function Slider({ label, value, min, max, step, onChange, fmt, accent }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>{label}</span>
+        <span style={{ font: '700 12px/1 var(--font-mono)', color: accent || 'var(--text)' }}>{fmt ? fmt(value) : value}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }} />
+    </div>
+  );
+}
+
+/* ── Simulateur de scénarios interactif ──────────────────────────── */
+function ScenarioSimulator({ model, storageKey }) {
+  const base = { spot: 0, dIVidx: 0, dIVcomp: 0, rho: +model.rhoBase.toFixed(2), days: 0 };
+  const [p, setP] = React.useState(base);
+  const [name, setName] = React.useState('');
+  const [saved, setSaved] = React.useState(() => {
+    try { return JSON.parse(localStorage.getItem(storageKey) || '[]') || []; } catch { return []; }
+  });
+  const set = (k, v) => setP(prev => ({ ...prev, [k]: v }));
+  const persist = (arr) => { setSaved(arr); try { localStorage.setItem(storageKey, JSON.stringify(arr)); } catch {} };
+
+  const r = scenarioPnL(model, p);
+
+  // Courbe : P&L vs mouvement de l'indice, autres leviers figés au réglage courant
+  const spots = [-10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10];
+  const curve = spots.map(s => ({ l: (s > 0 ? '+' : '') + s, v: scenarioPnL(model, { ...p, spot: s }).total }));
+  const markIdx = spots.indexOf(Math.round(p.spot / 2) * 2);
+
+  function save() {
+    const label = name.trim() || `Scénario ${saved.length + 1}`;
+    persist([...saved, { id: Date.now(), name: label, params: { ...p }, total: Math.round(r.total) }]);
+    setName('');
+  }
+
+  const decomp = [
+    { label: 'Vega', value: r.vegaPnL, color: 'var(--info)' },
+    { label: 'Theta', value: r.thetaPnL, color: 'var(--warn)' },
+    { label: 'Gamma/corr.', value: r.gammaPnL, color: 'var(--accent)' },
+  ];
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Simulateur de scénarios</h3>
+          <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '3px 0 0' }}>Ajustez les leviers — la courbe et le P&L se recalculent en direct.</p>
+        </div>
+        <button onClick={() => setP(base)} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↺ Réinitialiser</button>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.25fr', gap: 20 }}>
+        {/* Leviers */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Slider label="Mouvement indice" value={p.spot} min={-10} max={10} step={0.5} onChange={v => set('spot', v)} fmt={v => (v > 0 ? '+' : '') + v + ' %'} accent="var(--accent-hover)" />
+          <Slider label="Choc IV indice" value={p.dIVidx} min={-30} max={40} step={1} onChange={v => set('dIVidx', v)} fmt={v => (v > 0 ? '+' : '') + v + ' pts'} accent="var(--neg-bright)" />
+          <Slider label="Choc IV composants" value={p.dIVcomp} min={-30} max={40} step={1} onChange={v => set('dIVcomp', v)} fmt={v => (v > 0 ? '+' : '') + v + ' pts'} accent="var(--pos-bright)" />
+          <Slider label="Corrélation réalisée" value={p.rho} min={0.15} max={0.95} step={0.01} onChange={v => set('rho', v)} fmt={v => v.toFixed(2)} accent="var(--info)" />
+          <Slider label="Jours écoulés" value={p.days} min={0} max={model.duration} step={1} onChange={v => set('days', v)} fmt={v => v + ' j'} accent="var(--warn)" />
+        </div>
+
+        {/* Résultat + courbe */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ font: '800 30px/1 var(--font-mono)', color: r.total >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtMoney(r.total)}</div>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>P&L estimé du scénario</span>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {decomp.map(d => (
+              <div key={d.label} style={{ flex: 1, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
+                <div style={{ font: '9px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 5 }}>{d.label}</div>
+                <div style={{ font: '700 13px/1 var(--font-mono)', color: d.value >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtMoney(d.value)}</div>
+              </div>
+            ))}
+          </div>
+          <PnLLine points={curve} markIdx={markIdx >= 0 ? markIdx : null} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom du scénario…"
+              style={{ flex: 1, padding: '8px 10px', font: 'var(--type-body-sm)', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none' }} />
+            <button onClick={save} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', whiteSpace: 'nowrap' }}>Enregistrer</button>
+          </div>
+        </div>
+      </div>
+
+      {/* Scénarios enregistrés */}
+      {saved.length > 0 && (
+        <div style={{ marginTop: 16, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>Scénarios enregistrés ({saved.length})</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {saved.map(s => (
+              <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+                <span style={{ font: '600 12px/1 var(--font-sans)', color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
+                  {(s.params.spot > 0 ? '+' : '') + s.params.spot}% · IVi {s.params.dIVidx >= 0 ? '+' : ''}{s.params.dIVidx} · IVc {s.params.dIVcomp >= 0 ? '+' : ''}{s.params.dIVcomp} · ρ{s.params.rho} · {s.params.days}j
+                </span>
+                <span style={{ font: '700 12px/1 var(--font-mono)', color: s.total >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', width: 72, textAlign: 'right' }}>{fmtMoney(s.total)}</span>
+                <button onClick={() => setP({ ...base, ...s.params })} style={{ font: '600 10px/1 var(--font-sans)', padding: '4px 8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Charger</button>
+                <button onClick={() => persist(saved.filter(x => x.id !== s.id))} style={{ font: '600 10px/1 var(--font-sans)', padding: '4px 7px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-dim)', cursor: 'pointer' }}>×</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Ligne d'attribution P&L ─────────────────────────────────────── */
 function AttribRow({ label, pnl, max, logo }) {
   const pos = pnl >= 0;
   const w = Math.abs(pnl) / Math.max(1, Math.abs(max)) * 46;
@@ -99,240 +377,129 @@ function AttribRow({ label, pnl, max, logo }) {
         <div style={{ position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: 'var(--border-strong)' }} />
         <div style={{ position: 'absolute', left: pos ? '50%' : `${50 - w}%`, width: `${w}%`, height: 8, borderRadius: 2, background: pos ? 'var(--pos)' : 'var(--neg)', opacity: 0.85 }} />
       </div>
-      <span style={{ font: '700 10px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>
-        {pos ? '+' : ''}{typeof pnl === 'number' ? pnl.toLocaleString() : pnl} $
-      </span>
+      <span style={{ font: '700 10px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>{fmtMoney(pnl)}</span>
     </div>
   );
-}
-
-/* ── Dynamic warnings ────────────────────────────────────────────── */
-function buildWarnings(D) {
-  const warns = [];
-  const port = D.portfolio || {};
-  const perTicker = D.per_ticker || [];
-  const netTheta = port.net_theta || 0;
-  const netVega  = port.net_vega  || 0;
-  const avgIV    = port.avg_iv || 0;
-  const idxIV    = port.index_iv || 0;
-
-  if (Math.abs(netTheta) > 50)
-    warns.push({ tone: 'warn', title: 'Theta significatif', msg: `${Math.abs(Math.round(netTheta))} $/jour — surveiller à l'approche de l'échéance.` });
-  if (Math.abs(netVega) > 300)
-    warns.push({ tone: 'warn', title: 'Exposition vega résiduelle', msg: `Vega net ${netVega >= 0 ? '+' : ''}${Math.round(netVega)} $ : position sensible aux chocs IV.` });
-  if (avgIV > 0 && idxIV > 0 && avgIV < idxIV * 0.9)
-    warns.push({ tone: 'warn', title: 'IV composants < IV indice', msg: `IV moy. composants (${avgIV.toFixed(1)}%) < IV indice (${idxIV.toFixed(1)}%).` });
-  const highBeta = perTicker.filter(t => t.beta && t.beta > 1.5);
-  if (highBeta.length >= 2)
-    warns.push({ tone: 'warn', title: 'Beta élevé', msg: `${highBeta.map(t => t.ticker).join(', ')} > 1.5 β — risque directionnel amplifié.` });
-  if (warns.length === 0)
-    warns.push({ tone: 'pos', title: 'Profil de risque sain', msg: 'Aucun déséquilibre majeur détecté.' });
-  return warns;
-}
-
-/* ── Sensitivity charts builder ──────────────────────────────────── */
-function buildSensCharts(D, strategy) {
-  const port      = D.portfolio || {};
-  const perTicker = D.per_ticker || [];
-  const pnlByName = D.pnlByName  || [];
-  const scenarios = D.scenarios   || [];
-  const CONTRACT  = 100;
-  const duration  = strategy?.duration || port.duration || 30;
-
-  // ── Greek anchors: prefer actual strategy quantities ──────────────
-  let netVegaPct, compVegaPct, idxVegaPct, netTheta;
-
-  if (strategy?.portfolio) {
-    // Strategy was built: use actual position Greeks
-    netVegaPct  = strategy.portfolio.netVegaPct;
-    compVegaPct = strategy.portfolio.compVegaPct;
-    idxVegaPct  = strategy.portfolio.idxVegaPct;
-    netTheta    = strategy.portfolio.netTheta;
-  } else {
-    // No strategy: equal-weight estimate (1/nW per ticker, 1 index contract)
-    netVegaPct  = port.net_vega  || 0;
-    netTheta    = port.net_theta || 0;
-    const nW    = perTicker.length || 1;
-    const portVegaRaw = perTicker.reduce((s, t) => s + (t.greeks?.vega || 0) * CONTRACT / nW, 0);
-    compVegaPct = portVegaRaw * 0.01;
-    idxVegaPct  = netVegaPct - compVegaPct;
-  }
-
-  // ── Scenario P&L anchors (recomputed from actual Greeks) ─────────
-  const thetaRef = Math.max(40, Math.abs(netTheta) * duration);
-  const baseScale = Math.max(100, Math.min(thetaRef * 3, 2500));
-  const sellPnl  = -baseScale * 2.6;
-  const dispPnl  =  baseScale * 2.1;
-  const gapPnl   = -baseScale * 0.85;
-  const thetaDay = netTheta;
-
-  // 1 — P&L par mouvement de l'indice
-  const spots = [-8, -6, -4, -2, 0, 2, 4, 6, 8];
-  const spotBars = spots.map(x => {
-    if (x === 0) return Math.round(thetaDay);
-    const absX = Math.abs(x);
-    const ref  = x < 0 ? sellPnl : gapPnl;
-    const frac = absX <= 5 ? (absX / 5) ** 2 : 1 + (absX - 5) / 10;
-    const thetaContrib = thetaDay * Math.max(0, 1 - absX / 4);
-    return Math.round(ref * frac + thetaContrib);
-  }).map((v, i) => ({ label: (spots[i] >= 0 ? '+' : '') + spots[i] + '%', value: v }));
-
-  // 2 — P&L par choc de vol indice
-  const ivShocks = [-30, -20, -10, 0, 10, 20, 30, 40];
-  const ivIdxBars = ivShocks.map(iv => ({
-    label: (iv >= 0 ? '+' : '') + iv + '%',
-    value: Math.round(idxVegaPct * iv),
-  }));
-
-  // 3 — P&L par choc de vol composants
-  const ivCompBars = ivShocks.map(iv => ({
-    label: (iv >= 0 ? '+' : '') + iv + '%',
-    value: Math.round(compVegaPct * iv),
-  }));
-
-  // 4 — Scénarios de corrélation
-  const rhoLevels = [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
-  const rhoBars = rhoLevels.map(rho => {
-    const t = Math.max(0, (rho - 0.35) / 0.55);
-    return { label: 'ρ ' + rho.toFixed(1), value: Math.round(dispPnl * (1 - t) + sellPnl * t) };
-  });
-
-  // 5 — P&L par passage du temps
-  const days = [1, 2, 3, 5, 7, 10, 14, 21, 30];
-  const thetaDays = days.map(d => ({ label: d + 'j', value: Math.round(thetaDay * d) }));
-
-  // 6 — P&L si IV de CE composant +10% — utilise n_contracts réels si strategy présente
-  const compMovBars = perTicker.map(t => {
-    const n = strategy?.components?.find(c => c.ticker === t.ticker)?.nContracts || 1;
-    return {
-      label: t.ticker,
-      logo:  t.ticker,
-      value: t.greeks ? Math.round(t.greeks.vega * 0.10 * CONTRACT * n) : 0,
-    };
-  }).sort((a, b) => b.value - a.value);
-
-  // 7 — Chocs de skew
-  const skewPts  = [-4, -2, 0, 2, 4, 6, 8];
-  const skewUnit = (idxVegaPct || (sellPnl * 0.015)) * 0.30;
-  const skewBars = skewPts.map(sk => ({
-    label: (sk >= 0 ? '+' : '') + sk + 'pts',
-    value: Math.round(skewUnit * sk * -1),
-  }));
-
-  // 8 — Contribution sell-off: utilise n_contracts réels si strategy présente
-  let selloffContrib;
-  if (strategy?.components) {
-    const indexSym = strategy.index || 'SPX';
-    const idxPnl   = Math.round(strategy.portfolio.idxVegaRaw * 0.15);
-    const compItems = strategy.components.map(c => ({
-      label: c.ticker,
-      logo:  c.ticker,
-      value: c.greeks ? Math.round(c.greeks.vega * 0.15 * CONTRACT * c.nContracts) : 0,
-    }));
-    const rawAll = [{ label: indexSym + ' (short)', logo: null, value: idxPnl }, ...compItems];
-    const rawTotal = rawAll.reduce((s, r) => s + Math.abs(r.value || 0), 0);
-    const scale    = rawTotal > 0 ? Math.abs(sellPnl) / rawTotal : 1;
-    selloffContrib = rawAll.map(r => ({ ...r, value: Math.round((r.value || 0) * scale) }));
-  } else {
-    const pnlRawTotal = pnlByName.reduce((s, r) => s + Math.abs(r.pnl || 0), 0);
-    const scaleToSell = pnlRawTotal > 0 ? Math.abs(sellPnl) / pnlRawTotal : 1;
-    selloffContrib = pnlByName.map(r => ({
-      label: r.t,
-      logo:  r.t.startsWith('SPX') || r.t.startsWith('NDX') ? null : r.t,
-      value: Math.round((r.pnl || 0) * scaleToSell),
-    }));
-  }
-
-  return { spotBars, ivIdxBars, ivCompBars, rhoBars, thetaDays, compMovBars, skewBars, selloffContrib };
 }
 
 /* ─── Main component ─────────────────────────────────────────────── */
 function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
-  const [riskData,  setRiskData]  = React.useState(null);
-  const [loading,   setLoading]   = React.useState(true);
-  const [scenario,  setScenario]  = React.useState(1);
-  const [strategy,  setStrategy]  = React.useState(null);
+  const [model,    setModel]    = React.useState(null);
+  const [loading,  setLoading]  = React.useState(true);
+  const [scenario, setScenario] = React.useState(0);
+  const [strategy, setStrategy] = React.useState(null);
 
-  // Utilise listId du param de navigation ou du contexte de module
   const listId = listIdParam || moduleCtx?.listId || null;
   const ctx    = moduleCtx || {};
   const hasCtx = !!listId;
-
   const DEMO = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
 
-  // Hooks toujours appelés (règle React — pas de hooks après return conditionnel)
   React.useEffect(() => {
     if (!listId) return;
-    try {
-      const raw = localStorage.getItem('dx-strategy-' + listId);
-      if (raw) setStrategy(JSON.parse(raw));
-    } catch {}
+    try { const raw = localStorage.getItem('dx-strategy-' + listId); if (raw) setStrategy(JSON.parse(raw)); } catch {}
   }, [listId]);
 
   React.useEffect(() => {
     if (!hasCtx) return;
-    const index    = strategy?.index || ctx.listIndex || 'SPX';
+    let cancelled = false;
+    setLoading(true);
+    const indexSym = strategy?.index || ctx.listIndex || 'SPX';
     const duration = strategy?.duration || 30;
-    const tickers  = strategy?.components?.map(c => c.ticker) || null;
 
-    const resolve = listId
-      ? DXApi.getList(listId).then(list => {
-          const t   = tickers || (list?.items || []).map(i => i.ticker).filter(Boolean);
-          const idx = list?.index_symbol || index;
-          return DXApi.getRisk(listId, t.length ? t : DEMO, idx, duration);
-        })
-      : DXApi.getRisk(null, DEMO, index, duration);
+    (async () => {
+      let tickers = strategy?.components?.map(c => c.ticker) || null;
+      const weightMap = {};
+      if (listId) {
+        try {
+          const list = await DXApi.getList(listId);
+          const items = list?.items || [];
+          if (!tickers) tickers = items.map(i => i.ticker).filter(Boolean);
+          items.forEach(i => { if (i.ticker) weightMap[i.ticker] = i.weight ?? null; });
+        } catch {}
+      }
+      if (!tickers || !tickers.length) tickers = DEMO;
 
-    resolve.then(d => { setRiskData(d); setLoading(false); })
-           .catch(() => { setRiskData(null); setLoading(false); });
-  }, [listId, strategy]);
+      let indexPrice = 6000, indexIV = 18;
+      try { const sn = await DXApi.getSnapshot(indexSym); if (sn) { indexPrice = sn.price || indexPrice; indexIV = sn.iv_est || indexIV; } } catch {}
 
-  // Pas de contexte → picker (après les hooks)
+      const priceMap = {};
+      try { const q = await DXApi.batchQuotes(tickers); (q || []).forEach(rr => { if (rr?.ticker) priceMap[rr.ticker] = parseFloat(rr.price) || null; }); } catch {}
+
+      const volMap = {};
+      tickers.forEach(t => {
+        volMap[t] = window.DXMock?.synthVol ? window.DXMock.synthVol(t, indexSym) : {};
+        if (!priceMap[t]) priceMap[t] = 100;
+      });
+
+      const m = buildRiskModel({ tickers, weightMap, priceMap, volMap, indexSym, indexPrice, indexIV, duration, strategy });
+      if (!cancelled) { setModel(m); setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, [listId, strategy, ctx.listIndex]);
+
   if (!hasCtx) {
     return (
       <window.ModuleCtxPicker
         lists={lists}
         onCtx={upd => onModuleCtx && onModuleCtx(upd)}
         title="Risk Lab"
-        subtitle="Analysez les sensibilités (vega, theta, corrélation) de votre stratégie de dispersion pour une liste donnée."
+        subtitle="Analysez les sensibilités (vega, theta, gamma, corrélation) de votre stratégie de dispersion et simulez vos propres scénarios."
       />
     );
   }
 
-  if (loading) return (
-    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>
+  if (loading || !model) return (
+    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du risque…</div>
   );
 
-  const D           = riskData || {};
-  const greeks      = D.greeks     || [];
-  const scenarios   = D.scenarios  || [];
-  const pnlByName   = D.pnlByName  || [];
-  const pnlBySector = D.pnlBySector|| [];
-  const perTicker   = D.per_ticker || [];
-  const port        = D.portfolio  || {};
+  // ── Scénarios canoniques (calculés depuis le moteur) ──
+  const dur = model.duration;
+  const scenarioDefs = [
+    { name: 'Sell-off corrélé',   risk: 'critique', params: { spot: -6, dIVidx: 18, dIVcomp: 8, rho: 0.85, days: 0 } },
+    { name: 'Dispersion réalisée', risk: 'faible',   params: { spot: 5, dIVidx: -4, dIVcomp: 5, rho: 0.30, days: 5 } },
+    { name: 'Marché calme',        risk: 'modéré',   params: { spot: 0, dIVidx: -2, dIVcomp: -2, rho: 0.45, days: Math.round(dur / 2) } },
+  ];
+  const scenarios = scenarioDefs.map(s => {
+    const pnl = scenarioPnL(model, s.params).total;
+    return { ...s, pnl: Math.round(pnl), up: pnl >= 0 };
+  });
+  const selScen = scenarios[scenario] || scenarios[0];
 
-  const CONTRACT = 100;
-  const maxVega  = Math.max(...perTicker.map(t => Math.abs(t.greeks?.vega  || 0)), 1);
-  const maxTheta = Math.max(...perTicker.map(t => Math.abs(t.greeks?.theta || 0) * CONTRACT), 1);
-  const maxByName= Math.max(...pnlByName.map(r => Math.abs(r.pnl || 0)), 1);
-  const maxBySec = Math.max(...pnlBySector.map(r => Math.abs(r.pnl || 0)), 1);
-  const selSc    = scenarios[scenario];
-  const warnings = buildWarnings(D);
+  // ── Attribution sous le scénario sélectionné ──
+  const attrib = legAttribution(model, selScen.params);
+  const pnlByName = [{ t: model.indexSym + ' (short)', pnl: attrib.indexLeg.value }, ...attrib.comps.map(c => ({ t: c.label, pnl: c.value }))]
+    .sort((a, b) => b.pnl - a.pnl);
+  const secMap = {};
+  attrib.comps.forEach(c => { secMap[c.sector] = (secMap[c.sector] || 0) + c.value; });
+  const pnlBySector = [{ s: 'Indice', pnl: attrib.indexLeg.value }, ...Object.entries(secMap).map(([s, pnl]) => ({ s, pnl }))]
+    .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
+  const maxByName = Math.max(...pnlByName.map(r => Math.abs(r.pnl)), 1);
+  const maxBySec  = Math.max(...pnlBySector.map(r => Math.abs(r.pnl)), 1);
 
-  const charts   = buildSensCharts(D, strategy);
+  // ── Courbes de sensibilité (mêmes formules que le simulateur) ──
+  const base = { spot: 0, dIVidx: 0, dIVcomp: 0, rho: model.rhoBase, days: 0 };
+  const charts = {
+    spotBars:  [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: scenarioPnL(model, { ...base, spot: x }).total })),
+    ivIdxBars: [-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVidx: x }).total })),
+    ivCompBars:[-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVcomp: x }).total })),
+    rhoBars:   [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map(rho => ({ label: 'ρ ' + rho.toFixed(1), value: scenarioPnL(model, { ...base, spot: 5, rho }).total })),
+    thetaDays: [1, 3, 5, 7, 10, 14, 21, dur].map(d => ({ label: d + 'j', value: scenarioPnL(model, { ...base, days: d }).total })),
+    compMov:   model.perTicker.map(t => ({ label: t.ticker, logo: t.ticker, value: Math.round(t.greeks.vega * t.nContracts * 10) })).sort((a, b) => b.value - a.value),
+    selloff:   [{ label: model.indexSym + ' (short)', logo: null, value: attrib.indexLeg.value }, ...attrib.comps.map(c => ({ label: c.label, logo: c.logo, value: c.value }))].sort((a, b) => b.value - a.value),
+  };
+
+  const warnings = buildWarnings(model);
+  const maxVega  = Math.max(...model.perTicker.map(t => Math.abs(t.greeks.vega * t.nContracts)), 1);
+  const maxTheta = Math.max(...model.perTicker.map(t => Math.abs(t.greeks.theta * t.nContracts)), 1);
+
+  const fmtS = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n));
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-      {/* Contexte liste */}
       {lists && onModuleCtx && ctx.listId && (
-        <window.ModuleCtxBar
-          ctx={ctx}
-          lists={lists}
-          onCtx={upd => onModuleCtx(upd)}
-          onClear={() => onModuleCtx({ listId: null, listName: null })}
-        />
+        <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={upd => onModuleCtx(upd)} onClear={() => onModuleCtx({ listId: null, listName: null })} />
       )}
 
       {/* Header */}
@@ -352,31 +519,27 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
       </div>
 
       {/* Strategy status banner */}
-      {listId && strategy ? (
+      {strategy ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie calculée le <strong style={{ color: 'var(--text)' }}>{new Date(strategy.builtAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}</strong> · {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'} — P&L calculé sur les quantités réelles
+            Stratégie · {model.nIndex} contrat(s) {model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'quantités calculées'} — P&L sur quantités réelles
           </span>
-          {onNav && (
-            <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>Recalculer</button>
-          )}
+          {onNav && <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>Recalculer</button>}
         </div>
-      ) : listId && (
+      ) : (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--warn)', borderLeft: '3px solid var(--warn)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--warn)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>!</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie non encore calculée — les P&L utilisent 1 contrat par composant (estimation). <strong style={{ color: 'var(--text)' }}>Construisez la stratégie dans le Builder</strong> pour des calculs précis.
+            Dimensionnement <strong style={{ color: 'var(--text)' }}>vega-neutre estimé</strong> ({model.nIndex} contrat {model.indexSym}). Construisez la stratégie dans le Builder pour des quantités précises.
           </span>
-          {onNav && (
-            <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>Builder →</button>
-          )}
+          {onNav && <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>Builder →</button>}
         </div>
       )}
 
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
-          Les grecs mesurent la sensibilité de la position aux mouvements du marché. Delta ≈ 0 signifie que la stratégie est direction-neutre. Gamma et Vega mesurent la sensibilité aux mouvements brusques et à la volatilité.
+          Les grecs mesurent la sensibilité de la position. <strong>Vega</strong> = sensibilité à la volatilité, <strong>Theta</strong> = gain/perte du temps qui passe, <strong>Gamma</strong> = convexité sur les mouvements. La dispersion gagne quand les composants bougent plus que l'indice (corrélation réalisée faible) ; elle perd dans un sell-off corrélé.
         </BeginnerExplanationBox>
       )}
 
@@ -385,106 +548,76 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         <div style={{ marginBottom: 14 }}>
           <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Grecs agrégés</h2>
           <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Position nette indice + composants — ATM straddle {strategy?.duration || port.duration || 30}j
-            {strategy ? ' · quantités réelles calculées' : ' · estimation 1 lot/composant'}
+            Position nette indice + composants — ATM straddle {dur}j · {strategy ? 'quantités réelles' : 'dimensionnement vega-neutre'}
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
-          {(() => {
-            // Prefer strategy portfolio Greeks for the metric cards when available
-            if (strategy?.portfolio) {
-              const p = strategy.portfolio;
-              const fmtS = n => (n >= 0 ? '+' : '') + Math.round(n);
-              const stratGreeks = [
-                { label: 'Δ net',     value: '≈ 0',                           hint: 'ATM straddles delta-neutre',   accent: 'var(--pos)' },
-                { label: 'Vega net',  value: fmtS(p.netVegaPct) + ' $/1%',   hint: Math.abs(p.netVegaPct) < 30 ? 'Quasi-neutre ✓' : 'Vega résiduel', accent: 'var(--pos)' },
-                { label: 'Θ /jour',   value: fmtS(p.netTheta) + ' $',         hint: p.netTheta > 0 ? 'Gain quotidien (theta+)' : 'Coût quotidien', accent: 'var(--warn)' },
-                { label: 'Vega idx',  value: fmtS(p.idxVegaPct) + ' $/1%',   hint: 'Jambe indice short · ' + strategy.nIndex + ' contrat(s)', accent: 'var(--neg)' },
-                { label: 'Vega comp', value: '+' + Math.round(p.compVegaPct) + ' $/1%', hint: 'Panier composants long',  accent: 'var(--pos)' },
-                { label: 'Prime net', value: fmtS(p.netPremium) + ' $',       hint: p.netPremium > 0 ? 'Crédit net' : 'Débit net', accent: 'var(--accent)' },
-              ];
-              return stratGreeks.map((g, i) => <MetricCard key={i} {...g} />);
-            }
-            return greeks.length > 0
-              ? greeks.map((g, i) => <MetricCard key={g.label || i} {...g} />)
-              : [
-                  { label: 'Δ net', value: '≈ 0', hint: 'Direction-neutre', accent: 'var(--pos)' },
-                  { label: 'Γ net', value: '—', hint: 'Long gamma', accent: 'var(--accent)' },
-                  { label: 'Vega net', value: '—', accent: 'var(--pos)' },
-                  { label: 'Θ /jour', value: '—', accent: 'var(--warn)' },
-                  { label: 'IV moy.', value: '—', accent: 'var(--info)' },
-                  { label: 'Prime net', value: '—', accent: 'var(--accent)' },
-                ].map((g, i) => <MetricCard key={i} {...g} />);
-          })()}
+          <MetricCard label="Δ net"     value="≈ 0" hint="ATM straddles delta-neutre" accent="var(--pos)" />
+          <MetricCard label="Vega net"  value={fmtS(model.netVega) + ' $/1%'} hint={Math.abs(model.netVega) < 60 ? 'Quasi-neutre ✓' : 'Vega résiduel'} accent={Math.abs(model.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'} />
+          <MetricCard label="Θ /jour"   value={fmtS(model.netTheta) + ' $'} hint={model.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
+          <MetricCard label="Vega idx"  value={fmtS(model.idxVega) + ' $/1%'} hint={'Short · ' + model.nIndex + ' contrat(s)'} accent="var(--neg)" />
+          <MetricCard label="Vega comp" value={fmtS(model.compVega) + ' $/1%'} hint="Panier long" accent="var(--pos)" />
+          <MetricCard label="Prime nette" value={fmtMoney(model.netPremium)} hint={model.netPremium >= 0 ? 'Crédit net' : 'Débit net'} accent="var(--accent)" />
         </div>
       </section>
 
+      {/* ── Simulateur interactif ── */}
+      <section>
+        <ScenarioSimulator model={model} storageKey={'dx-risk-scen-' + (listId || 'demo')} />
+      </section>
+
       {/* ── Exposition par composant ── */}
-      {perTicker.length > 0 && (
-        <section>
-          <div style={{ marginBottom: 12 }}>
-            <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Exposition par composant</h2>
-            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Données réelles Yahoo Finance + MarketData — ATM straddle estimé</p>
+      <section>
+        <div style={{ marginBottom: 12 }}>
+          <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Exposition par composant</h2>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Grecs ATM straddle par jambe · quantités {strategy ? 'réelles' : 'vega-neutres'}</p>
+        </div>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '150px 64px 104px 56px 92px 88px 44px 80px', gap: 0, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+            {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega $/1%', 'Theta/j', 'Lots', 'Prime'].map(h => (
+              <div key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</div>
+            ))}
           </div>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '148px 68px 110px 60px 88px 88px 48px 76px', gap: 0, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-              {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega $/1%', 'Theta/j', 'Lots', 'Prime/lot'].map(h => (
-                <div key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</div>
-              ))}
-            </div>
-            {perTicker.map((t, idx) => {
-              const iv    = t.iv   || 0;
-              const hv    = t.hv   || 0;
-              const beta  = t.beta;
-              const vega  = t.greeks?.vega  || 0;
-              const theta = t.greeks?.theta || 0;
-              const prem  = t.greeks?.premium || 0;
-              const ivPos = iv >= hv;
-              const nLots = strategy?.components?.find(c => c.ticker === t.ticker)?.nContracts || null;
-              return (
-                <div key={t.ticker} style={{ display: 'grid', gridTemplateColumns: '148px 68px 110px 60px 88px 88px 48px 76px', gap: 0, padding: '10px 16px', borderBottom: idx < perTicker.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <img src={`https://assets.parqet.com/logos/symbol/${t.ticker.split('.')[0]}`} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }}
-                        onError={e => { e.currentTarget.style.display = 'none'; }} />
-                    </div>
-                    <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{t.ticker}</span>
+          {model.perTicker.map((t, idx) => {
+            const ivPos = t.iv >= t.hv;
+            const vega = t.greeks.vega * t.nContracts;
+            const theta = t.greeks.theta * t.nContracts;
+            const prem = t.greeks.premium * t.nContracts;
+            return (
+              <div key={t.ticker} style={{ display: 'grid', gridTemplateColumns: '150px 64px 104px 56px 92px 88px 44px 80px', gap: 0, padding: '10px 16px', borderBottom: idx < model.perTicker.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <img src={`https://assets.parqet.com/logos/symbol/${t.ticker.split('.')[0]}`} alt="" style={{ width: 16, height: 16, objectFit: 'contain' }}
+                      onError={e => { e.currentTarget.style.display = 'none'; }} />
                   </div>
-                  <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{t.price ? t.price.toFixed(0) + ' $' : '—'}</span>
-                  <div>
-                    <div style={{ font: '600 11px/1 var(--font-mono)', color: ivPos ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-                      {iv.toFixed(1)}% <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>/ {hv.toFixed(1)}%</span>
-                    </div>
-                    <div style={{ font: '9px/1 var(--font-sans)', color: ivPos ? 'var(--pos)' : 'var(--neg)', marginTop: 2 }}>
-                      {ivPos ? '+' : ''}{(iv - hv).toFixed(1)} pts
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ font: '600 11px/1 var(--font-mono)', color: beta == null ? 'var(--text-dim)' : Math.abs(beta - 1.1) < 0.3 ? 'var(--pos-bright)' : 'var(--warn)' }}>
-                      {beta != null ? beta.toFixed(2) : '—'}
-                    </span>
-                    {beta != null && <GreekBar value={beta} max={2.5} pos={beta <= 1.4} />}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--accent)' }}>{vega ? (vega >= 0 ? '+' : '') + Math.round(vega) + ' $' : '—'}</span>
-                    {vega ? <GreekBar value={vega} max={maxVega} pos={vega > 0} /> : null}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                    <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{theta ? (theta >= 0 ? '+' : '') + (theta * CONTRACT).toFixed(1) + ' $' : '—'}</span>
-                    {theta ? <GreekBar value={theta * CONTRACT} max={maxTheta} pos={theta > 0} /> : null}
-                  </div>
-                  <span style={{ font: '700 11px/1 var(--font-mono)', color: nLots != null ? 'var(--accent)' : 'var(--text-dim)' }}>
-                    {nLots != null ? nLots : '—'}
-                  </span>
-                  <span style={{ font: '700 11px/1 var(--font-mono)', color: prem >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-                    {prem ? (prem >= 0 ? '+' : '') + Math.round(prem * CONTRACT) + ' $' : '—'}
-                  </span>
+                  <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{t.ticker}</span>
                 </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+                <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{Math.round(t.price)} $</span>
+                <div>
+                  <div style={{ font: '600 11px/1 var(--font-mono)', color: ivPos ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
+                    {t.iv.toFixed(1)}% <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>/ {t.hv.toFixed(1)}%</span>
+                  </div>
+                  <div style={{ font: '9px/1 var(--font-sans)', color: ivPos ? 'var(--pos)' : 'var(--neg)', marginTop: 2 }}>{ivPos ? '+' : ''}{(t.iv - t.hv).toFixed(1)} pts</div>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ font: '600 11px/1 var(--font-mono)', color: Math.abs(t.beta - 1.1) < 0.3 ? 'var(--pos-bright)' : 'var(--warn)' }}>{t.beta.toFixed(2)}</span>
+                  <GreekBar value={t.beta} max={2.5} pos={t.beta <= 1.4} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--accent)' }}>{fmtS(vega)} $</span>
+                  <GreekBar value={vega} max={maxVega} pos={vega > 0} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(theta)} $</span>
+                  <GreekBar value={theta} max={maxTheta} pos={theta > 0} />
+                </div>
+                <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--accent)' }}>{t.nContracts}</span>
+                <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{fmtMoney(prem).replace(' $', '')}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       {/* ── Scénarios ── */}
       <section>
@@ -506,8 +639,9 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
                   <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{s.name}</span>
                   <RiskBadge level={s.risk} size="sm" />
                 </div>
-                <div style={{ font: '700 20px/1 var(--font-mono)', color: s.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-                  {s.pnl}<span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginLeft: 4 }}>$</span>
+                <div style={{ font: '700 20px/1 var(--font-mono)', color: s.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtMoney(s.pnl)}</div>
+                <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 6 }}>
+                  {(s.params.spot > 0 ? '+' : '') + s.params.spot}% · IV idx {s.params.dIVidx >= 0 ? '+' : ''}{s.params.dIVidx} · ρ {s.params.rho} · {s.params.days}j
                 </div>
               </button>
             );
@@ -515,69 +649,22 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         </div>
       </section>
 
-      {/* ── 8 graphiques de sensibilité ── */}
+      {/* ── Courbes de sensibilité ── */}
       <section>
         <div style={{ marginBottom: 16 }}>
           <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Analyse de sensibilité</h2>
-          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>P&L estimé sous chaque type de choc, isolé</p>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>P&L estimé sous chaque type de choc, isolé (mêmes formules que le simulateur)</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-
-          <SensChart
-            title="P&L par mouvement de l'indice"
-            subtitle="Choc instantané sur le spot — effets corrélation inclus"
-            bars={charts.spotBars}
-            diverging
-          />
-
-          <SensChart
-            title="P&L par choc de vol indice"
-            subtitle="Variation de l'IV de l'indice (jambe short straddle)"
-            bars={charts.ivIdxBars}
-            diverging
-          />
-
-          <SensChart
-            title="P&L par choc de vol composants"
-            subtitle="Variation de l'IV des composants (jambe long straddles)"
-            bars={charts.ivCompBars}
-            diverging
-          />
-
-          <SensChart
-            title="Scénarios de corrélation"
-            subtitle="P&L selon le niveau de ρ réalisée des composants"
-            bars={charts.rhoBars}
-            diverging
-          />
-
-          <SensChart
-            title="P&L par passage du temps"
-            subtitle="Cumul du theta net sur la durée de la position"
-            bars={charts.thetaDays}
-          />
-
-          <SensChart
-            title="Mouvements des composants"
-            subtitle="Contribution estimée par ticker — choc IV +10%"
-            bars={charts.compMovBars}
-            diverging
-          />
-
-          <SensChart
-            title="Chocs de skew"
-            subtitle="Impact d'un raidissement/aplatissement du skew indice (pts)"
-            bars={charts.skewBars}
-            diverging
-          />
-
-          <SensChart
-            title="Contribution · Sell-off −5% + IV +15%"
-            subtitle="Décomposition du P&L par jambe sous ce scénario"
-            bars={charts.selloffContrib}
-            diverging
-          />
-
+          <SensChart title="P&L par mouvement de l'indice" subtitle={`Choc instantané sur le spot · ρ ${model.rhoBase.toFixed(2)}`} bars={charts.spotBars} diverging />
+          <SensChart title="Scénarios de corrélation" subtitle={`P&L sur un mouvement de 5% selon ρ · équilibre ≈ ${model.rhoBreakeven.toFixed(2)}`} bars={charts.rhoBars} diverging />
+          <SensChart title="P&L par choc de vol indice" subtitle="Variation de l'IV indice (jambe short straddle), en points" bars={charts.ivIdxBars} diverging />
+          <SensChart title="P&L par choc de vol composants" subtitle="Variation de l'IV des composants (jambes long), en points" bars={charts.ivCompBars} diverging />
+          <SensChart title="P&L par passage du temps" subtitle="Cumul du theta net sur la durée de la position" bars={charts.thetaDays} diverging />
+          <SensChart title="Sensibilité IV par composant" subtitle="Gain si l'IV de ce composant monte de +10 pts" bars={charts.compMov} diverging />
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <SensChart title={`Attribution · ${selScen.name}`} subtitle="Décomposition du P&L par jambe sous le scénario sélectionné" bars={charts.selloff} diverging />
         </div>
       </section>
 
@@ -586,24 +673,20 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         <div style={{ marginBottom: 14 }}>
           <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Attribution du P&L</h2>
           <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>
-            Sous : <strong style={{ color: selSc?.up ? 'var(--pos)' : 'var(--neg)' }}>{selSc?.name || '—'}</strong>
+            Sous : <strong style={{ color: selScen.up ? 'var(--pos)' : 'var(--neg)' }}>{selScen.name}</strong> · total <strong style={{ color: selScen.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtMoney(selScen.pnl)}</strong>
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: 16 }}>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Par sous-jacent</div>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Par jambe</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {pnlByName.length > 0
-                ? pnlByName.map(r => <AttribRow key={r.t} label={r.t} pnl={r.pnl} max={maxByName} logo={!r.t.startsWith('SPX') && !r.t.startsWith('NDX') ? r.t : null} />)
-                : <div style={{ color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données non disponibles</div>}
+              {pnlByName.map(r => <AttribRow key={r.t} label={r.t} pnl={r.pnl} max={maxByName} logo={!r.t.includes('short') ? r.t : null} />)}
             </div>
           </div>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Par secteur</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {pnlBySector.length > 0
-                ? pnlBySector.map(r => <AttribRow key={r.s} label={r.s} pnl={r.pnl} max={maxBySec} />)
-                : <div style={{ color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Données non disponibles</div>}
+              {pnlBySector.map(r => <AttribRow key={r.s} label={r.s} pnl={r.pnl} max={maxBySec} />)}
             </div>
           </div>
         </div>
@@ -613,15 +696,12 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
       <section>
         <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: '0 0 12px' }}>Alertes</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-          {warnings.map((w, i) => (
-            <WarningPanel key={i} tone={w.tone} title={w.title}>{w.msg}</WarningPanel>
-          ))}
+          {warnings.map((w, i) => <WarningPanel key={i} tone={w.tone} title={w.title}>{w.msg}</WarningPanel>)}
         </div>
       </section>
 
-      {/* ── Warning principal ── */}
       <WarningPanel tone="neg" title="Scénario le plus défavorable">
-        Un <strong style={{ color: 'var(--neg-bright)' }}>sell-off corrélé</strong> — l'indice baisse brutalement, la corrélation réalisée rejoint l'implicite, et les composants se déplacent ensemble — est le principal ennemi d'une dispersion classique. La jambe short indice perd alors que la prime de corrélation s'effondre.
+        Un <strong style={{ color: 'var(--neg-bright)' }}>sell-off corrélé</strong> — l'indice baisse brutalement, la corrélation réalisée rejoint l'implicite, et les composants se déplacent ensemble — est le principal ennemi d'une dispersion classique. La jambe short indice perd alors que la prime de corrélation s'effondre. Testez-le dans le simulateur (ρ élevée + choc IV indice).
       </WarningPanel>
 
     </div>

@@ -167,6 +167,7 @@
       hv30, hv60: +(hv30 * 1.04).toFixed(1), hv90: +(hv30 * 1.07).toFixed(1), hv252: +(hv30 * 1.05).toFixed(1),
       iv_est: iv, iv_atm: null, iv_minus_hv: spread, spread,
       beta, correlation: corr, hv_history: hvHistory, term: null,
+      sector: c?.sector || 'Autre', weight: c?.weight ?? null,
       source: 'reference',
     };
   }
