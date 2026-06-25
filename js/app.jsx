@@ -147,7 +147,7 @@ function App() {
       screenEl = <window.RiskLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'builder':
-      screenEl = <window.Builder listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
+      screenEl = <window.Builder listId={params.listId} onNav={onNav} onScore={onScore} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'monitor':
       screenEl = <window.StrategyMonitor mode={mode} />;

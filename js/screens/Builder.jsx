@@ -1,13 +1,16 @@
 /* ─── Sélection des composants (module-level pour conserver l'état de
    recherche/filtre entre les re-renders du Builder) ──────────────────── */
-function StepComposants({ components, index, selected, onToggle, onAdd, onSelectAll, onClearAll, mode }) {
+function StepComposants({ components, index, selected, onToggle, onAdd, onSelectAll, onClearAll, onShowScore, mode }) {
   const { ScoreBadge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const adv = mode === 'Avancé';
-  const cols = adv
-    ? ['Ticker', 'Secteur', 'Poids ' + index, 'IV', 'HV', 'ρ', 'Vega', 'Score', '']
-    : ['Ticker', 'Secteur', 'Poids ' + index, 'IV / HV', 'ρ', 'Score', ''];
+  // Colonnes triables (clé de tri ; num = tri numérique).
+  const colDefs = adv
+    ? [{ l: 'Ticker', k: 't' }, { l: 'Secteur', k: 'sec' }, { l: 'Poids ' + index, k: 'w' }, { l: 'IV', k: 'iv' }, { l: 'HV', k: 'hv' }, { l: 'ρ', k: 'rho' }, { l: 'Vega', k: 'vega' }, { l: 'Score', k: 'score' }, { l: '', k: null }]
+    : [{ l: 'Ticker', k: 't' }, { l: 'Secteur', k: 'sec' }, { l: 'Poids ' + index, k: 'w' }, { l: 'IV / HV', k: 'iv' }, { l: 'ρ', k: 'rho' }, { l: 'Score', k: 'score' }, { l: '', k: null }];
   const [q, setQ] = React.useState('');
   const [onlySel, setOnlySel] = React.useState(false);
+  const [sortKey, setSortKey] = React.useState(null);   // null = tri par défaut
+  const [sortDir, setSortDir] = React.useState('desc');
   const up = q.trim().toUpperCase();
 
   // Recherche dans les constituants de l'indice + ajout de tout symbole tapé.
@@ -16,14 +19,41 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
   const canAdd = up && /^[A-Z0-9.\-]{1,8}$/.test(up) && !known;
   function add(t) { onAdd(t); setQ(''); }
 
-  // Filtre (tous / sélectionnés) + tri : constituants de l'indice d'abord,
-  // puis par poids puis par score.
+  // Clic sur un en-tête : trie par cette colonne (toggle asc/desc).
+  function setSort(k) {
+    if (!k) return;
+    if (sortKey === k) setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    else { setSortKey(k); setSortDir(k === 't' || k === 'sec' ? 'asc' : 'desc'); }
+  }
+  const valOf = (c, k) => {
+    switch (k) {
+      case 't':   return c.t || '';
+      case 'sec': return c.sec || '';
+      case 'w':   return c.weights[index] != null ? c.weights[index] : -1;
+      case 'iv':  return c.iv ?? 0;
+      case 'hv':  return c.hv ?? 0;
+      case 'rho': return c.rho ?? 0;
+      case 'vega': return -(parseFloat(c.iv) || 0) * 1.4;
+      case 'score': return c.score ?? 0;
+      default: return 0;
+    }
+  };
+
+  // Filtre + tri (colonne choisie, sinon constituants d'abord puis poids/score).
   let rows = [...components];
   if (onlySel) rows = rows.filter(c => selected.has(c.t));
-  rows.sort((a, b) => {
-    const am = a.member ? 1 : 0, bm = b.member ? 1 : 0;
-    return bm - am || (b.weights[index] || 0) - (a.weights[index] || 0) || (b.score || 0) - (a.score || 0);
-  });
+  if (sortKey) {
+    rows.sort((a, b) => {
+      const av = valOf(a, sortKey), bv = valOf(b, sortKey);
+      const cmp = (typeof av === 'string') ? av.localeCompare(bv) : (av - bv);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  } else {
+    rows.sort((a, b) => {
+      const am = a.member ? 1 : 0, bm = b.member ? 1 : 0;
+      return bm - am || (b.weights[index] || 0) - (a.weights[index] || 0) || (b.score || 0) - (a.score || 0);
+    });
+  }
 
   return (
     <>
@@ -72,8 +102,10 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
         <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
           <thead>
             <tr style={{ background: 'var(--bg-elevated)' }}>
-              {cols.map((h, i) => (
-                <th key={h + i} style={{ textAlign: i === 0 || i === 1 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 14px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+              {colDefs.map((d, i) => (
+                <th key={d.l + i} onClick={() => setSort(d.k)} style={{ textAlign: i === 0 || i === 1 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: sortKey === d.k && d.k ? 'var(--accent-hover)' : 'var(--text-muted)', padding: '10px 14px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap', cursor: d.k ? 'pointer' : 'default', userSelect: 'none' }}>
+                  {d.l}{sortKey === d.k && d.k ? (sortDir === 'asc' ? ' ▲' : ' ▼') : ''}
+                </th>
               ))}
             </tr>
           </thead>
@@ -82,7 +114,7 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
               <tr key={c.t} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                 <td style={{ padding: '11px 14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                    <span style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{c.t}</span>
+                    <span onClick={() => onShowScore && onShowScore(c.t)} title={onShowScore ? 'Voir le résumé du score' : ''} style={{ font: 'var(--type-ticker)', color: onShowScore ? 'var(--accent-hover)' : 'var(--text)', cursor: onShowScore ? 'pointer' : 'default', textDecoration: onShowScore ? 'underline' : 'none', textUnderlineOffset: 2 }}>{c.t}</span>
                     {c.earnings && <span title="Earnings proche" style={{ color: 'var(--warn)' }}>●</span>}
                     {!c.member && <span style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}>ajouté</span>}
                   </div>
@@ -99,7 +131,7 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
                 <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: (c.rho ?? 0.5) < 0.5 ? 'var(--pos-bright)' : 'var(--text-soft)' }}>{(c.rho ?? 0.5).toFixed(2)}</td>
                 {adv && <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>−{(parseFloat(c.iv) * 1.4).toFixed(0)}</td>}
                 <td style={{ padding: '11px 14px', textAlign: 'right' }}>
-                  <div style={{ display: 'inline-block' }}><ScoreBadge score={c.score} max={0} label="" /></div>
+                  <div onClick={() => onShowScore && onShowScore(c.t)} title={onShowScore ? 'Voir le résumé du score' : ''} style={{ display: 'inline-block', cursor: onShowScore ? 'pointer' : 'default' }}><ScoreBadge score={c.score} max={0} label="" /></div>
                 </td>
                 <td style={{ padding: '11px 14px', textAlign: 'right' }}>
                   <input type="checkbox" checked={selected.has(c.t)} onChange={() => onToggle(c.t)} style={{ accentColor: 'var(--accent)', width: 15, height: 15 }} />
@@ -114,7 +146,7 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
 }
 
 /* ─── Strategy Builder: 8-step wizard ──────────────────────────── */
-function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
+function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }) {
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
   const [step, setStep] = React.useState(listId ? 3 : 0);
@@ -390,7 +422,7 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
       {step === 0 && <StepIndice selected={selectedIndex} onSelect={setSelectedIndex} />}
       {step === 1 && <StepDuration selected={selectedDuration} onSelect={setSelectedDuration} />}
       {step === 2 && <StepSource lists={lists} sourceListId={sourceListId} onPickList={pickSourceList} onScratch={startScratch} />}
-      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={toggleItem} onAdd={addTicker} onSelectAll={() => { setSourceListId(null); setSelectedItems(new Set(components.map(c => c.t))); }} onClearAll={() => { setSourceListId(null); setSelectedItems(new Set()); }} mode={mode} />}
+      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={toggleItem} onAdd={addTicker} onSelectAll={() => { setSourceListId(null); setSelectedItems(new Set(components.map(c => c.t))); }} onClearAll={() => { setSourceListId(null); setSelectedItems(new Set()); }} onShowScore={onScore ? (t => onScore(selectedIndex, t, selectedDuration)) : null} mode={mode} />}
 
       {/* Étapes reliées aux vrais modules du site (embarqués), pilotées par la
           liste effective (contexte ou brouillon créé depuis les composants). */}
