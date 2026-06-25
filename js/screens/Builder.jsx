@@ -26,7 +26,35 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   }, [listId]);
 
   const D = window.DXData;
-  const components = D?.components || [];
+
+  // Univers = union des composants de TOUS les indices disponibles (dédupliqué),
+  // enrichi des tickers de la liste courante. Chaque action est taguée des
+  // indices dont elle fait partie, avec son poids par indice.
+  const components = React.useMemo(() => {
+    const map = {};
+    ((window.DXMock && window.DXMock.indices) || []).forEach(ix => {
+      (window.DXMock.getComponents(ix.symbol) || []).forEach(c => {
+        if (!c.ticker) return;
+        const e = map[c.ticker] || (map[c.ticker] = {
+          t: c.ticker, n: c.name, sec: c.sector, iv: c.iv, hv: c.hv, rho: c.rho,
+          score: c.score, earnings: c.earnings, beta: c.beta, indices: [], weights: {},
+        });
+        if (!e.indices.includes(ix.symbol)) e.indices.push(ix.symbol);
+        e.weights[ix.symbol] = c.weight;
+      });
+    });
+    // Tickers de la liste courante non présents dans les compositions connues
+    (list?.items || []).forEach(it => {
+      const t = it.ticker; if (!t || map[t]) return;
+      const v = (window.DXMock && window.DXMock.synthVol) ? window.DXMock.synthVol(t) : {};
+      map[t] = {
+        t, n: t, sec: v.sector || 'Autre', iv: v.iv_est, hv: v.hv30, rho: v.correlation ?? 0.5,
+        score: it.score ?? (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null),
+        earnings: false, beta: v.beta, indices: ['Liste'], weights: {},
+      };
+    });
+    return Object.values(map);
+  }, [list]);
 
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
   const CONTRACT = 100;
@@ -156,8 +184,8 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
 
       {step === 0 && <StepIndice selected={selectedIndex} onSelect={setSelectedIndex} />}
       {step === 1 && <StepDuration selected={selectedDuration} onSelect={setSelectedDuration} />}
-      {step === 2 && <StepUniverse index={selectedIndex} />}
-      {step === 3 && <StepComposants components={components} selected={selectedItems} onToggle={t => setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; })} mode={mode} />}
+      {step === 2 && <StepUniverse index={selectedIndex} universe={components} />}
+      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={t => setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; })} mode={mode} />}
 
       {/* Étapes reliées aux vrais modules du site (embarqués) */}
       {step === 4 && (listId
@@ -261,26 +289,46 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
     );
   }
 
-  function StepUniverse({ index }) {
+  function StepUniverse({ index, universe }) {
+    const total   = universe.length;
+    const inIndex = universe.filter(c => c.weights[index] != null).length;
+    const byIdx   = ((window.DXMock && window.DXMock.indices) || []).map(ix => ({
+      sym: ix.symbol, n: universe.filter(c => c.weights[ix.symbol] != null).length,
+    }));
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {['Exclure earnings proches', 'Spread max', 'Liquidité min', 'Secteur', 'ρ max'].map((f) => (
-            <button key={f} style={{ font: '500 12px/1 var(--font-sans)', padding: '7px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-soft)', cursor: 'pointer' }}>{f} ▾</button>
-          ))}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+          <MetricCard label="Univers total" value={String(total)} unit="actions" accent="var(--accent)" hint="Tous indices confondus, dédupliqué" />
+          <MetricCard label={'Membres ' + index} value={String(inIndex)} unit="actions" accent="var(--info)" hint="Composants de l'indice sélectionné" />
         </div>
-        <div style={{ padding: 24, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
-          Univers filtré : {index} — {(window.DXMock?.getComponents(index) || []).length || 10} composants eligibles après filtres.
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Couverture par indice</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {byIdx.map(b => (
+              <div key={b.sym} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 'var(--radius)', background: b.sym === index ? 'var(--accent-soft)' : 'var(--bg-elevated)', border: `1px solid ${b.sym === index ? 'var(--accent-border)' : 'var(--border)'}` }}>
+                <span style={{ font: '700 12px/1 var(--font-mono)', color: b.sym === index ? 'var(--accent-hover)' : 'var(--text)' }}>{b.sym}</span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{b.n}</span>
+              </div>
+            ))}
+          </div>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '14px 0 0' }}>
+            À l'étape suivante, toutes ces actions sont sélectionnables. Les membres de <strong style={{ color: 'var(--text)' }}>{index}</strong> apparaissent en premier — ce sont les composants naturels d'une dispersion sur cet indice.
+          </p>
         </div>
       </div>
     );
   }
 
-  function StepComposants({ components, selected, onToggle, mode }) {
+  function StepComposants({ components, index, selected, onToggle, mode }) {
     const adv = mode === 'Avancé';
     const cols = adv
-      ? ['Ticker', 'Secteur', 'Poids', 'IV', 'HV', 'ρ', 'Vega', 'Score', '']
-      : ['Ticker', 'Secteur', 'Poids', 'IV / HV', 'ρ', 'Score', ''];
+      ? ['Ticker', 'Secteur', 'Poids ' + index, 'IV', 'HV', 'ρ', 'Vega', 'Score', '']
+      : ['Ticker', 'Secteur', 'Poids ' + index, 'IV / HV', 'ρ', 'Score', ''];
+    // Membres de l'indice sélectionné d'abord, puis par score décroissant.
+    const rows = [...components].sort((a, b) => {
+      const am = a.weights[index] != null ? 1 : 0, bm = b.weights[index] != null ? 1 : 0;
+      return bm - am || (b.score || 0) - (a.score || 0);
+    });
     return (
       <>
         {mode === 'Débutant' && (
@@ -303,14 +351,20 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
               </tr>
             </thead>
             <tbody>
-              {components.map((c) => (
+              {rows.map((c) => (
                 <tr key={c.t} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '11px 14px' }}>
-                    <div style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{c.t}{c.earnings && <span title="Earnings proche" style={{ color: 'var(--warn)', marginLeft: 6 }}>●</span>}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                      <span style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{c.t}</span>
+                      {c.earnings && <span title="Earnings proche" style={{ color: 'var(--warn)' }}>●</span>}
+                      {(c.indices || []).map(ix => (
+                        <span key={ix} style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: ix === index ? 'var(--accent-soft)' : 'var(--bg-elevated)', border: `1px solid ${ix === index ? 'var(--accent-border)' : 'var(--border)'}`, color: ix === index ? 'var(--accent-hover)' : 'var(--text-dim)' }}>{ix}</span>
+                      ))}
+                    </div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{c.n}</div>
                   </td>
                   <td style={{ padding: '11px 14px', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{c.sec}</td>
-                  <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c.w}%</td>
+                  <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: c.weights[index] != null ? 'var(--text-soft)' : 'var(--text-dim)' }}>{c.weights[index] != null ? c.weights[index] + '%' : '—'}</td>
                   {adv ? <>
                     <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c.iv}</td>
                     <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{c.hv}</td>
