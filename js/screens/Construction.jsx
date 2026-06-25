@@ -24,6 +24,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [sizing,   setSizing]   = React.useState('vega_neutral');
   const [weightBasis, setWeightBasis] = React.useState('index');   // index (w_i) | variance (w_i²) | equal
   const [duration, setDuration] = React.useState(durationOverride || 30);
+  const [deltaHedge, setDeltaHedge] = React.useState('none');      // none | index | legs
   const [savedTick, setSavedTick] = React.useState(0);
 
   // Préremplir depuis une stratégie déjà construite pour cette liste
@@ -31,7 +32,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     if (!listId) return;
     try {
       const raw = localStorage.getItem('dx-strategy-' + listId);
-      if (raw) { const s = JSON.parse(raw); if (s) { setNIndex(s.nIndex || 1); setSizing(s.sizingMethod || 'vega_neutral'); if (s.weightBasis) setWeightBasis(s.weightBasis); if (!durationOverride) setDuration(s.duration || 30); } }
+      if (raw) { const s = JSON.parse(raw); if (s) { setNIndex(s.nIndex || 1); setSizing(s.sizingMethod || 'vega_neutral'); if (s.weightBasis) setWeightBasis(s.weightBasis); if (s.deltaHedge) setDeltaHedge(s.deltaHedge); if (!durationOverride) setDuration(s.duration || 30); } }
     } catch {}
   }, [listId]);
 
@@ -83,13 +84,23 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   // Dimensionnement : chaque jambe reçoit une part du vega indice selon la
   // base de pondération choisie (poids indice w_i, variance w_i², ou égale),
   // puis on convertit cette cible de vega en nombre de contrats entiers.
+  // Poids robuste : poids réel de l'indice si connu, sinon estimé par le plus
+  // petit poids connu du panier (l'action participe toujours, jamais ignorée,
+  // jamais de valeur aléatoire).
   const sized = React.useMemo(() => {
     if (!base) return null;
-    const rawW = base.perTicker.map(t => {
+    const knownW = base.perTicker.map(t => t.weight).filter(w => w != null && w > 0);
+    // Estimation pour un ticker hors base connue : le plus petit poids connu du
+    // panier (un titre absent des top-constituants est probablement plus petit) ;
+    // s'il n'y a aucun poids connu, tout le monde est à égalité.
+    const estW   = knownW.length ? Math.min(...knownW) : 1;
+    const resolveW = base.perTicker.map(t => ({
+      w: (t.weight != null && t.weight > 0) ? t.weight : estW,
+      est: !(t.weight != null && t.weight > 0),       // poids estimé (hors base connue) ?
+    }));
+    const rawW = resolveW.map(r => {
       if (weightBasis === 'equal') return 1;
-      const w = (t.weight != null && t.weight > 0) ? t.weight : null;
-      if (w == null) return 0.0001;                     // hors-indice → poids négligeable (1 lot mini)
-      return weightBasis === 'variance' ? w * w : w;
+      return weightBasis === 'variance' ? r.w * r.w : r.w;
     });
     const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
     const targetVega = base.idxG.vega * nIndex;          // vega à neutraliser
@@ -98,17 +109,28 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       const n = (sizing === 'vega_neutral' && t.g.vega > 0)
         ? Math.max(1, Math.round(targetVega * wNorm / t.g.vega))
         : 1;
-      return { ...t, share: wNorm * 100, nContracts: n, vega: t.g.vega * n, theta: t.g.theta * n, premium: t.g.premium * n, notional: t.price * CONTRACT * n };
+      return {
+        ...t, weightUsed: resolveW[i].w, weightEst: resolveW[i].est, share: wNorm * 100,
+        nContracts: n, vega: t.g.vega * n, theta: t.g.theta * n, premium: t.g.premium * n,
+        delta: t.g.delta1pct * n, notional: t.price * CONTRACT * n,
+      };
     });
     const compVega  = comps.reduce((s, c) => s + c.vega, 0);
     const compTheta = comps.reduce((s, c) => s + c.theta, 0);
     const compPrem  = comps.reduce((s, c) => s + c.premium, 0);
+    const compDelta = comps.reduce((s, c) => s + c.delta, 0);
     const idxVega      = base.idxG.vega * nIndex;         // magnitude (jambe short)
     const idxThetaGain = -base.idxG.theta * nIndex;       // short → theta positif
     const idxPrem      = base.idxG.premium * nIndex;
+    const idxDelta     = -base.idxG.delta1pct * nIndex;   // short → delta opposé
+    const netDelta     = compDelta + idxDelta;
+    // Couverture : $ delta par contrat de future indice (≈ sous-jacent) pour +1%
+    const idxUnitDelta = base.indexPrice * 0.01 * CONTRACT;
+    const hedgeUnits   = idxUnitDelta ? -netDelta / idxUnitDelta : 0;  // contrats future indice à trader
     return {
-      comps, compVega, compTheta, compPrem,
-      idxVega, idxThetaGain, idxPrem,
+      comps, compVega, compTheta, compPrem, compDelta,
+      idxVega, idxThetaGain, idxPrem, idxDelta, netDelta,
+      idxUnitDelta, hedgeUnits, nEstimated: comps.filter(c => c.weightEst).length,
       netVega: compVega - idxVega,
       netTheta: compTheta + idxThetaGain,
       netPremium: idxPrem - compPrem,
@@ -122,16 +144,20 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     if (!base || !sized) return null;
     return {
       listId, index: base.indexSym, duration, builtAt: new Date().toISOString(),
-      nIndex, sizingMethod: sizing, weightBasis,
+      nIndex, sizingMethod: sizing, weightBasis, deltaHedge,
+      hedgeUnits: deltaHedge === 'index' ? sized.hedgeUnits : 0,
       components: sized.comps.map(c => ({
         ticker: c.ticker, price: c.price, iv: c.iv, hv: c.hv, beta: c.beta,
-        sector: c.sector, weight: c.weight, nContracts: c.nContracts,
-        vega: c.vega, theta: c.theta, premium: c.premium,
+        sector: c.sector, weight: c.weightUsed, weightEst: c.weightEst, nContracts: c.nContracts,
+        vega: c.vega, theta: c.theta, premium: c.premium, delta: c.delta,
       })),
       portfolio: {
         idxVega: sized.idxVega, idxTheta: sized.idxThetaGain, idxPrem: sized.idxPrem,
         compVega: sized.compVega, compTheta: sized.compTheta, compPrem: sized.compPrem,
         netVega: sized.netVega, netTheta: sized.netTheta, netPremium: sized.netPremium,
+        idxDelta: sized.idxDelta, compDelta: sized.compDelta,
+        netDelta: deltaHedge === 'index' ? 0 : sized.netDelta,
+        netDeltaRaw: sized.netDelta,
         idxVegaPerLot: base.idxG.vega, idxThetaPerLot: -base.idxG.theta, idxPremPerLot: base.idxG.premium,
       },
     };
@@ -154,7 +180,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     if (!s) return;
     try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
     if (onSaved) onSaved(s);
-  }, [embedded, sized, listId]);
+  }, [embedded, sized, listId, deltaHedge]);
 
   // ── États sans contexte ──
   if (!hasCtx) {
@@ -300,7 +326,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
                 </div>
                 <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.ticker}</span>
               </div>
-              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>{c.weight != null ? c.weight.toFixed(1) + '%' : '—'}</span>
+              <span style={{ font: '11px/1 var(--font-mono)', color: c.weightEst ? 'var(--text-dim)' : 'var(--text-soft)', textAlign: 'right' }} title={c.weightEst ? 'Poids estimé (hors base de poids connue) — plus petit poids connu du panier' : 'Poids réel dans l\'indice'}>{(c.weightEst ? '~' : '') + c.weightUsed.toFixed(1) + '%'}</span>
               <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{c.nContracts}</span>
               <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>+{Math.round(c.g.vega)} $</span>
               <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{Math.round(c.vega)} $/1%</span>
@@ -328,6 +354,72 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         <MetricCard label="Theta net /jour" value={fmtS(sized.netTheta) + ' $'} hint={sized.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
         <MetricCard label="Prime nette" value={fmtMoney(sized.netPremium)} hint={sized.netPremium >= 0 ? 'Crédit net' : 'Débit net'} accent="var(--accent)" />
         <MetricCard label="Lots composants" value={String(sized.totalLots)} hint={'Notionnel ' + fmtNot(sized.compNotional)} accent="var(--info)" />
+      </div>
+
+      {/* Note poids estimés */}
+      {sized.nEstimated > 0 && (
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', display: 'flex', gap: 6, alignItems: 'baseline' }}>
+          <span style={{ color: 'var(--warn)', fontWeight: 700 }}>~</span>
+          <span>{sized.nEstimated} composant(s) hors base de poids connue : poids estimé (plus petit poids connu du panier) — jamais ignoré dans le sizing. Pour un poids exact, partez d'une liste issue d'un indice, ou choisissez la base « Égale ».</span>
+        </div>
+      )}
+
+      {/* ── Delta de la stratégie / couverture ── */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+          <div style={{ maxWidth: 460 }}>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Delta de la stratégie</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 3 }}>Exposition directionnelle nette ($ de P&L pour +1 % du sous-jacent). Les straddles ATM sont quasi delta-neutres, mais un résidu subsiste (vol des composants ≠ vol indice) — on peut l'annuler.</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ font: '800 22px/1 var(--font-mono)', color: Math.abs(deltaHedge !== 'none' ? 0 : sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta)} $/1%</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>delta net {deltaHedge !== 'none' ? '· couvert' : 'global'}</div>
+          </div>
+        </div>
+
+        {/* Décomposition par jambe */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+          {[
+            { l: 'Composants (long)', v: sized.compDelta, c: 'var(--pos-bright)' },
+            { l: 'Indice (short)', v: sized.idxDelta, c: 'var(--neg-bright)' },
+            { l: 'Net (avant couverture)', v: sized.netDelta, c: Math.abs(sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' },
+          ].map(d => (
+            <div key={d.l} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
+              <div style={{ font: '9px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 5 }}>{d.l}</div>
+              <div style={{ font: '700 13px/1 var(--font-mono)', color: d.c }}>{fmtS(d.v)} $/1%</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Choix de couverture */}
+        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Neutraliser le delta</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: deltaHedge !== 'none' ? 12 : 0 }}>
+          {[
+            { v: 'none', label: 'Aucune', sub: 'garder le résidu' },
+            { v: 'index', label: 'Future indice', sub: 'à part · total global' },
+            { v: 'legs', label: 'Par sous-jacent', sub: 'intégré aux jambes' },
+          ].map(opt => {
+            const on = deltaHedge === opt.v;
+            return (
+              <button key={opt.v} onClick={() => setDeltaHedge(opt.v)}
+                style={{ flex: 1, padding: '10px 6px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: 'pointer', textAlign: 'center' }}>
+                <div style={{ font: '600 12px/1 var(--font-sans)' }}>{opt.label}</div>
+                <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{opt.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {deltaHedge === 'index' && (
+          <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+            Couverture globale : <strong style={{ color: 'var(--text)' }}>{sized.hedgeUnits >= 0 ? 'acheter' : 'vendre'} {Math.abs(sized.hedgeUnits).toFixed(2)} contrat(s) future {base.indexSym}</strong> (≈ {fmtNot(Math.abs(sized.hedgeUnits) * base.indexPrice * CONTRACT)} de notionnel directionnel) → delta net ≈ 0. Tenue <strong>à part</strong> de la dispersion, avec un total global.
+          </div>
+        )}
+        {deltaHedge === 'legs' && (
+          <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+            Couverture <strong>intégrée</strong> : chaque jambe neutralisée par son sous-jacent (actions pour les composants, future pour l'indice). Total directionnel à trader ≈ <strong style={{ color: 'var(--text)' }}>{fmtNot(100 * (sized.comps.reduce((s, c) => s + Math.abs(c.delta), 0) + Math.abs(sized.idxDelta)))}</strong> de notionnel, réparti par jambe → delta net ≈ 0.
+          </div>
+        )}
       </div>
 
       {/* ── Actions (mode autonome ; en embarqué le Builder gère le flux) ── */}

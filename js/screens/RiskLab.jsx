@@ -19,11 +19,20 @@ function fmtMoney(n) {
   return (n >= 0 ? '+' : '−') + s + ' $';
 }
 
+/* ── CDF normale (approximation Abramowitz-Stegun) ───────────────── */
+function normCdf(x) {
+  const k = 1 / (1 + 0.2316419 * Math.abs(x));
+  const a = ((((1.330274429 * k - 1.821255978) * k + 1.781477937) * k - 0.356563782) * k + 0.319381530) * k;
+  const w = 1 - (1 / Math.sqrt(2 * Math.PI)) * Math.exp(-x * x / 2) * a;
+  return x >= 0 ? w : 1 - w;
+}
+
 /* ── Grecs d'un straddle ATM (par contrat) ───────────────────────── */
 function straddleGreeks(S, ivPct, days) {
   const sigma = Math.max(0.02, (ivPct || 0) / 100);
   const T = Math.max(1, days || 30) / 365;
   const sqrtT = Math.sqrt(T);
+  const d1 = (sigma * sqrtT) / 2;          // ATM, taux nul → d1 = σ√T/2
   return {
     // Vega : $ gagné par +1 point d'IV (les deux jambes)
     vega: 2 * S * PHI0 * sqrtT * 0.01 * CONTRACT,
@@ -33,6 +42,10 @@ function straddleGreeks(S, ivPct, days) {
     gammaK: PHI0 * S / (sigma * sqrtT) * CONTRACT,
     // Prime du straddle ($/contrat)
     premium: 0.8 * S * sigma * sqrtT * CONTRACT,
+    // Delta du straddle (long) = N(d1)_call + (N(d1)−1)_put = 2N(d1)−1 (≈0 ATM)
+    deltaSh: 2 * normCdf(d1) - 1,                       // delta en « actions » par contrat (×1)
+    // P&L $ pour un mouvement de +1% du sous-jacent (par contrat)
+    delta1pct: (2 * normCdf(d1) - 1) * S * 0.01 * CONTRACT,
   };
 }
 
