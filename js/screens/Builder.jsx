@@ -122,7 +122,7 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const [stratData, setStratData] = React.useState(null);
   const [selectedIndex, setSelectedIndex] = React.useState('SPX');
   const [selectedDuration, setSelectedDuration] = React.useState(30);
-  const [indexConstituents, setIndexConstituents] = React.useState([]);  // constituants réels de l'indice
+  const [idxComps, setIdxComps] = React.useState([]);  // constituants réels (objets) de l'indice
   const [selectedItems, setSelectedItems] = React.useState(new Set());
   const [extraTickers, setExtraTickers] = React.useState(new Set());  // tickers ajoutés à la recherche (hors base)
   const [sourceListId, setSourceListId] = React.useState(null);       // liste existante choisie comme source
@@ -145,27 +145,23 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
     }
   }, [listId]);
 
-  // Constituants réels de l'indice sélectionné (liste complète), repli sur la
-  // base connue. Sert à peupler l'étape Composants avec TOUTES les actions de
-  // l'indice choisi (et seulement celui-là).
+  // Constituants RÉELS et COMPLETS de l'indice sélectionné via l'endpoint
+  // /api/indices/:symbol/components (FMP → repli statique → base mock). Peuple
+  // l'étape Composants avec TOUTES les actions de l'indice choisi (et lui seul).
   React.useEffect(() => {
     let cancelled = false;
-    const fallback = (window.DXMock?.getComponents(selectedIndex) || []).map(c => c.ticker);
-    DXApi.getConstituents(selectedIndex).then(list => {
+    DXApi.getComponents(selectedIndex).then(arr => {
       if (cancelled) return;
-      const full = (list && list.length) ? list : fallback;
-      setIndexConstituents(full);
-      // Pré-sélection par défaut (sauf si une liste pilote) : les constituants
-      // CONNUS (noms liquides avec vraies données). L'intégralité de l'indice
-      // reste listée et « Tout sélectionner » coche le reste — on ne pré-coche
-      // pas des centaines de noms (cela saturerait les appels quotes/mcap).
+      const comps = Array.isArray(arr) ? arr.filter(c => c && c.ticker) : [];
+      setIdxComps(comps);
+      // Pré-sélection par défaut (sauf si une liste pilote) : les plus gros
+      // poids (noms liquides), capé à 30 pour ne pas saturer les appels
+      // quotes/mcap des modules. L'intégralité reste listée → « Tout sélectionner ».
       if (!listId && !sourceListId) {
-        const knownTickers = (window.DXMock?.getComponents(selectedIndex) || []).map(c => c.ticker).filter(t => full.includes(t));
-        setSelectedItems(new Set(knownTickers.length ? knownTickers : full.slice(0, 30)));
+        const sorted = comps.slice().sort((a, b) => (b.weight || 0) - (a.weight || 0));
+        setSelectedItems(new Set(sorted.slice(0, 30).map(c => c.ticker)));
       }
-    }).catch(() => {
-      if (!cancelled) setIndexConstituents(fallback);
-    });
+    }).catch(() => { if (!cancelled) setIdxComps([]); });
     return () => { cancelled = true; };
   }, [selectedIndex]);
 
@@ -228,44 +224,42 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   // tickers ajoutés à la recherche.
   const components = React.useMemo(() => {
     const map = {};
+    // Base mock (rho/score/beta riches) pour enrichir les noms connus.
     const known = {};
     (window.DXMock?.getComponents(selectedIndex) || []).forEach(c => { if (c.ticker) known[c.ticker] = c; });
-    const list0 = (indexConstituents && indexConstituents.length) ? indexConstituents : Object.keys(known);
-    list0.forEach(t => {
-      if (!t || map[t]) return;
-      const c = known[t];
-      if (c) {
-        map[t] = {
-          t: c.ticker, n: c.name, sec: c.sector, iv: c.iv, hv: c.hv, rho: c.rho,
-          score: c.score, earnings: c.earnings, beta: c.beta, member: true,
-          indices: [selectedIndex], weights: { [selectedIndex]: c.weight },
-        };
-      } else {
-        const v = (window.DXMock && window.DXMock.synthVol) ? window.DXMock.synthVol(t) : {};
-        map[t] = {
-          t, n: v.name || t, sec: v.sector || 'Autre', iv: v.iv_est, hv: v.hv30, rho: v.correlation ?? 0.5,
-          score: (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null),
-          earnings: false, beta: v.beta, member: true, indices: [selectedIndex], weights: {},
-        };
-      }
+    const enrich = (t, member, idxTag) => {
+      const k = known[t];
+      const v = (window.DXMock && window.DXMock.synthVol) ? window.DXMock.synthVol(t) : {};
+      return {
+        t, n: v.name || (k && k.name) || t,
+        sec: (k && k.sector) || v.sector || 'Autre',
+        iv: (k && k.iv != null ? k.iv : v.iv_est),
+        hv: (k && k.hv != null ? k.hv : v.hv30),
+        rho: (k && k.rho != null ? k.rho : (v.correlation ?? 0.5)),
+        score: (k && k.score != null ? k.score : (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null)),
+        earnings: !!(k && k.earnings),
+        beta: (k && k.beta != null ? k.beta : v.beta),
+        member, indices: [idxTag], weights: {},
+      };
+    };
+    // Constituants réels (objets de l'endpoint : ticker/name/sector/weight).
+    (idxComps.length ? idxComps : (window.DXMock?.getComponents(selectedIndex) || [])).forEach(c => {
+      const t = c.ticker; if (!t || map[t]) return;
+      const e = enrich(t, true, selectedIndex);
+      if (c.name) e.n = c.name;
+      if (c.sector) e.sec = c.sector;
+      e.weights[selectedIndex] = (c.weight != null ? c.weight : (known[t] ? known[t].weight : null));
+      map[t] = e;
     });
-    // Tickers ajoutés à la recherche / sélectionnés hors constituants connus.
+    // Tickers ajoutés à la recherche / sélectionnés hors constituants.
     const extras = new Set([
       ...((list?.items || []).map(i => i.ticker)),
       ...extraTickers,
       ...selectedItems,
     ].filter(Boolean));
-    extras.forEach(t => {
-      if (map[t]) return;
-      const v = (window.DXMock && window.DXMock.synthVol) ? window.DXMock.synthVol(t) : {};
-      map[t] = {
-        t, n: v.name || t, sec: v.sector || 'Autre', iv: v.iv_est, hv: v.hv30, rho: v.correlation ?? 0.5,
-        score: (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null),
-        earnings: false, beta: v.beta, member: false, indices: ['Ajouté'], weights: {},
-      };
-    });
+    extras.forEach(t => { if (!map[t]) map[t] = enrich(t, false, 'Ajouté'); });
     return Object.values(map);
-  }, [selectedIndex, indexConstituents, list, extraTickers, selectedItems]);
+  }, [selectedIndex, idxComps, list, extraTickers, selectedItems]);
 
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
   const CONTRACT = 100;
