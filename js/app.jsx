@@ -1,5 +1,5 @@
 /* ─── DispersionX App: router + global state ─────────────────────── */
-const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'risk', 'builder', 'monitor', 'docs'];
+const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs'];
 
 function App() {
   const [screen, setScreen] = React.useState(() => {
@@ -106,6 +106,7 @@ function App() {
     dashboard: ['Dashboard'],
     corr: ['Correlation Lab'],
     vol: ['Volatility Lab'],
+    construction: ['Construction'],
     risk: ['Risk Lab'],
     builder: ['Strategy Builder'],
     monitor: ['Strategy Monitor'],
@@ -139,11 +140,14 @@ function App() {
     case 'vol':
       screenEl = <window.VolatilityLab mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} onNav={onNav} />;
       break;
+    case 'construction':
+      screenEl = <window.Construction listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
+      break;
     case 'risk':
       screenEl = <window.RiskLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'builder':
-      screenEl = <window.Builder listId={params.listId} onNav={onNav} mode={mode} />;
+      screenEl = <window.Builder listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'monitor':
       screenEl = <window.StrategyMonitor mode={mode} />;

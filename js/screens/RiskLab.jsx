@@ -404,13 +404,15 @@ function AttribRow({ label, pnl, max, logo }) {
 }
 
 /* ─── Main component ─────────────────────────────────────────────── */
-function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx }) {
+function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded }) {
   const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [model,    setModel]    = React.useState(null);
   const [loading,  setLoading]  = React.useState(true);
   const [scenario, setScenario] = React.useState(0);
   const [strategy, setStrategy] = React.useState(null);
-  const [forceEstimate, setForceEstimate] = React.useState(false);
+  // En mode embarqué (dans le Builder) on n'affiche pas la garde : on est déjà
+  // dans le flux de construction.
+  const [forceEstimate, setForceEstimate] = React.useState(!!embedded);
 
   const listId = listIdParam || moduleCtx?.listId || null;
   const ctx    = moduleCtx || {};
@@ -420,7 +422,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   // Charge la stratégie construite dans le Builder (ou la réinitialise si la
   // liste courante n'en a pas) — le Risk Lab s'aligne sur cette stratégie.
   React.useEffect(() => {
-    setForceEstimate(false);
+    setForceEstimate(!!embedded);
     if (!listId) { setStrategy(null); return; }
     try {
       const raw = localStorage.getItem('dx-strategy-' + listId);
@@ -588,11 +590,12 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 
-      {lists && onModuleCtx && ctx.listId && (
+      {!embedded && lists && onModuleCtx && ctx.listId && (
         <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={upd => onModuleCtx(upd)} onClear={() => onModuleCtx({ listId: null, listName: null })} />
       )}
 
       {/* Header */}
+      {!embedded && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Risk Lab</h1>
@@ -607,6 +610,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           </button>
         )}
       </div>
+      )}
 
       {/* Strategy status banner */}
       {strategy ? (
@@ -816,3 +820,6 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
 }
 
 window.RiskLab = RiskLab;
+// Helpers partagés (réutilisés par le module Construction) — une seule source
+// de vérité pour les grecs d'un straddle ATM.
+window.DXRisk = { straddleGreeks, CONTRACT, fmtMoney };

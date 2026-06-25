@@ -6,6 +6,7 @@ const ICONS = {
   builder:  'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z',
   corr:     'M3 3v18h18M7 14l3-3 3 3 5-6',
   vol:      'M3 12h4l3 8 4-16 3 8h4',
+  sizing:   'M4 21v-7M4 10V4M12 21v-9M12 8V4M20 21v-5M20 12V4M1 14h6M9 8h6M17 16h6',
   risk:     'M12 2 2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7L12 2Z',
   monitor:  'M3 3h18v14H3zM8 21h8M12 17v4',
   journal:  'M4 4h13l3 3v13H4zM8 4v16M8 9h12',
@@ -129,16 +130,19 @@ const NAV = [
     { id: 'lists', label: 'Mes listes', icon: 'lists' },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   ]},
+  // Analyse : on étudie le marché (corrélation, vol), on dimensionne la
+  // position (Construction = répartition des contrats), on en mesure le
+  // risque (Risk Lab).
   { group: 'Analyse', items: [
     { id: 'corr', label: 'Correlation Lab', icon: 'corr' },
     { id: 'vol', label: 'Volatility Lab', icon: 'vol' },
+    { id: 'construction', label: 'Construction', icon: 'sizing' },
+    { id: 'risk', label: 'Risk Lab', icon: 'risk' },
   ]},
-  // Flux de la stratégie, dans l'ordre : on construit les contrats (Builder),
-  // puis on analyse le risque (Risk Lab), puis on suit la position (Monitor).
+  // Stratégie : création end-to-end (Builder) puis suivi (Monitor).
   { group: 'Stratégie', items: [
-    { id: 'builder', label: 'Strategy Builder', icon: 'builder', step: 1 },
-    { id: 'risk', label: 'Risk Lab', icon: 'risk', step: 2 },
-    { id: 'monitor', label: 'Strategy Monitor', icon: 'monitor', step: 3 },
+    { id: 'builder', label: 'Strategy Builder', icon: 'builder' },
+    { id: 'monitor', label: 'Strategy Monitor', icon: 'monitor' },
   ]},
   { group: 'Aide', items: [
     { id: 'docs', label: 'Formules & Référence', icon: 'docs' },
@@ -188,16 +192,6 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
                 }}>
                   <Icon d={ICONS[it.icon]} />
                   <span style={{ flex: 1 }}>{it.label}</span>
-                  {it.step && (
-                    <span title={`Étape ${it.step}`} style={{
-                      width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      font: '700 9px/1 var(--font-mono)',
-                      background: on ? 'var(--accent)' : 'var(--bg-elevated)',
-                      color: on ? '#fff' : 'var(--text-dim)',
-                      border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
-                    }}>{it.step}</span>
-                  )}
                   {it.id === 'lists' && listCount > 0 && (
                     <span style={{
                       font: '500 10px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8,

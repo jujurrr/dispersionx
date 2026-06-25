@@ -395,7 +395,7 @@ function SingleTickerCorr({ ctx, onCtx, lists, mode }) {
 }
 
 /* ─── Correlation Lab ─────────────────────────────────────────────── */
-function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx }) {
+function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded }) {
   const { MetricCard, Badge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -471,7 +471,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Contexte liste */}
-      {lists && onModuleCtx && ctx.listId && (
+      {!embedded && lists && onModuleCtx && ctx.listId && (
         <window.ModuleCtxBar
           ctx={ctx}
           lists={lists}
@@ -481,6 +481,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
       )}
 
       {/* Header */}
+      {!embedded && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Correlation Lab</h1>
@@ -493,6 +494,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>← Liste</button>
         )}
       </div>
+      )}
 
       {/* Métriques */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>

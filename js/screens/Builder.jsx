@@ -1,5 +1,5 @@
 /* ─── Strategy Builder: 8-step wizard ──────────────────────────── */
-function Builder({ listId, onNav, mode }) {
+function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const STEPS = ['Indice', 'Échéance', 'Univers', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
   const [step, setStep] = React.useState(listId ? 3 : 0);
@@ -24,15 +24,6 @@ function Builder({ listId, onNav, mode }) {
       }).catch(() => {});
     }
   }, [listId]);
-
-  React.useEffect(() => {
-    if (step !== 5) return;
-    setPreviewLoading(true);
-    const tickers = list?.items?.map(i => i.ticker).filter(Boolean) || DEMO_TICKERS;
-    DXApi.getRisk(listId, tickers.length ? tickers : DEMO_TICKERS, selectedIndex, selectedDuration)
-      .then(d => { setPreviewData(d); setPreviewLoading(false); })
-      .catch(() => { setPreviewLoading(false); });
-  }, [step, selectedIndex, selectedDuration]);
 
   const D = window.DXData;
   const components = D?.components || [];
@@ -93,25 +84,25 @@ function Builder({ listId, onNav, mode }) {
     };
   }
 
-  async function handleBuild() {
+  function handleBuild() {
     setBuilding(true);
     setBuildError(null);
     try {
-      const listData = list || (listId ? await DXApi.getList(listId).catch(() => null) : null);
-      const tickers  = (listData?.items || []).map(i => i.ticker).filter(Boolean);
-      const active   = tickers.length ? tickers : DEMO_TICKERS;
-
-      const riskData = await DXApi.getRisk(listId, active, selectedIndex, selectedDuration);
-      const strategy = computeStrategy(riskData, nIndexContracts, sizingMethod, selectedIndex, selectedDuration);
-
-      if (listId && strategy) {
-        try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(strategy)); } catch {}
+      // La stratégie est dimensionnée dans l'étape Construction (module embarqué),
+      // qui la sauvegarde. On la relit ici pour générer le Trade Brief.
+      let strategy = stratData?.strategy || null;
+      if (!strategy && listId) {
+        try { const raw = localStorage.getItem('dx-strategy-' + listId); if (raw) strategy = JSON.parse(raw); } catch {}
       }
-
-      setStratData({ ...riskData, strategy });
+      if (!strategy) {
+        setBuildError("Dimensionnez d'abord la position à l'étape « Construction » (le module enregistre la répartition des contrats), puis revenez ici.");
+        setBuilding(false);
+        return;
+      }
+      setStratData({ strategy });
       setStep(7);
     } catch (err) {
-      setBuildError('Erreur lors du calcul — vérifiez votre connexion et réessayez. (' + (err?.message || 'network') + ')');
+      setBuildError('Erreur — ' + (err?.message || 'inattendue') + '.');
     } finally {
       setBuilding(false);
     }
@@ -167,36 +158,75 @@ function Builder({ listId, onNav, mode }) {
       {step === 1 && <StepDuration selected={selectedDuration} onSelect={setSelectedDuration} />}
       {step === 2 && <StepUniverse index={selectedIndex} />}
       {step === 3 && <StepComposants components={components} selected={selectedItems} onToggle={t => setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; })} mode={mode} />}
-      {step === 4 && <StepCorrelation index={selectedIndex} />}
+
+      {/* Étapes reliées aux vrais modules du site (embarqués) */}
+      {step === 4 && (listId
+        ? <window.CorrelationLab embedded listId={listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
+        : <PickListInline target="le Correlation Lab" />)}
+
       {buildError && <div style={{ padding: '12px 16px', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--neg-bright)' }}>{buildError}</div>}
-      {step === 5 && <StepConstruction nIndex={nIndexContracts} onNIndex={setNIndexContracts} sizingMethod={sizingMethod} onSizingMethod={setSizingMethod} index={selectedIndex} duration={selectedDuration} previewData={previewData} previewLoading={previewLoading} />}
-      {step === 6 && <StepRisque listId={listId} index={selectedIndex} />}
+
+      {step === 5 && (listId
+        ? <window.Construction embedded listId={listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} indexOverride={selectedIndex} durationOverride={selectedDuration} onSaved={s => setStratData({ strategy: s })} />
+        : <PickListInline target="la Construction (répartition des contrats)" />)}
+
+      {step === 6 && (listId
+        ? <window.RiskLab embedded listId={listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
+        : <PickListInline target="le Risk Lab" />)}
     </div>
   );
 
+  // Étapes 4-6 reliées à une liste réelle. Sans liste, on invite à en choisir une.
+  function PickListInline({ target }) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 14, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)', padding: 24 }}>
+        <div>
+          <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 4 }}>Choisissez une liste de composants</div>
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+            Cette étape ouvre {target} sur des données réelles. Sélectionnez une liste existante, ou créez-en une dans « Mes listes ».
+          </div>
+        </div>
+        {(lists && lists.length > 0) ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+            {lists.map(l => (
+              <button key={l.id} onClick={() => onNav('builder', { listId: l.id })} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6, padding: '12px 14px',
+                borderRadius: 'var(--radius)', cursor: 'pointer', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text)', textAlign: 'left',
+              }}>
+                <span style={{ font: '600 13px/1 var(--font-sans)' }}>{l.name}</span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{l.n_items || 0} actions · {l.index_symbol || 'SPX'}</span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <button onClick={() => onNav('lists')} style={{ alignSelf: 'flex-start', font: '600 12px/1 var(--font-sans)', padding: '9px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Aller à Mes listes →</button>
+        )}
+      </div>
+    );
+  }
+
   function StepIndice({ selected, onSelect }) {
-    const cards = [
-      { t: 'SPY', n: 'S&P 500 ETF', d: 'Plus accessible, options liquides, taille plus petite.', tag: ['Débutant recommandé', 'pos'] },
-      { t: 'SPX', n: 'Indice S&P 500', d: 'Très liquide, cash-settled, taille notionnelle élevée.', tag: ['Institutionnel', 'info'] },
-      { t: 'QQQ', n: 'Nasdaq 100 ETF', d: 'Exposition croissance / tech.', tag: ['Tech', 'neutral'] },
-    ];
+    // Les 5 vrais indices du site (mêmes données que le reste de la plateforme).
+    const indices = (window.DXMock && window.DXMock.indices) || [];
+    const diffTone = { 'débutant': 'pos', 'intermédiaire': 'info', 'avancé': 'warn' };
     return (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
-        {cards.map((c) => {
-          const on = selected === c.t;
+        {indices.map((c) => {
+          const on = selected === c.symbol;
           return (
-            <div key={c.t} onClick={() => onSelect(c.t)} style={{
+            <div key={c.symbol} onClick={() => onSelect(c.symbol)} style={{
               background: 'var(--bg-card)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
               borderRadius: 'var(--radius-lg)', padding: 18, position: 'relative',
               boxShadow: on ? '0 0 0 3px var(--accent-soft)' : 'none', cursor: 'pointer',
             }}>
               <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 3, background: on ? 'var(--accent)' : 'transparent', borderRadius: '8px 0 0 8px' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ font: '800 18px/1 var(--font-mono)', color: 'var(--text)' }}>{c.t}</span>
-                <Badge tone={c.tag[1]}>{c.tag[0]}</Badge>
+                <span style={{ font: '800 18px/1 var(--font-mono)', color: 'var(--text)' }}>{c.country_flag} {c.symbol}</span>
+                <Badge tone={c.options_liquid ? 'pos' : (diffTone[c.difficulty] || 'neutral')}>{c.options_liquid ? 'Options liquides' : 'Liquidité variable'}</Badge>
               </div>
-              <div style={{ font: 'var(--type-title)', color: 'var(--text-soft)' }}>{c.n}</div>
-              <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '8px 0 0' }}>{c.d}</p>
+              <div style={{ font: 'var(--type-title)', color: 'var(--text-soft)' }}>{c.name} · {c.n_components} composants · {c.currency}</div>
+              <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '8px 0 0' }}>{c.description}</p>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 8 }}>ETF proxy : {c.etf_proxy} · niveau {c.difficulty}</div>
             </div>
           );
         })}
@@ -519,13 +549,13 @@ function TradeBrief({ data, onNav }) {
   // Build legs from strategy if available, else fall back to static
   let L;
   if (strategy?.components) {
-    const port = strategy.portfolio;
+    const port = strategy.portfolio || {};
     L = {
       index: {
         t:      strategy.index || 'SPX',
         strike: 'ATM',
-        prime:  '−' + Math.round(Math.abs((port.idxPremPerLot || 0) * strategy.nIndex)).toLocaleString('fr-FR') + ' $',
-        vega:   '−' + Math.round(Math.abs(port.idxVegaPct || 0)) + ' $/1%',
+        prime:  '−' + Math.round(Math.abs(port.idxPrem || 0)).toLocaleString('fr-FR') + ' $',
+        vega:   '−' + Math.round(Math.abs(port.idxVega || 0)) + ' $/1%',
         theta:  '+' + Math.round(port.idxTheta || 0) + ' $/j',
         qty:    strategy.nIndex,
         action: 'Vendre straddle',
@@ -533,9 +563,9 @@ function TradeBrief({ data, onNav }) {
       },
       basket: strategy.components.map(c => ({
         t:     c.ticker,
-        prime: c.greeks ? '+' + Math.round(c.greeks.premium * CONTRACT * c.nContracts).toLocaleString('fr-FR') + ' $' : '—',
-        vega:  c.greeks ? '+' + Math.round(c.greeks.vega * CONTRACT * c.nContracts * 0.01) + ' $/1%' : '—',
-        theta: c.greeks ? Math.round(c.greeks.theta * CONTRACT * c.nContracts) + ' $/j' : '—',
+        prime: '+' + Math.round(c.premium || 0).toLocaleString('fr-FR') + ' $',
+        vega:  '+' + Math.round(c.vega || 0) + ' $/1%',
+        theta: Math.round(c.theta || 0) + ' $/j',
         qty:   c.nContracts,
       })),
     };
@@ -587,7 +617,7 @@ function TradeBrief({ data, onNav }) {
         <div style={{ padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'center' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)' }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{Math.round(strategy.portfolio?.netVegaPct || 0)} $/1%</strong>
+            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{Math.round(strategy.portfolio?.netVega || 0)} $/1%</strong>
           </span>
         </div>
       )}
@@ -616,9 +646,9 @@ function TradeBrief({ data, onNav }) {
         </div>
         {/* Vega balance */}
         {(() => {
-          const idxV  = strategy ? Math.abs(strategy.portfolio?.idxVegaPct || 0)  : 620;
-          const compV = strategy ? Math.abs(strategy.portfolio?.compVegaPct || 0) : 572;
-          const netV  = strategy ? Math.round(strategy.portfolio?.netVegaPct || 0) : -48;
+          const idxV  = strategy ? Math.abs(strategy.portfolio?.idxVega || 0)  : 620;
+          const compV = strategy ? Math.abs(strategy.portfolio?.compVega || 0) : 572;
+          const netV  = strategy ? Math.round(strategy.portfolio?.netVega || 0) : -48;
           const total = idxV + compV || 1;
           const idxPct  = (idxV  / total * 48).toFixed(1);
           const compPct = (compV / total * 48).toFixed(1);
@@ -674,9 +704,9 @@ function TradeBrief({ data, onNav }) {
       <Section n="05" title="Données clés">
         {(() => {
           const port = strategy?.portfolio;
-          const netV = port ? Math.round(port.netVegaPct)  : -48;
+          const netV = port ? Math.round(port.netVega || 0)  : -48;
           const netT = port ? Math.round(port.netTheta || 0) : 96;
-          const netP = port ? Math.round(port.netPremium) : 1240;
+          const netP = port ? Math.round(port.netPremium || 0) : 1240;
           const nW   = (L.basket || []).length || 5;
           const dur  = strategy?.duration || D.duration || 30;
           const thetaRef = Math.max(40, Math.abs(netT) * dur);
