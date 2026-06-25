@@ -1,28 +1,38 @@
 /* ─── Dashboard: what deserves my attention today? ─────────────── */
 function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const { MetricCard, ScoreBadge, RiskBadge, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
-  const [positions, setPositions] = React.useState([]);
-  const [loading, setLoading] = React.useState(true);
   const [mktData, setMktData] = React.useState(null);
+  const [oppPrime, setOppPrime] = React.useState({});  // prime ρ par indice (fond)
+  const [tick, setTick] = React.useState(0);           // re-render quand le store avance
+  const oppFetching = React.useRef({});                // garde : 1 calcul de prime par indice
 
   React.useEffect(() => {
-    DXApi.getPositions().catch(() => window.DXMock?.positions || [])
-      .then(pos => { setPositions(pos || []); setLoading(false); });
-    // Charger les vraies données de marché
+    // Marché : vol SPX réelle + corrélation SPX
     Promise.all([
       fetch('/api/vol/spx').then(r => r.ok ? r.json() : null).catch(() => null),
       DXApi.getCorrelation(null, ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN'], 'SPX').catch(() => null),
     ]).then(([vol, corr]) => setMktData({ vol, corr }));
+    // S'assurer que le store charge/score les 5 indices ; re-render à l'avancement
+    const onUpd = () => setTick(t => t + 1);
+    window.addEventListener('dx-index-update', onUpd);
+    if (window.DXStore) (window.DXMock?.indices || []).forEach(ix =>
+      window.DXStore.loadIndex(ix.symbol).then(() => window.DXStore.scoreIndex(ix.symbol, 30)).catch(() => {}));
+    return () => window.removeEventListener('dx-index-update', onUpd);
   }, []);
 
-  const D = window.DXData;
-  const opportunities = D?.opportunities || [];
-  const alerts = D?.alerts || [
-    { t: 'AAPL · earnings dans 6j', tone: 'var(--warn)' },
-    { t: 'NDX · ρ̂ réalisée en hausse', tone: 'var(--neg)' },
-    { t: 'SPX 30j · theta critique', tone: 'var(--neg)' },
-    { t: 'TSLA · vol crush probable', tone: 'var(--warn)' },
-  ];
+  // Prime de corrélation par indice (calcul de fond sur les top composants du store)
+  React.useEffect(() => {
+    (window.DXMock?.indices || []).forEach(ix => {
+      if (oppPrime[ix.symbol] !== undefined || oppFetching.current[ix.symbol]) return;
+      const comps = ((window.DXStore?.getIndexData(ix.symbol) || {}).components || []).slice(0, 6).map(c => c.ticker).filter(Boolean);
+      if (comps.length < 2) return;
+      oppFetching.current[ix.symbol] = true;            // une seule tentative par indice
+      DXApi.getCorrelation(null, comps, ix.symbol).then(d => {
+        if (d && d.rho_impl != null && d.rho_real != null)
+          setOppPrime(prev => ({ ...prev, [ix.symbol]: Number(((d.rho_impl - d.rho_real) * 100).toFixed(1)) }));
+      }).catch(() => {});
+    });
+  }, [tick]);  // eslint-disable-line — oppPrime lu via garde, pas en dépendance
 
   const vol  = mktData?.vol;
   const corr = mktData?.corr;
@@ -42,11 +52,28 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
     { label: 'Signal global', value: signal, accent: sigAccent },
   ];
 
-  const trackedStrategies = [
-    { n: 'SPX 30j · dispersion', pnl: '+1 240 $', up: true, prime: '+6.4 pts', alert: null },
-    { n: 'NDX 28j · dispersion', pnl: '−320 $', up: false, prime: '+3.1 pts', alert: 'Vega déséquilibré' },
-  ];
+  // Opportunités : les 5 indices, classés par score moyen réel (store)
+  const opportunities = (window.DXMock?.indices || []).map(ix => {
+    const scores = window.DXStore ? window.DXStore.getScores(ix.symbol, 30) : {};
+    const vals = Object.values(scores).filter(v => v != null);
+    const avgScore = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    const snap = (window.DXStore?.getIndexData(ix.symbol) || {}).snap || (window.DXMock?.getSnapshot ? window.DXMock.getSnapshot(ix.symbol) : null);
+    const risk = avgScore == null ? 'modéré' : avgScore >= 70 ? 'faible' : avgScore >= 55 ? 'modéré' : 'élevé';
+    return { idx: ix.symbol, dte: 30, iv: snap?.iv_est ?? null, score: avgScore, prime: oppPrime[ix.symbol], risk };
+  }).sort((a, b) => (b.score || 0) - (a.score || 0));
 
+  // Stratégies réellement construites (Builder / Construction)
+  const builtStrats = (window.DXApi && DXApi.localStrategies)
+    ? DXApi.localStrategies(lists).map(s => ({ s, m: DXApi.strategyMetrics(s) }))
+    : [];
+
+  // Alertes dérivées : stratégies à surveiller + marché
+  const alerts = [];
+  builtStrats.forEach(r => { if (r.m.alert) alerts.push({ t: (r.s.index || 'SPX') + ' · ' + r.m.alert, tone: r.m.status === 'risque' ? 'var(--neg)' : 'var(--warn)' }); });
+  if (prime != null && prime < 0) alerts.push({ t: 'SPX · prime de corrélation négative', tone: 'var(--neg)' });
+  if (!alerts.length) alerts.push({ t: builtStrats.length ? 'Aucune alerte sur vos stratégies' : 'Aucune stratégie suivie pour l\'instant', tone: 'var(--pos)' });
+
+  const fmtS = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR');
   const ctx = moduleCtx || {};
 
   return (
@@ -109,7 +136,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
                 <tr key={o.idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', font: 'var(--type-ticker)', color: 'var(--text)' }}>{o.idx}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{o.dte}j</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data)', color: 'var(--pos-bright)' }}>{o.prime} pts</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data)', color: o.prime == null ? 'var(--text-dim)' : o.prime >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{o.prime == null ? '···' : (o.prime >= 0 ? '+' : '') + o.prime + ' pts'}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                     <div style={{ display: 'inline-block' }}><ScoreBadge score={o.score} max={0} label="" /></div>
                   </td>
@@ -130,21 +157,25 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
         <section>
           <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 14px' }}>Stratégies suivies</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {trackedStrategies.map((s) => (
-              <div key={s.n} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 16px' }}>
+            {builtStrats.length ? builtStrats.slice(0, 4).map((r) => (
+              <div key={r.s.listId} onClick={() => onNav('monitor')} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 16px', cursor: 'pointer' }}>
                 <div>
-                  <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{s.n}</div>
-                  <div style={{ font: 'var(--type-data-sm)', color: 'var(--text-muted)', marginTop: 3 }}>Prime entrée → {s.prime}</div>
+                  <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{r.m.name}</div>
+                  <div style={{ font: 'var(--type-data-sm)', color: 'var(--text-muted)', marginTop: 3 }}>{r.m.nComp} composants · {r.m.dte}j restants · vega {fmtS(r.m.netVega)}</div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {s.alert && <Badge tone="warn" pulse>{s.alert}</Badge>}
-                  <div style={{ font: 'var(--type-data-lg)', color: s.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.pnl}</div>
+                  {r.m.alert && <Badge tone={r.m.status === 'risque' ? 'neg' : 'warn'} pulse>{r.m.status}</Badge>}
+                  <div style={{ font: 'var(--type-data-lg)', color: r.m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(r.m.netPremium)} $</div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div style={{ padding: '22px 18px', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)', background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)' }}>
+                Aucune stratégie construite — lancez le <strong style={{ color: 'var(--text-soft)' }}>Strategy Builder</strong> pour en suivre une ici.
+              </div>
+            )}
             <button onClick={() => onNav('monitor')}
               style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 0', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', width: '100%' }}>
-              Voir toutes les positions →
+              Ouvrir le Strategy Monitor →
             </button>
           </div>
         </section>

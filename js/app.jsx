@@ -164,7 +164,7 @@ function App() {
       screenEl = <window.Builder listId={params.listId} onNav={onNav} onScore={onScore} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'monitor':
-      screenEl = <window.StrategyMonitor mode={mode} />;
+      screenEl = <window.StrategyMonitor mode={mode} lists={lists} onNav={onNav} />;
       break;
     case 'checklist':
       screenEl = <window.Checklist listId={params.listId} onNav={onNav} addToast={addToast} mode={mode} />;

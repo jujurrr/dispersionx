@@ -223,6 +223,47 @@
     catch { return window.DXMock.strategy; }
   }
 
+  /* ── Stratégies construites localement (Builder / Construction) ─────
+     Stockées en localStorage sous 'dx-strategy-<listId>'. Source de vérité
+     du suivi (Dashboard, Strategy Monitor). */
+  function localStrategies(lists) {
+    const byId = {}; (lists || []).forEach(l => { if (l && l.id) byId[l.id] = l; });
+    const out = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || k.indexOf('dx-strategy-') !== 0) continue;
+        const listId = k.slice('dx-strategy-'.length);
+        let s; try { s = JSON.parse(localStorage.getItem(k)); } catch { continue; }
+        if (!s || !s.components) continue;
+        out.push({ ...s, listId, listName: byId[listId] ? byId[listId].name : null });
+      }
+    } catch {}
+    out.sort((a, b) => String(b.builtAt || '').localeCompare(String(a.builtAt || '')));
+    return out;
+  }
+  function deleteLocalStrategy(listId) {
+    try { localStorage.removeItem('dx-strategy-' + listId); } catch {}
+  }
+  // Métriques dérivées d'une stratégie sauvegardée (DTE restant, état, alerte).
+  function strategyMetrics(s) {
+    const p = s.portfolio || {};
+    const built = s.builtAt ? new Date(s.builtAt) : null;
+    const daysSince = (built && !isNaN(built)) ? Math.max(0, Math.floor((Date.now() - built.getTime()) / 86400000)) : 0;
+    const dte = Math.max(0, (s.duration || 30) - daysSince);
+    const netVega = Math.round(p.netVega || 0);
+    const netTheta = Math.round(p.netTheta || 0);
+    const netPremium = Math.round(p.netPremium || 0);
+    const netDelta = Math.round(p.netDelta != null ? p.netDelta : (p.netDeltaRaw || 0));
+    let status = 'sain', alert = null;
+    if (dte <= 7)               { status = 'risque';     alert = 'Theta critique · ' + dte + ' DTE'; }
+    else if (Math.abs(netVega) > 250) { status = 'surveiller'; alert = 'Vega déséquilibré (' + netVega + ' $/1%)'; }
+    else if (netTheta < -150)   { status = 'surveiller'; alert = 'Coût de portage élevé'; }
+    const nComp = (s.components || []).length;
+    return { dte, daysSince, netVega, netTheta, netPremium, netDelta, status, alert, nComp,
+      name: (s.index || 'SPX') + ' ' + (s.duration || 30) + 'j · dispersion' + (s.listName ? ' · ' + s.listName : '') };
+  }
+
   /* ── Volatility (par ticker ou batch) ───────────────────────── */
   async function getTickerVol(ticker, index) {
     try { return await _post('/vol/ticker', { ticker, index: index || 'SPX' }); }
@@ -282,6 +323,7 @@
     getCorrelation,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
+    localStrategies, deleteLocalStrategy, strategyMetrics,
     getRisk,
     getChecklist, commitPosition,
     getPositions, getPosition, snapshotPosition, closePosition, deletePosition,
