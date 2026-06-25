@@ -155,6 +155,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
   const [selectedIndex, setSelectedIndex] = React.useState('SPX');
   const [selectedDuration, setSelectedDuration] = React.useState(30);
   const [idxComps, setIdxComps] = React.useState([]);  // constituants réels (objets) de l'indice
+  const [scoreTick, setScoreTick] = React.useState(0); // re-render quand le store met les scores à jour
   const [selectedItems, setSelectedItems] = React.useState(new Set());
   const [extraTickers, setExtraTickers] = React.useState(new Set());  // tickers ajoutés à la recherche (hors base)
   const [sourceListId, setSourceListId] = React.useState(null);       // liste existante choisie comme source
@@ -195,6 +196,19 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
       }
     }).catch(() => { if (!cancelled) setIdxComps([]); });
     return () => { cancelled = true; };
+  }, [selectedIndex]);
+
+  // Scores RÉELS depuis le store global (mêmes que l'onglet Indices / ScoreModal,
+  // mémoïsés via autoScore). On garantit leur calcul pour l'indice + la durée.
+  React.useEffect(() => {
+    if (!window.DXStore) return;
+    window.DXStore.loadIndex(selectedIndex).then(() => window.DXStore.scoreIndex(selectedIndex, selectedDuration)).catch(() => {});
+  }, [selectedIndex, selectedDuration]);
+
+  React.useEffect(() => {
+    const onUpd = (e) => { if (!e.detail || e.detail.symbol === selectedIndex) setScoreTick(t => t + 1); };
+    window.addEventListener('dx-index-update', onUpd);
+    return () => window.removeEventListener('dx-index-update', onUpd);
   }, [selectedIndex]);
 
   // Liste effective : celle passée en contexte, une liste choisie comme source,
@@ -256,9 +270,18 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
   // tickers ajoutés à la recherche.
   const components = React.useMemo(() => {
     const map = {};
-    // Base mock (rho/score/beta riches) pour enrichir les noms connus.
+    // Base mock (rho/beta riches) pour enrichir les noms connus.
     const known = {};
     (window.DXMock?.getComponents(selectedIndex) || []).forEach(c => { if (c.ticker) known[c.ticker] = c; });
+    // Score RÉEL : store global (autoScore mémoïsé, = onglet Indices/ScoreModal),
+    // puis cache API, puis score statique connu — JAMAIS le hash arbitraire.
+    const storeScores = (window.DXStore && window.DXStore.getScores(selectedIndex, selectedDuration)) || {};
+    const scoreOf = (t, knownScore) => {
+      if (storeScores[t] != null) return storeScores[t];
+      const cached = (window.DXApi && window.DXApi.getCachedScore) ? window.DXApi.getCachedScore(selectedIndex, t, selectedDuration) : null;
+      if (cached != null) return cached;
+      return knownScore != null ? knownScore : null;
+    };
     const enrich = (t, member, idxTag) => {
       const k = known[t];
       const v = (window.DXMock && window.DXMock.synthVol) ? window.DXMock.synthVol(t) : {};
@@ -268,7 +291,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
         iv: (k && k.iv != null ? k.iv : v.iv_est),
         hv: (k && k.hv != null ? k.hv : v.hv30),
         rho: (k && k.rho != null ? k.rho : (v.correlation ?? 0.5)),
-        score: (k && k.score != null ? k.score : (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null)),
+        score: scoreOf(t, k && k.score != null ? k.score : null),
         earnings: !!(k && k.earnings),
         beta: (k && k.beta != null ? k.beta : v.beta),
         member, indices: [idxTag], weights: {},
@@ -291,7 +314,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
     ].filter(Boolean));
     extras.forEach(t => { if (!map[t]) map[t] = enrich(t, false, 'Ajouté'); });
     return Object.values(map);
-  }, [selectedIndex, idxComps, list, extraTickers, selectedItems]);
+  }, [selectedIndex, selectedDuration, idxComps, list, extraTickers, selectedItems, scoreTick]);
 
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
   const CONTRACT = 100;
