@@ -161,6 +161,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
   const [sourceListId, setSourceListId] = React.useState(null);       // liste existante choisie comme source
   const [draftListId, setDraftListId] = React.useState(null);     // liste-brouillon créée depuis le Builder
   const [creatingDraft, setCreatingDraft] = React.useState(false);
+  const lastDraftRef = React.useRef(null);                        // dernier brouillon (pour le supprimer au remplacement)
   const [building, setBuilding] = React.useState(false);
   const [nIndexContracts, setNIndexContracts] = React.useState(1);
   const [sizingMethod, setSizingMethod] = React.useState('vega_neutral');
@@ -187,12 +188,14 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
       if (cancelled) return;
       const comps = Array.isArray(arr) ? arr.filter(c => c && c.ticker) : [];
       setIdxComps(comps);
-      // Pré-sélection par défaut (sauf si une liste pilote) : les plus gros
-      // poids (noms liquides), capé à 30 pour ne pas saturer les appels
-      // quotes/mcap des modules. L'intégralité reste listée → « Tout sélectionner ».
+      // Pré-sélection par défaut (sauf si une liste pilote) : un panier de
+      // dispersion raisonnable (~12 noms par poids). PAS toute la cote :
+      // sur-charger la sélection sature la matrice de corrélation (capée) et
+      // les modules, et donne un panier trop corrélé. Tout reste listé →
+      // « Tout sélectionner » pour aller plus loin.
       if (!listId && !sourceListId) {
         const sorted = comps.slice().sort((a, b) => (b.weight || 0) - (a.weight || 0));
-        setSelectedItems(new Set(sorted.slice(0, 30).map(c => c.ticker)));
+        setSelectedItems(new Set(sorted.slice(0, 12).map(c => c.ticker)));
       }
     }).catch(() => { if (!cancelled) setIdxComps([]); });
     return () => { cancelled = true; };
@@ -232,17 +235,21 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
     setSelectedItems(new Set());
     setExtraTickers(new Set());
   }
+  // Toute édition de la sélection détache de la liste source ET invalide le
+  // brouillon déjà créé, pour que les modules repartent du panier à jour
+  // (sinon ils restent figés sur le 1ᵉʳ panier construit).
+  function detach() { setSourceListId(null); setDraftListId(null); }
   // Ajouter un ticker depuis la recherche (n'importe quel symbole).
   function addTicker(t) {
     const sym = String(t || '').toUpperCase().trim();
     if (!sym) return;
-    setSourceListId(null);                         // éditer détache de la liste source
+    detach();
     setExtraTickers(s => new Set(s).add(sym));
     setSelectedItems(s => new Set(s).add(sym));
   }
-  // Cocher/décocher un composant (détache aussi de la liste source).
+  // Cocher/décocher un composant.
   function toggleItem(t) {
-    setSourceListId(null);
+    detach();
     setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; });
   }
 
@@ -258,6 +265,11 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
         const stamp = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
         const l = await DXApi.createList(`Brouillon ${selectedIndex} · ${stamp}`, selectedIndex, 'Créé par le Strategy Builder');
         for (const t of tickers) { try { await DXApi.addListItem(l.id, t, null); } catch {} }
+        // Supprimer le brouillon précédent (évite l'accumulation à chaque édition).
+        if (lastDraftRef.current && lastDraftRef.current !== l.id) {
+          DXApi.deleteList(lastDraftRef.current).catch(() => {});
+        }
+        lastDraftRef.current = l.id;
         setDraftListId(l.id);
       } catch {} finally { setCreatingDraft(false); }
     })();
@@ -445,7 +457,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
       {step === 0 && <StepIndice selected={selectedIndex} onSelect={setSelectedIndex} />}
       {step === 1 && <StepDuration selected={selectedDuration} onSelect={setSelectedDuration} />}
       {step === 2 && <StepSource lists={lists} sourceListId={sourceListId} onPickList={pickSourceList} onScratch={startScratch} />}
-      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={toggleItem} onAdd={addTicker} onSelectAll={() => { setSourceListId(null); setSelectedItems(new Set(components.map(c => c.t))); }} onClearAll={() => { setSourceListId(null); setSelectedItems(new Set()); }} onShowScore={onScore ? (t => onScore(selectedIndex, t, selectedDuration)) : null} mode={mode} />}
+      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={toggleItem} onAdd={addTicker} onSelectAll={() => { detach(); setSelectedItems(new Set(components.map(c => c.t))); }} onClearAll={() => { detach(); setSelectedItems(new Set()); }} onShowScore={onScore ? (t => onScore(selectedIndex, t, selectedDuration)) : null} mode={mode} />}
 
       {/* Étapes reliées aux vrais modules du site (embarqués), pilotées par la
           liste effective (contexte ou brouillon créé depuis les composants). */}

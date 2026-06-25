@@ -4,9 +4,12 @@
 export const config = { runtime: 'edge' };
 
 async function fetchCloses(symbol, days) {
+  // Actions à classes US : Yahoo veut un tiret (BRK.B → BRK-B). Les suffixes
+  // de place (2 lettres : .PA, .DE) sont conservés tels quels.
+  const yh = symbol.replace(/\.([A-Z])$/, '-$1');
   const range = days <= 35 ? '2mo' : days <= 90 ? '4mo' : '6mo';
   const r = await fetch(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${range}`,
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yh)}?interval=1d&range=${range}`,
     { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(8000) }
   );
   if (!r.ok) return null;
@@ -58,7 +61,7 @@ export default async (req) => {
   let body = {};
   try { body = await req.json(); } catch {}
 
-  const tickers  = (body.tickers || []).map(s => String(s).toUpperCase()).slice(0, 20);
+  const tickers  = (body.tickers || []).map(s => String(s).toUpperCase()).slice(0, 25);
   const indexSym = (body.index || 'SPX').toUpperCase();
   const days     = Math.min(Number(body.days) || 60, 120);
   if (tickers.length < 2) return Response.json({ error: 'need_2_tickers' }, { status: 400 });
