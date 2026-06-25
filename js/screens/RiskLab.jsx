@@ -519,6 +519,13 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
 
   const fmtS = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n));
 
+  // ── Base de calcul (taille réelle de la position) ──
+  // 1 contrat = CONTRACT (×100) fois le niveau du sous-jacent en notionnel.
+  const idxNotional   = model.indexPrice * CONTRACT * model.nIndex;
+  const compNotional  = model.perTicker.reduce((s, t) => s + t.price * CONTRACT * t.nContracts, 0);
+  const totalCompLots = model.perTicker.reduce((s, t) => s + t.nContracts, 0);
+  const fmtNotional   = v => (v >= 1e6 ? (v / 1e6).toFixed(2) + ' M$' : Math.round(v / 1000) + ' k$');
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
 
@@ -560,6 +567,23 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           {onNav && <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>Builder →</button>}
         </div>
       )}
+
+      {/* ── Base de calcul (taille de la position) ── */}
+      <section>
+        <div style={{ marginBottom: 12 }}>
+          <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Base de calcul</h2>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>
+            Tous les P&L ci-dessous sont sur cette taille. 1 contrat = ×{CONTRACT} le niveau du sous-jacent en notionnel (multiplicateur standard des options) — d'où des primes de plusieurs dizaines de k$ par contrat sur un indice.
+          </p>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
+          <MetricCard label={'Contrats ' + model.indexSym} value={String(model.nIndex)} hint="Short straddle indice" accent="var(--neg)" />
+          <MetricCard label="Notionnel indice" value={fmtNotional(idxNotional)} hint={Math.round(model.indexPrice) + ' × ' + CONTRACT + ' × ' + model.nIndex} accent="var(--neg)" />
+          <MetricCard label="Prime collectée" value={fmtMoney(model.idxPrem)} hint="Gain max si indice immobile" accent="var(--pos)" />
+          <MetricCard label="Lots composants" value={String(totalCompLots)} hint={model.perTicker.length + ' actions long'} accent="var(--pos)" />
+          <MetricCard label="Prime payée comp." value={fmtMoney(-model.compPrem)} hint={'Notionnel ' + fmtNotional(compNotional)} accent="var(--info)" />
+        </div>
+      </section>
 
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
