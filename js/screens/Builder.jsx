@@ -1,13 +1,136 @@
+/* ─── Sélection des composants (module-level pour conserver l'état de
+   recherche/filtre entre les re-renders du Builder) ──────────────────── */
+function StepComposants({ components, index, selected, onToggle, onAdd, mode }) {
+  const { ScoreBadge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
+  const adv = mode === 'Avancé';
+  const cols = adv
+    ? ['Ticker', 'Secteur', 'Poids ' + index, 'IV', 'HV', 'ρ', 'Vega', 'Score', '']
+    : ['Ticker', 'Secteur', 'Poids ' + index, 'IV / HV', 'ρ', 'Score', ''];
+  const [q, setQ] = React.useState('');
+  const [filterIdx, setFilterIdx] = React.useState('all');
+  const idxSyms = ((window.DXMock && window.DXMock.indices) || []).map(i => i.symbol);
+  const up = q.trim().toUpperCase();
+
+  // Recherche dans l'univers connu + possibilité d'ajouter tout symbole tapé.
+  const suggestions = up ? components.filter(c => c.t.includes(up) || (c.n || '').toUpperCase().includes(up)).slice(0, 6) : [];
+  const known = components.some(c => c.t === up);
+  const canAdd = up && /^[A-Z0-9.\-]{1,8}$/.test(up) && !known;
+  function add(t) { onAdd(t); setQ(''); }
+
+  // Filtre (tous / sélectionnés / par indice) + tri membres-de-l'indice d'abord.
+  let rows = [...components];
+  if (filterIdx === 'sel') rows = rows.filter(c => selected.has(c.t));
+  else if (filterIdx !== 'all') rows = rows.filter(c => (c.indices || []).includes(filterIdx));
+  rows.sort((a, b) => {
+    const am = a.weights[index] != null ? 1 : 0, bm = b.weights[index] != null ? 1 : 0;
+    return bm - am || (b.score || 0) - (a.score || 0);
+  });
+
+  return (
+    <>
+      {mode === 'Débutant' && (
+        <BeginnerExplanationBox>
+          Cherchez et ajoutez n'importe quelle action (tapez son symbole), ou cochez parmi les composants connus. Privilégiez des titres à ρ plus faible et une IV correctement valorisée ; évitez les earnings proches.
+        </BeginnerExplanationBox>
+      )}
+
+      {/* Recherche / ajout de ticker (tous indices, ou symbole libre) */}
+      <div style={{ position: 'relative' }}>
+        <input value={q} onChange={e => setQ(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && canAdd) add(up); }}
+          placeholder="Rechercher ou ajouter un ticker (ex. AAPL, NVDA, ASML…)"
+          style={{ width: '100%', padding: '11px 14px', font: '500 13px/1 var(--font-mono)', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none', boxSizing: 'border-box' }} />
+        {(suggestions.length > 0 || canAdd) && (
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4, background: 'var(--bg-card)', border: '1px solid var(--accent)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+            {suggestions.map(s => (
+              <button key={s.t} onMouseDown={e => { e.preventDefault(); if (!selected.has(s.t)) onToggle(s.t); setQ(''); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--text)' }}>{s.t}</span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.n}</span>
+                {(s.indices || []).slice(0, 3).map(ix => <span key={ix} style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}>{ix}</span>)}
+                {selected.has(s.t) && <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>✓</span>}
+              </button>
+            ))}
+            {canAdd && (
+              <button onMouseDown={e => { e.preventDefault(); add(up); }}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '9px 12px', background: 'var(--bg-elevated)', border: 'none', cursor: 'pointer', textAlign: 'left' }}>
+                <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>+ Ajouter {up}</span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>symbole hors base — données estimées</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Filtre par indice + compteur */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        {[{ v: 'all', l: 'Tous' }, { v: 'sel', l: 'Sélectionnés (' + selected.size + ')' }, ...idxSyms.map(s => ({ v: s, l: s }))].map(f => {
+          const on = filterIdx === f.v;
+          return (
+            <button key={f.v} onClick={() => setFilterIdx(f.v)} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', background: on ? 'var(--accent)' : 'var(--bg-elevated)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: on ? '#fff' : 'var(--text-soft)', cursor: 'pointer' }}>{f.l}</button>
+          );
+        })}
+        <span style={{ marginLeft: 'auto', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{rows.length} action(s) affichée(s)</span>
+      </div>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
+          <thead>
+            <tr style={{ background: 'var(--bg-elevated)' }}>
+              {cols.map((h, i) => (
+                <th key={h + i} style={{ textAlign: i === 0 || i === 1 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 14px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((c) => (
+              <tr key={c.t} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                <td style={{ padding: '11px 14px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{c.t}</span>
+                    {c.earnings && <span title="Earnings proche" style={{ color: 'var(--warn)' }}>●</span>}
+                    {(c.indices || []).map(ix => (
+                      <span key={ix} style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: ix === index ? 'var(--accent-soft)' : 'var(--bg-elevated)', border: `1px solid ${ix === index ? 'var(--accent-border)' : 'var(--border)'}`, color: ix === index ? 'var(--accent-hover)' : 'var(--text-dim)' }}>{ix}</span>
+                    ))}
+                  </div>
+                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{c.n}</div>
+                </td>
+                <td style={{ padding: '11px 14px', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{c.sec}</td>
+                <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: c.weights[index] != null ? 'var(--text-soft)' : 'var(--text-dim)' }}>{c.weights[index] != null ? c.weights[index] + '%' : '—'}</td>
+                {adv ? <>
+                  <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c.iv}</td>
+                  <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{c.hv}</td>
+                </> : (
+                  <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c.iv} / {c.hv}</td>
+                )}
+                <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: (c.rho ?? 0.5) < 0.5 ? 'var(--pos-bright)' : 'var(--text-soft)' }}>{(c.rho ?? 0.5).toFixed(2)}</td>
+                {adv && <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>−{(parseFloat(c.iv) * 1.4).toFixed(0)}</td>}
+                <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                  <div style={{ display: 'inline-block' }}><ScoreBadge score={c.score} max={0} label="" /></div>
+                </td>
+                <td style={{ padding: '11px 14px', textAlign: 'right' }}>
+                  <input type="checkbox" checked={selected.has(c.t)} onChange={() => onToggle(c.t)} style={{ accentColor: 'var(--accent)', width: 15, height: 15 }} />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 /* ─── Strategy Builder: 8-step wizard ──────────────────────────── */
 function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
-  const STEPS = ['Indice', 'Échéance', 'Univers', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
+  const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
   const [step, setStep] = React.useState(listId ? 3 : 0);
   const [list, setList] = React.useState(null);
   const [stratData, setStratData] = React.useState(null);
   const [selectedIndex, setSelectedIndex] = React.useState('SPX');
   const [selectedDuration, setSelectedDuration] = React.useState(30);
   const [selectedItems, setSelectedItems] = React.useState(new Set());
+  const [extraTickers, setExtraTickers] = React.useState(new Set());  // tickers ajoutés à la recherche (hors base)
+  const [sourceListId, setSourceListId] = React.useState(null);       // liste existante choisie comme source
   const [draftListId, setDraftListId] = React.useState(null);     // liste-brouillon créée depuis le Builder
   const [creatingDraft, setCreatingDraft] = React.useState(false);
   const [building, setBuilding] = React.useState(false);
@@ -27,10 +150,40 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
     }
   }, [listId]);
 
-  // Liste effective : celle passée en contexte, ou un brouillon créé à la volée
-  // pour que les modules embarqués (Corrélation / Construction / Risque)
-  // disposent toujours d'un vrai contexte de liste.
-  const effectiveListId = listId || draftListId;
+  // Liste effective : celle passée en contexte, une liste choisie comme source,
+  // ou un brouillon créé à la volée — pour que les modules embarqués
+  // (Corrélation / Construction / Risque) aient toujours un vrai contexte.
+  const effectiveListId = listId || sourceListId || draftListId;
+
+  // Choisir une liste existante comme point de départ : on charge ses composants.
+  function pickSourceList(l) {
+    setSourceListId(l.id);
+    setDraftListId(null);
+    setSelectedIndex(l.index_symbol || 'SPX');
+    DXApi.getList(l.id).then(d => {
+      setSelectedItems(new Set((d?.items || []).map(i => i.ticker).filter(Boolean)));
+    }).catch(() => {});
+  }
+  // Repartir de zéro : panier vide, aucune liste source.
+  function startScratch() {
+    setSourceListId(null);
+    setDraftListId(null);
+    setSelectedItems(new Set());
+    setExtraTickers(new Set());
+  }
+  // Ajouter un ticker depuis la recherche (n'importe quel symbole).
+  function addTicker(t) {
+    const sym = String(t || '').toUpperCase().trim();
+    if (!sym) return;
+    setSourceListId(null);                         // éditer détache de la liste source
+    setExtraTickers(s => new Set(s).add(sym));
+    setSelectedItems(s => new Set(s).add(sym));
+  }
+  // Cocher/décocher un composant (détache aussi de la liste source).
+  function toggleItem(t) {
+    setSourceListId(null);
+    setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; });
+  }
 
   // Dès qu'on entre dans les étapes d'analyse sans liste, on matérialise les
   // composants sélectionnés en une liste-brouillon réelle (donc un listId).
@@ -67,18 +220,24 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
         e.weights[ix.symbol] = c.weight;
       });
     });
-    // Tickers de la liste courante non présents dans les compositions connues
-    (list?.items || []).forEach(it => {
-      const t = it.ticker; if (!t || map[t]) return;
+    // Tickers supplémentaires (liste courante + recherche + sélection) non
+    // présents dans les compositions connues : on les enrichit via synthVol.
+    const extras = new Set([
+      ...((list?.items || []).map(i => i.ticker)),
+      ...extraTickers,
+      ...selectedItems,
+    ].filter(Boolean));
+    extras.forEach(t => {
+      if (map[t]) return;
       const v = (window.DXMock && window.DXMock.synthVol) ? window.DXMock.synthVol(t) : {};
       map[t] = {
-        t, n: t, sec: v.sector || 'Autre', iv: v.iv_est, hv: v.hv30, rho: v.correlation ?? 0.5,
-        score: it.score ?? (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null),
-        earnings: false, beta: v.beta, indices: ['Liste'], weights: {},
+        t, n: v.name || t, sec: v.sector || 'Autre', iv: v.iv_est, hv: v.hv30, rho: v.correlation ?? 0.5,
+        score: (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null),
+        earnings: false, beta: v.beta, indices: ['Ajouté'], weights: {},
       };
     });
     return Object.values(map);
-  }, [list]);
+  }, [list, extraTickers, selectedItems]);
 
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
   const CONTRACT = 100;
@@ -174,8 +333,8 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const lead = {
     0: ['Choisir un indice', "Sélectionnez l'indice ou l'ETF proxy. La liquidité des options et la taille notionnelle conditionnent l'exécution."],
     1: ['Choisir l\'échéance', 'La durée détermine le profil de risque : plus court = theta élevé, plus long = coût supérieur.'],
-    2: ['Définir l\'univers', 'Filtrez les composants eligibles selon liquidité, secteur, et corrélation.'],
-    3: ['Sélectionner les composants', 'Ces actions composeront la jambe single-name long straddle. Le score décompose liquidité, volatilité, dispersion, event risk et exécution.'],
+    2: ['Point de départ', 'Partez d\'une de vos listes existantes, ou construisez de zéro.'],
+    3: ['Sélectionner les composants', 'Cherchez et ajoutez n\'importe quelle action (tous indices), ou cochez parmi les composants connus. Ces actions composeront la jambe single-name long straddle.'],
     4: ['Corrélation et prime', "Comparez ce que le marché price (ρ implicite) à ce qui a été observé (ρ̂ réalisée). L'écart est la prime de corrélation."],
     5: ['Construction', 'Définissez les quantités et équilibrez le vega de la position.'],
     6: ['Évaluation du risque', 'Visualisez les scénarios de risque avant de valider la stratégie.'],
@@ -208,8 +367,8 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
 
       {step === 0 && <StepIndice selected={selectedIndex} onSelect={setSelectedIndex} />}
       {step === 1 && <StepDuration selected={selectedDuration} onSelect={setSelectedDuration} />}
-      {step === 2 && <StepUniverse index={selectedIndex} universe={components} />}
-      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={t => setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; })} mode={mode} />}
+      {step === 2 && <StepSource lists={lists} sourceListId={sourceListId} onPickList={pickSourceList} onScratch={startScratch} />}
+      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={toggleItem} onAdd={addTicker} mode={mode} />}
 
       {/* Étapes reliées aux vrais modules du site (embarqués), pilotées par la
           liste effective (contexte ou brouillon créé depuis les composants). */}
@@ -332,104 +491,59 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
     );
   }
 
-  function StepUniverse({ index, universe }) {
-    const total   = universe.length;
-    const inIndex = universe.filter(c => c.weights[index] != null).length;
-    const byIdx   = ((window.DXMock && window.DXMock.indices) || []).map(ix => ({
-      sym: ix.symbol, n: universe.filter(c => c.weights[ix.symbol] != null).length,
-    }));
+  function StepSource({ lists, sourceListId, onPickList, onScratch }) {
+    const scratch = !sourceListId;
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-          <MetricCard label="Univers total" value={String(total)} unit="actions" accent="var(--accent)" hint="Tous indices confondus, dédupliqué" />
-          <MetricCard label={'Membres ' + index} value={String(inIndex)} unit="actions" accent="var(--info)" hint="Composants de l'indice sélectionné" />
-        </div>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Couverture par indice</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {byIdx.map(b => (
-              <div key={b.sym} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 'var(--radius)', background: b.sym === index ? 'var(--accent-soft)' : 'var(--bg-elevated)', border: `1px solid ${b.sym === index ? 'var(--accent-border)' : 'var(--border)'}` }}>
-                <span style={{ font: '700 12px/1 var(--font-mono)', color: b.sym === index ? 'var(--accent-hover)' : 'var(--text)' }}>{b.sym}</span>
-                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{b.n}</span>
-              </div>
-            ))}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div onClick={onScratch} style={{
+          cursor: 'pointer', background: 'var(--bg-card)',
+          border: `1px solid ${scratch ? 'var(--accent)' : 'var(--border)'}`,
+          borderRadius: 'var(--radius-lg)', padding: 18, boxShadow: scratch ? '0 0 0 3px var(--accent-soft)' : 'none',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>Construire de zéro</span>
+            {scratch && <Badge tone="info">Sélectionné</Badge>}
           </div>
-          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '14px 0 0' }}>
-            À l'étape suivante, toutes ces actions sont sélectionnables. Les membres de <strong style={{ color: 'var(--text)' }}>{index}</strong> apparaissent en premier — ce sont les composants naturels d'une dispersion sur cet indice.
-          </p>
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+            Panier vide. À l'étape suivante, recherchez et ajoutez n'importe quelle action (tous indices), ou cochez parmi les composants connus.
+          </div>
+        </div>
+
+        <div>
+          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>… ou partir d'une de vos listes</div>
+          {(lists && lists.length) ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 10 }}>
+              {lists.map(l => {
+                const on = sourceListId === l.id;
+                return (
+                  <button key={l.id} onClick={() => onPickList(l)} style={{
+                    textAlign: 'left', cursor: 'pointer',
+                    background: on ? 'var(--accent-soft)' : 'var(--bg-card)',
+                    border: `1px solid ${on ? 'var(--accent-border)' : 'var(--border)'}`,
+                    borderRadius: 'var(--radius-lg)', padding: '12px 14px', color: 'var(--text)',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0, background: (l.avg_score || 0) > 60 ? 'var(--pos)' : 'var(--warn)' }} />
+                      <span style={{ font: '600 13px/1 var(--font-sans)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</span>
+                      {on && <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>✓</span>}
+                    </div>
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{l.n_items || 0} actions · {l.index_symbol || 'SPX'}</div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+              Aucune liste — créez-en une dans « Mes listes », ou construisez de zéro ci-dessus.
+            </div>
+          )}
         </div>
       </div>
     );
   }
 
-  function StepComposants({ components, index, selected, onToggle, mode }) {
-    const adv = mode === 'Avancé';
-    const cols = adv
-      ? ['Ticker', 'Secteur', 'Poids ' + index, 'IV', 'HV', 'ρ', 'Vega', 'Score', '']
-      : ['Ticker', 'Secteur', 'Poids ' + index, 'IV / HV', 'ρ', 'Score', ''];
-    // Membres de l'indice sélectionné d'abord, puis par score décroissant.
-    const rows = [...components].sort((a, b) => {
-      const am = a.weights[index] != null ? 1 : 0, bm = b.weights[index] != null ? 1 : 0;
-      return bm - am || (b.score || 0) - (a.score || 0);
-    });
-    return (
-      <>
-        {mode === 'Débutant' && (
-          <BeginnerExplanationBox>
-            Cherchez des composants capables de bouger indépendamment de l'indice (ρ plus faible) avec une IV correctement valorisée. Évitez les earnings proches : ils faussent le signal.
-          </BeginnerExplanationBox>
-        )}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {['Exclure earnings proches', 'Spread max', 'Liquidité min', 'Secteur', 'ρ max'].map((f) => (
-            <button key={f} style={{ font: '500 12px/1 var(--font-sans)', padding: '7px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-soft)', cursor: 'pointer' }}>{f} ▾</button>
-          ))}
-        </div>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-elevated)' }}>
-                {cols.map((h, i) => (
-                  <th key={h + i} style={{ textAlign: i === 0 || i === 1 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 14px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((c) => (
-                <tr key={c.t} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '11px 14px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                      <span style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{c.t}</span>
-                      {c.earnings && <span title="Earnings proche" style={{ color: 'var(--warn)' }}>●</span>}
-                      {(c.indices || []).map(ix => (
-                        <span key={ix} style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: ix === index ? 'var(--accent-soft)' : 'var(--bg-elevated)', border: `1px solid ${ix === index ? 'var(--accent-border)' : 'var(--border)'}`, color: ix === index ? 'var(--accent-hover)' : 'var(--text-dim)' }}>{ix}</span>
-                      ))}
-                    </div>
-                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{c.n}</div>
-                  </td>
-                  <td style={{ padding: '11px 14px', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{c.sec}</td>
-                  <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: c.weights[index] != null ? 'var(--text-soft)' : 'var(--text-dim)' }}>{c.weights[index] != null ? c.weights[index] + '%' : '—'}</td>
-                  {adv ? <>
-                    <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c.iv}</td>
-                    <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{c.hv}</td>
-                  </> : (
-                    <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c.iv} / {c.hv}</td>
-                  )}
-                  <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: (c.rho ?? 0.5) < 0.5 ? 'var(--pos-bright)' : 'var(--text-soft)' }}>{(c.rho ?? 0.5).toFixed(2)}</td>
-                  {adv && <td style={{ padding: '11px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>−{(parseFloat(c.iv) * 1.4).toFixed(0)}</td>}
-                  <td style={{ padding: '11px 14px', textAlign: 'right' }}>
-                    <div style={{ display: 'inline-block' }}><ScoreBadge score={c.score} max={0} label="" /></div>
-                  </td>
-                  <td style={{ padding: '11px 14px', textAlign: 'right' }}>
-                    <input type="checkbox" checked={selected.has(c.t)} onChange={() => onToggle(c.t)} style={{ accentColor: 'var(--accent)', width: 15, height: 15 }} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </>
-    );
-  }
+  // StepComposants est défini au niveau module (au-dessus) pour conserver son
+  // état de recherche/filtre entre les re-renders du Builder.
 
   function StepCorrelation({ index }) {
     const corr = window.DXMock?.correlation || {};
