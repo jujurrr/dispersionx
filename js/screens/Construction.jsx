@@ -57,12 +57,17 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       let indexPrice = 6000, indexIV = 18;
       try { const sn = await DXApi.getSnapshot(indexSym); if (sn) { indexPrice = sn.price || indexPrice; indexIV = sn.iv_est || indexIV; } } catch {}
 
-      const priceMap = {};
-      try { const q = await DXApi.batchQuotes(tickers); (q || []).forEach(r => { if (r?.ticker) priceMap[r.ticker] = parseFloat(r.price) || null; }); } catch {}
+      // Prix + capitalisations boursières réelles (en parallèle). La market cap
+      // donne un vrai poids type indice (cap-weighted) pour N'IMPORTE quel ticker.
+      const priceMap = {}, mcapMap = {};
+      const [quotes, mcaps] = await Promise.all([
+        DXApi.batchQuotes(tickers).catch(() => null),
+        DXApi.getMarketCaps(tickers).catch(() => null),
+      ]);
+      (quotes || []).forEach(r => { if (r?.ticker) priceMap[r.ticker] = parseFloat(r.price) || null; });
+      (mcaps || []).forEach(r => { if (r?.ticker && r.mcap != null && r.mcap > 0) mcapMap[r.ticker] = r.mcap; });
 
-      // Vrais poids de l'action dans l'indice (source de vérité du sizing) :
-      // on prend le poids de la liste s'il existe, sinon celui de la composition
-      // réelle de l'indice.
+      // Poids indice connu (composition réelle) — repli quand pas de market cap.
       const idxComps = window.DXMock?.getComponents ? window.DXMock.getComponents(indexSym) : [];
       const idxWeights = {}; idxComps.forEach(c => { if (c.ticker && c.weight != null) idxWeights[c.ticker] = c.weight; });
 
@@ -73,8 +78,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         const iv = v.iv_est != null ? v.iv_est : 30;
         const hv = v.hv30  != null ? v.hv30  : 27;
         const beta = v.beta != null ? v.beta : 1.0;
+        const mcap = mcapMap[t] != null ? mcapMap[t] : null;
         const weight = (weightMap[t] != null ? weightMap[t] : (idxWeights[t] != null ? idxWeights[t] : null));
-        return { ticker: t, price, iv, hv, beta, sector: v.sector || 'Autre', weight, g: sg(price, iv, duration) };
+        return { ticker: t, price, iv, hv, beta, mcap, sector: v.sector || 'Autre', weight, g: sg(price, iv, duration) };
       });
       if (!cancelled) { setBase({ indexSym, indexPrice, indexIV, idxG, perTicker }); setLoading(false); }
     })();
@@ -82,22 +88,22 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   }, [listId, indexSym, duration]);
 
   // Dimensionnement : chaque jambe reçoit une part du vega indice selon la
-  // base de pondération choisie (poids indice w_i, variance w_i², ou égale),
-  // puis on convertit cette cible de vega en nombre de contrats entiers.
-  // Poids robuste : poids réel de l'indice si connu, sinon estimé par le plus
-  // petit poids connu du panier (l'action participe toujours, jamais ignorée,
-  // jamais de valeur aléatoire).
+  // base de pondération choisie, puis on convertit cette cible de vega en
+  // nombre de contrats entiers.
+  // Mesure de taille (priorité) : capitalisation boursière réelle (cap-weighted,
+  // valable pour tout ticker) → sinon poids réel de l'indice → sinon estimé par
+  // la plus petite taille connue du panier. L'action participe toujours, jamais
+  // de valeur aléatoire.
   const sized = React.useMemo(() => {
     if (!base) return null;
-    const knownW = base.perTicker.map(t => t.weight).filter(w => w != null && w > 0);
-    // Estimation pour un ticker hors base connue : le plus petit poids connu du
-    // panier (un titre absent des top-constituants est probablement plus petit) ;
-    // s'il n'y a aucun poids connu, tout le monde est à égalité.
-    const estW   = knownW.length ? Math.min(...knownW) : 1;
-    const resolveW = base.perTicker.map(t => ({
-      w: (t.weight != null && t.weight > 0) ? t.weight : estW,
-      est: !(t.weight != null && t.weight > 0),       // poids estimé (hors base connue) ?
-    }));
+    const haveMcap = base.perTicker.some(t => t.mcap > 0);
+    // sizeOf renvoie une mesure de taille homogène (cap si dispo, sinon poids idx)
+    const sizeRaw = base.perTicker.map(t => haveMcap ? (t.mcap > 0 ? t.mcap : null)
+                                                     : (t.weight != null && t.weight > 0 ? t.weight : null));
+    const known   = sizeRaw.filter(s => s != null && s > 0);
+    const estS    = known.length ? Math.min(...known) : 1;     // titre hors base ≈ plus petit connu
+    const resolveW = sizeRaw.map(s => ({ w: (s != null && s > 0) ? s : estS, est: !(s != null && s > 0) }));
+    const sumLin   = resolveW.reduce((a, r) => a + r.w, 0) || 1;  // pour le poids % affiché (linéaire)
     const rawW = resolveW.map(r => {
       if (weightBasis === 'equal') return 1;
       return weightBasis === 'variance' ? r.w * r.w : r.w;
@@ -110,7 +116,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         ? Math.max(1, Math.round(targetVega * wNorm / t.g.vega))
         : 1;
       return {
-        ...t, weightUsed: resolveW[i].w, weightEst: resolveW[i].est, share: wNorm * 100,
+        ...t, weightUsed: resolveW[i].w / sumLin * 100, weightEst: resolveW[i].est, share: wNorm * 100,
         nContracts: n, vega: t.g.vega * n, theta: t.g.theta * n, premium: t.g.premium * n,
         delta: t.g.delta1pct * n, notional: t.price * CONTRACT * n,
       };
@@ -131,6 +137,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       comps, compVega, compTheta, compPrem, compDelta,
       idxVega, idxThetaGain, idxPrem, idxDelta, netDelta,
       idxUnitDelta, hedgeUnits, nEstimated: comps.filter(c => c.weightEst).length,
+      weightSource: base.perTicker.some(t => t.mcap > 0) ? 'cap' : 'idx',
       netVega: compVega - idxVega,
       netTheta: compTheta + idxThetaGain,
       netPremium: idxPrem - compPrem,
@@ -288,10 +295,10 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           {/* Pondération du panier */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, opacity: sizing === 'vega_neutral' ? 1 : 0.5 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Pondération du panier</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Comment répartir le vega entre composants — par poids dans l'indice (standard), par variance (réplication), ou égale. Vega-neutre uniquement.</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Comment répartir le vega entre composants — par {sized.weightSource === 'cap' ? 'capitalisation' : 'poids indice'} (standard), par variance (réplication), ou égale. Vega-neutre uniquement.</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
-                { v: 'index', label: 'Poids indice', sub: 'w_i' },
+                { v: 'index', label: sized.weightSource === 'cap' ? 'Capitalisation' : 'Poids indice', sub: 'w_i' },
                 { v: 'variance', label: 'Variance', sub: 'w_i²' },
                 { v: 'equal', label: 'Égale', sub: '1/N' },
               ].map(opt => {
@@ -311,7 +318,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         {/* ── Aperçu des quantités ── */}
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           <div style={{ padding: '11px 16px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-            <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Répartition des contrats · {sized.comps.length} composants</span>
+            <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Répartition des contrats · {sized.comps.length} composants · poids {sized.weightSource === 'cap' ? 'capitalisation réelle' : 'indice'}{sized.nEstimated > 0 ? ` (${sized.nEstimated} estimé${sized.nEstimated > 1 ? 's' : ''})` : ''}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 58px 50px 74px 86px', padding: '7px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
             {['Composant', 'Poids', 'Lots', 'Vega/lot', 'Total vega'].map(h => (
@@ -326,7 +333,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
                 </div>
                 <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.ticker}</span>
               </div>
-              <span style={{ font: '11px/1 var(--font-mono)', color: c.weightEst ? 'var(--text-dim)' : 'var(--text-soft)', textAlign: 'right' }} title={c.weightEst ? 'Poids estimé (hors base de poids connue) — plus petit poids connu du panier' : 'Poids réel dans l\'indice'}>{(c.weightEst ? '~' : '') + c.weightUsed.toFixed(1) + '%'}</span>
+              <span style={{ font: '11px/1 var(--font-mono)', color: c.weightEst ? 'var(--text-dim)' : 'var(--text-soft)', textAlign: 'right' }} title={c.weightEst ? 'Poids estimé (hors base connue) — plus petite taille connue du panier' : (sized.weightSource === 'cap' ? 'Poids réel par capitalisation' : 'Poids réel dans l\'indice')}>{(c.weightEst ? '~' : '') + c.weightUsed.toFixed(1) + '%'}</span>
               <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{c.nContracts}</span>
               <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>+{Math.round(c.g.vega)} $</span>
               <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{Math.round(c.vega)} $/1%</span>

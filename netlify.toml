@@ -20,6 +20,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/marketcap"
+  to = "/.netlify/functions/marketcap"
+  status = 200
+
+[[redirects]]
   from = "/api/options/atm"
   to = "/.netlify/functions/options-atm"
   status = 200

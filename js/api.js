@@ -88,6 +88,14 @@
     }
   }
 
+  // Capitalisations boursières (millions USD) pour pondérer la dispersion.
+  // Renvoie [{ ticker, mcap }] ; null si le backend n'est pas joignable
+  // (le module Construction retombe alors sur le poids indice / estimé).
+  async function getMarketCaps(symbols) {
+    try { return await _post('/marketcap', { symbols }); }
+    catch { return null; }
+  }
+
   /* ── Stocks (scoring) ────────────────────────────────────────── */
   // Cache mémoïsé : une même (indice, action, durée) renvoie TOUJOURS le
   // même résultat, pour que la table de l'indice, le ScoreModal et les
@@ -266,7 +274,7 @@
   window.DXApi = {
     checkHealth, isConnected,
     getIndices, getIndex, getSnapshot, getComponents, getSources,
-    batchQuotes,
+    batchQuotes, getMarketCaps,
     autoScore, getCachedScore, clearScoreCache, getOptionAtm,
     getLists, createList, getList, updateList, deleteList,
     addListItem, removeListItem, getListAnalysis,
