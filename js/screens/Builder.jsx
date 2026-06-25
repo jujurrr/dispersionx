@@ -8,6 +8,8 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const [selectedIndex, setSelectedIndex] = React.useState('SPX');
   const [selectedDuration, setSelectedDuration] = React.useState(30);
   const [selectedItems, setSelectedItems] = React.useState(new Set());
+  const [draftListId, setDraftListId] = React.useState(null);     // liste-brouillon créée depuis le Builder
+  const [creatingDraft, setCreatingDraft] = React.useState(false);
   const [building, setBuilding] = React.useState(false);
   const [nIndexContracts, setNIndexContracts] = React.useState(1);
   const [sizingMethod, setSizingMethod] = React.useState('vega_neutral');
@@ -24,6 +26,28 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
       }).catch(() => {});
     }
   }, [listId]);
+
+  // Liste effective : celle passée en contexte, ou un brouillon créé à la volée
+  // pour que les modules embarqués (Corrélation / Construction / Risque)
+  // disposent toujours d'un vrai contexte de liste.
+  const effectiveListId = listId || draftListId;
+
+  // Dès qu'on entre dans les étapes d'analyse sans liste, on matérialise les
+  // composants sélectionnés en une liste-brouillon réelle (donc un listId).
+  React.useEffect(() => {
+    if (step < 4 || effectiveListId || creatingDraft) return;
+    const tickers = Array.from(selectedItems);
+    if (!tickers.length) return;
+    setCreatingDraft(true);
+    (async () => {
+      try {
+        const stamp = new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+        const l = await DXApi.createList(`Brouillon ${selectedIndex} · ${stamp}`, selectedIndex, 'Créé par le Strategy Builder');
+        for (const t of tickers) { try { await DXApi.addListItem(l.id, t, null); } catch {} }
+        setDraftListId(l.id);
+      } catch {} finally { setCreatingDraft(false); }
+    })();
+  }, [step, effectiveListId, creatingDraft, selectedItems, selectedIndex]);
 
   const D = window.DXData;
 
@@ -119,8 +143,8 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
       // La stratégie est dimensionnée dans l'étape Construction (module embarqué),
       // qui la sauvegarde. On la relit ici pour générer le Trade Brief.
       let strategy = stratData?.strategy || null;
-      if (!strategy && listId) {
-        try { const raw = localStorage.getItem('dx-strategy-' + listId); if (raw) strategy = JSON.parse(raw); } catch {}
+      if (!strategy && effectiveListId) {
+        try { const raw = localStorage.getItem('dx-strategy-' + effectiveListId); if (raw) strategy = JSON.parse(raw); } catch {}
       }
       if (!strategy) {
         setBuildError("Dimensionnez d'abord la position à l'étape « Construction » (le module enregistre la répartition des contrats), puis revenez ici.");
@@ -187,24 +211,43 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
       {step === 2 && <StepUniverse index={selectedIndex} universe={components} />}
       {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={t => setSelectedItems(s => { const n = new Set(s); n.has(t) ? n.delete(t) : n.add(t); return n; })} mode={mode} />}
 
-      {/* Étapes reliées aux vrais modules du site (embarqués) */}
-      {step === 4 && (listId
-        ? <window.CorrelationLab embedded listId={listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
-        : <PickListInline target="le Correlation Lab" />)}
+      {/* Étapes reliées aux vrais modules du site (embarqués), pilotées par la
+          liste effective (contexte ou brouillon créé depuis les composants). */}
+      {step === 4 && (effectiveListId
+        ? <window.CorrelationLab embedded listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
+        : <NoListYet target="le Correlation Lab" />)}
 
       {buildError && <div style={{ padding: '12px 16px', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--neg-bright)' }}>{buildError}</div>}
 
-      {step === 5 && (listId
-        ? <window.Construction embedded listId={listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} indexOverride={selectedIndex} durationOverride={selectedDuration} onSaved={s => setStratData({ strategy: s })} />
-        : <PickListInline target="la Construction (répartition des contrats)" />)}
+      {step === 5 && (effectiveListId
+        ? <window.Construction embedded listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} indexOverride={selectedIndex} durationOverride={selectedDuration} onSaved={s => setStratData({ strategy: s })} />
+        : <NoListYet target="la Construction (répartition des contrats)" />)}
 
-      {step === 6 && (listId
-        ? <window.RiskLab embedded listId={listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
-        : <PickListInline target="le Risk Lab" />)}
+      {step === 6 && (effectiveListId
+        ? <window.RiskLab embedded listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
+        : <NoListYet target="le Risk Lab" />)}
     </div>
   );
 
-  // Étapes 4-6 reliées à une liste réelle. Sans liste, on invite à en choisir une.
+  // Étape d'analyse sans liste effective : on prépare un brouillon, on invite à
+  // choisir des composants, ou (échec) on propose de sélectionner une liste.
+  function NoListYet({ target }) {
+    if (creatingDraft) return (
+      <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+        Préparation de {target}… (création de la liste de travail)
+      </div>
+    );
+    if (selectedItems.size === 0) return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)', padding: 24 }}>
+        <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>Sélectionnez d'abord des composants</div>
+        <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>{target} s'appuie sur votre panier. Revenez à l'étape « Composants » et cochez au moins une action.</div>
+        <button onClick={() => setStep(3)} style={{ alignSelf: 'flex-start', font: '600 12px/1 var(--font-sans)', padding: '9px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>← Choisir les composants</button>
+      </div>
+    );
+    return <PickListInline target={target} />;
+  }
+
+  // Repli : aucune liste et la création a échoué — on propose une liste existante.
   function PickListInline({ target }) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14, background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)', padding: 24 }}>
