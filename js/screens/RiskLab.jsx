@@ -81,64 +81,63 @@ function buildRiskModel({ tickers, weightMap, priceMap, volMap, indexSym, indexP
     compVega, idxVega, netVega: compVega + idxVega,
     compTheta, idxTheta, netTheta: compTheta + idxTheta,
     Kcomp, Kidx, compPrem, idxPrem, netPremium: idxPrem - compPrem,
-    // Échelle de la prime de dispersion (carry attendu par unité de ρ).
-    Kdisp: Kidx * 0.005,
     avgIV,
-    // ρ d'équilibre : en-dessous, la prime de dispersion est positive.
-    rhoBreakeven: Kidx > 0 ? Math.min(0.9, Math.max(0.4, Kcomp / Kidx)) : 0.55,
+    // Mouvement de breakeven du short straddle indice (≈ 1 écart-type) :
+    // au-delà, la prime collectée est entièrement consommée.
+    beIdx: Math.max(1, 0.8 * indexIV * Math.sqrt(duration / 365)),
+    // ρ d'équilibre de la dispersion (≈ corrélation implicite).
+    rhoBreakeven: Kidx > 0 ? Math.min(0.85, Math.max(0.45, Kcomp / Kidx)) : 0.55,
     rhoBase: 0.45,
     hasStrategy: !!strategy,
   };
 }
 
-/* ── P&L d'un scénario (partagé par toutes les courbes) ───────────
-   Quatre moteurs indépendants :
-   • vega    : short indice (IV indice ↓ = gain), long composants (IV ↑ = gain)
-   • theta   : portage temporel
-   • mouvement : un mouvement de l'indice est CORRÉLÉ → net short gamma →
-                 PERTE qui grandit avec |mouvement| (l'indice doit bouger peu)
-   • dispersion : carry de corrélation, gain si ρ réalisée < ρ d'équilibre,
-                  indépendant du mouvement de l'indice                          */
+/* ── Facteur de dispersion (résultat des jambes composants à maturité)
+   = mouvements réalisés des composants / prime payée.
+   = 1 à l'équilibre (composants réalisent l'implicite) ; > 1 si ρ basse
+   (forte dispersion → gain) ; → 0 si ρ → 1 (rien ne disperse → on perd
+   toute la prime des straddles longs).                                   */
+function dispFactor(model, rho) {
+  const slope = 1 / (1 - model.rhoBreakeven);
+  return Math.max(0, 1 + (model.rhoBreakeven - rho) * slope);
+}
+
+/* ── P&L d'un scénario (résultat à maturité) ─────────────────────
+   • indice  : payoff du SHORT straddle = prime − valeur intrinsèque.
+               MAX = prime collectée à mouvement nul, décroît avec |move|,
+               négatif au-delà du breakeven.  (+ vega de la jambe indice)
+   • dispersion : payoff des straddles LONGS composants = prime × (facteur
+                  de dispersion − 1).  Gain si ρ < équilibre.  (+ vega comp) */
 function scenarioPnL(model, p) {
-  const m = (p.spot || 0) / 100;
+  const move = Math.abs(p.spot || 0);
   const rho = p.rho != null ? p.rho : model.rhoBase;
   const vegaIdxPnL  = model.idxVega  * (p.dIVidx  || 0);
   const vegaCompPnL = model.compVega * (p.dIVcomp || 0);
-  const vegaPnL  = vegaIdxPnL + vegaCompPnL;
-  const thetaPnL = model.netTheta * (p.days || 0);
-  // Mouvement de l'indice = gamma de la jambe SHORT straddle indice :
-  // toujours une perte, qui grandit avec l'amplitude du mouvement.
-  const movePnL  = -model.Kidx * m * m;
-  // Le gain des composants vient de la dispersion (corrélation basse),
-  // pas du mouvement de l'indice.
-  const dispPnL  = model.Kdisp * (model.rhoBreakeven - rho);
+  const idxPnL  = model.idxPrem * (1 - move / model.beIdx);          // short straddle indice
+  const dispPnL = model.compPrem * (dispFactor(model, rho) - 1);     // straddles longs composants
   return {
-    vegaIdxPnL, vegaCompPnL, vegaPnL, thetaPnL, movePnL, dispPnL,
-    total: vegaPnL + thetaPnL + movePnL + dispPnL,
+    vegaIdxPnL, vegaCompPnL, vegaPnL: vegaIdxPnL + vegaCompPnL,
+    idxPnL, dispPnL,
+    total: idxPnL + dispPnL + vegaIdxPnL + vegaCompPnL,
   };
 }
 
 /* ── Attribution du P&L par jambe (somme = scenarioPnL.total) ────── */
 function legAttribution(model, p) {
-  const m = (p.spot || 0) / 100;
+  const move = Math.abs(p.spot || 0);
   const rho = p.rho != null ? p.rho : model.rhoBase;
-  const dispTotal = model.Kdisp * (model.rhoBreakeven - rho);
-  const gammaWeight = model.Kcomp || 1; // = Σ gammaK·lots
+  const df = dispFactor(model, rho) - 1;
   const indexLeg = {
     label: model.indexSym + ' (short)', logo: null, sector: 'Indice',
-    value: Math.round(model.idxVega * (p.dIVidx || 0) - model.Kidx * m * m + model.idxTheta * (p.days || 0)),
+    value: Math.round(model.idxPrem * (1 - move / model.beIdx) + model.idxVega * (p.dIVidx || 0)),
   };
-  const comps = model.perTicker.map(t => {
-    const gw = t.greeks.gammaK * t.nContracts;
-    return {
-      label: t.ticker, logo: t.ticker, sector: t.sector,
-      value: Math.round(
-        t.greeks.vega * t.nContracts * (p.dIVcomp || 0)   // vega long composant
-        + dispTotal * (gw / gammaWeight)                  // part de la prime de dispersion
-        + t.greeks.theta * t.nContracts * (p.days || 0)   // theta
-      ),
-    };
-  });
+  const comps = model.perTicker.map(t => ({
+    label: t.ticker, logo: t.ticker, sector: t.sector,
+    value: Math.round(
+      t.greeks.premium * t.nContracts * df                // payoff straddle long (dispersion)
+      + t.greeks.vega * t.nContracts * (p.dIVcomp || 0)   // vega long composant
+    ),
+  }));
   return { indexLeg, comps };
 }
 
@@ -281,7 +280,7 @@ function Slider({ label, value, min, max, step, onChange, fmt, accent }) {
 
 /* ── Simulateur de scénarios interactif ──────────────────────────── */
 function ScenarioSimulator({ model, storageKey }) {
-  const base = { spot: 0, dIVidx: 0, dIVcomp: 0, rho: +model.rhoBase.toFixed(2), days: 0 };
+  const base = { spot: 0, dIVidx: 0, dIVcomp: 0, rho: +model.rhoBase.toFixed(2) };
   const [p, setP] = React.useState(base);
   const [name, setName] = React.useState('');
   const [saved, setSaved] = React.useState(() => {
@@ -303,11 +302,13 @@ function ScenarioSimulator({ model, storageKey }) {
     setName('');
   }
 
+  // Décomposition (somme exacte = r.total) : la jambe short straddle indice
+  // (idxPnL) est maximale quand l'indice ne bouge pas — c'est le cœur du gain.
   const decomp = [
-    { label: 'Vega', value: r.vegaPnL },
-    { label: 'Theta', value: r.thetaPnL },
-    { label: 'Mouvement', value: r.movePnL },
+    { label: model.indexSym + ' short', value: r.idxPnL },
     { label: 'Dispersion', value: r.dispPnL },
+    { label: 'Vega idx', value: r.vegaIdxPnL },
+    { label: 'Vega comp', value: r.vegaCompPnL },
   ];
 
   return (
@@ -327,7 +328,6 @@ function ScenarioSimulator({ model, storageKey }) {
           <Slider label="Choc IV indice" value={p.dIVidx} min={-30} max={40} step={1} onChange={v => set('dIVidx', v)} fmt={v => (v > 0 ? '+' : '') + v + ' pts'} accent="var(--neg-bright)" />
           <Slider label="Choc IV composants" value={p.dIVcomp} min={-30} max={40} step={1} onChange={v => set('dIVcomp', v)} fmt={v => (v > 0 ? '+' : '') + v + ' pts'} accent="var(--pos-bright)" />
           <Slider label="Corrélation réalisée" value={p.rho} min={0.15} max={0.95} step={0.01} onChange={v => set('rho', v)} fmt={v => v.toFixed(2)} accent="var(--info)" />
-          <Slider label="Jours écoulés" value={p.days} min={0} max={model.duration} step={1} onChange={v => set('days', v)} fmt={v => v + ' j'} accent="var(--warn)" />
         </div>
 
         {/* Résultat + courbe */}
@@ -346,7 +346,7 @@ function ScenarioSimulator({ model, storageKey }) {
           </div>
           <PnLLine points={curve} markIdx={markIdx >= 0 ? markIdx : null} />
           <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', textAlign: 'center', marginTop: -4 }}>
-            P&L vs mouvement de l'indice : la jambe short straddle perd quand l'indice bouge — le gain vient de la dispersion (ρ basse) et de la vol composants, pas du mouvement
+            P&L vs mouvement de l'indice : la jambe short straddle encaisse sa prime maximale quand l'indice reste calme (pic à 0 %) et la rend si l'indice bouge — la dispersion (ρ basse) et la vol composants ajoutent au gain
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Nom du scénario…"
@@ -365,7 +365,7 @@ function ScenarioSimulator({ model, storageKey }) {
               <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
                 <span style={{ font: '600 12px/1 var(--font-sans)', color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
                 <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>
-                  {(s.params.spot > 0 ? '+' : '') + s.params.spot}% · IVi {s.params.dIVidx >= 0 ? '+' : ''}{s.params.dIVidx} · IVc {s.params.dIVcomp >= 0 ? '+' : ''}{s.params.dIVcomp} · ρ{s.params.rho} · {s.params.days}j
+                  {(s.params.spot > 0 ? '+' : '') + s.params.spot}% · IVi {s.params.dIVidx >= 0 ? '+' : ''}{s.params.dIVidx} · IVc {s.params.dIVcomp >= 0 ? '+' : ''}{s.params.dIVcomp} · ρ{s.params.rho}
                 </span>
                 <span style={{ font: '700 12px/1 var(--font-mono)', color: s.total >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', width: 72, textAlign: 'right' }}>{fmtMoney(s.total)}</span>
                 <button onClick={() => setP({ ...base, ...s.params })} style={{ font: '600 10px/1 var(--font-sans)', padding: '4px 8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Charger</button>
@@ -477,9 +477,9 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   // ── Scénarios canoniques (calculés depuis le moteur) ──
   const dur = model.duration;
   const scenarioDefs = [
-    { name: 'Sell-off corrélé',   risk: 'critique', params: { spot: -6, dIVidx: 18, dIVcomp: 8, rho: 0.85, days: 0 } },
-    { name: 'Dispersion réalisée', risk: 'faible',   params: { spot: 1.5, dIVidx: -4, dIVcomp: 5, rho: 0.28, days: 6 } },
-    { name: 'Marché calme',        risk: 'modéré',   params: { spot: 0, dIVidx: -2, dIVcomp: -2, rho: 0.45, days: Math.round(dur / 2) } },
+    { name: 'Sell-off corrélé',    risk: 'critique', params: { spot: -6, dIVidx: 18, dIVcomp: 8, rho: 0.92 } },
+    { name: 'Dispersion réalisée', risk: 'faible',   params: { spot: 1.5, dIVidx: -3, dIVcomp: 4, rho: 0.25 } },
+    { name: 'Marché calme',        risk: 'modéré',   params: { spot: 0, dIVidx: -3, dIVcomp: -3, rho: 0.74 } },
   ];
   const scenarios = scenarioDefs.map(s => {
     const pnl = scenarioPnL(model, s.params).total;
@@ -498,17 +498,17 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   const maxByName = Math.max(...pnlByName.map(r => Math.abs(r.pnl)), 1);
   const maxBySec  = Math.max(...pnlBySector.map(r => Math.abs(r.pnl)), 1);
 
-  // ── Courbes de sensibilité (mêmes formules que le simulateur) ──
-  const base = { spot: 0, dIVidx: 0, dIVcomp: 0, rho: model.rhoBase, days: 0 };
+  // ── Courbes de sensibilité (chaque facteur isolé) ──
   const charts = {
-    // Mouvement de l'indice isolé (ρ à l'équilibre → pas d'effet dispersion) :
-    // la jambe short straddle perd, d'autant plus que le mouvement est grand.
-    spotBars:  [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: scenarioPnL(model, { ...base, spot: x, rho: model.rhoBreakeven }).total })),
-    ivIdxBars: [-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVidx: x }).total })),
-    ivCompBars:[-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: scenarioPnL(model, { ...base, dIVcomp: x }).total })),
-    // Dispersion isolée (sans mouvement) : ρ basse = gain, ρ élevée = perte.
-    rhoBars:   [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map(rho => ({ label: 'ρ ' + rho.toFixed(1), value: scenarioPnL(model, { ...base, spot: 0, rho }).total })),
-    thetaDays: [1, 3, 5, 7, 10, 14, 21, dur].map(d => ({ label: d + 'j', value: scenarioPnL(model, { ...base, days: d }).total })),
+    // Payoff du SHORT straddle indice : MAX = prime à 0 %, décroît, négatif
+    // au-delà du breakeven (≈ ±{beIdx}%).
+    spotBars:  [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: Math.round(model.idxPrem * (1 - Math.abs(x) / model.beIdx)) })),
+    ivIdxBars: [-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: Math.round(model.idxVega * x) })),
+    ivCompBars:[-30, -20, -10, 0, 10, 20, 30, 40].map(x => ({ label: (x >= 0 ? '+' : '') + x, value: Math.round(model.compVega * x) })),
+    // Prime de dispersion (payoff des straddles longs) : ρ basse = gain.
+    rhoBars:   [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map(rho => ({ label: 'ρ ' + rho.toFixed(1), value: Math.round(model.compPrem * (dispFactor(model, rho) - 1)) })),
+    // P&L total (toutes jambes, ρ et IV de base) : pic de gain à mouvement nul.
+    netSpot:   [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: Math.round(scenarioPnL(model, { spot: x, rho: model.rhoBase }).total) })),
     compMov:   model.perTicker.map(t => ({ label: t.ticker, logo: t.ticker, value: Math.round(t.greeks.vega * t.nContracts * 10) })).sort((a, b) => b.value - a.value),
     selloff:   [{ label: model.indexSym + ' (short)', logo: null, value: attrib.indexLeg.value }, ...attrib.comps.map(c => ({ label: c.label, logo: c.logo, value: c.value }))].sort((a, b) => b.value - a.value),
   };
@@ -665,7 +665,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
                 </div>
                 <div style={{ font: '700 20px/1 var(--font-mono)', color: s.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtMoney(s.pnl)}</div>
                 <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 6 }}>
-                  {(s.params.spot > 0 ? '+' : '') + s.params.spot}% · IV idx {s.params.dIVidx >= 0 ? '+' : ''}{s.params.dIVidx} · ρ {s.params.rho} · {s.params.days}j
+                  {(s.params.spot > 0 ? '+' : '') + s.params.spot}% · IV idx {s.params.dIVidx >= 0 ? '+' : ''}{s.params.dIVidx} · ρ {s.params.rho}
                 </div>
               </button>
             );
@@ -680,11 +680,11 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>P&L estimé sous chaque type de choc, isolé (mêmes formules que le simulateur)</p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <SensChart title="P&L par mouvement de l'indice" subtitle="Mouvement corrélé du marché — la jambe short straddle indice domine (perte quand l'indice bouge)" bars={charts.spotBars} diverging />
+          <SensChart title="P&L jambe indice (short straddle)" subtitle="Prime collectée maximale à 0 % (indice calme), rendue puis négative au-delà du breakeven" bars={charts.spotBars} diverging />
+          <SensChart title="P&L total par mouvement de l'indice" subtitle="Toutes jambes combinées (ρ et IV de base) — gain maximal quand l'indice reste calme" bars={charts.netSpot} diverging />
           <SensChart title="Prime de dispersion par corrélation" subtitle={`Carry selon la ρ réalisée · gain si ρ < équilibre (≈ ${model.rhoBreakeven.toFixed(2)})`} bars={charts.rhoBars} diverging />
-          <SensChart title="P&L par choc de vol indice" subtitle="Variation de l'IV indice (jambe short straddle), en points" bars={charts.ivIdxBars} diverging />
+          <SensChart title="P&L par choc de vol indice" subtitle="Variation de l'IV indice (short straddle → baisse d'IV = gain)" bars={charts.ivIdxBars} diverging />
           <SensChart title="P&L par choc de vol composants" subtitle="Variation de l'IV des composants (jambes long), en points" bars={charts.ivCompBars} diverging />
-          <SensChart title="P&L par passage du temps" subtitle="Cumul du theta net sur la durée de la position" bars={charts.thetaDays} diverging />
           <SensChart title="Sensibilité IV par composant" subtitle="Gain si l'IV de ce composant monte de +10 pts" bars={charts.compMov} diverging />
         </div>
         <div style={{ marginTop: 14 }}>
