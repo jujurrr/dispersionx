@@ -410,15 +410,22 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   const [loading,  setLoading]  = React.useState(true);
   const [scenario, setScenario] = React.useState(0);
   const [strategy, setStrategy] = React.useState(null);
+  const [forceEstimate, setForceEstimate] = React.useState(false);
 
   const listId = listIdParam || moduleCtx?.listId || null;
   const ctx    = moduleCtx || {};
   const hasCtx = !!listId;
   const DEMO = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
 
+  // Charge la stratégie construite dans le Builder (ou la réinitialise si la
+  // liste courante n'en a pas) — le Risk Lab s'aligne sur cette stratégie.
   React.useEffect(() => {
-    if (!listId) return;
-    try { const raw = localStorage.getItem('dx-strategy-' + listId); if (raw) setStrategy(JSON.parse(raw)); } catch {}
+    setForceEstimate(false);
+    if (!listId) { setStrategy(null); return; }
+    try {
+      const raw = localStorage.getItem('dx-strategy-' + listId);
+      setStrategy(raw ? JSON.parse(raw) : null);
+    } catch { setStrategy(null); }
   }, [listId]);
 
   React.useEffect(() => {
@@ -473,6 +480,58 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   if (loading || !model) return (
     <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du risque…</div>
   );
+
+  // ── Garde : le Risk Lab analyse une stratégie construite. Sans stratégie
+  //    sauvegardée pour cette liste, on invite d'abord à la construire. ──
+  if (!strategy && !forceEstimate) {
+    const flow = [
+      { n: '1', t: 'Strategy Builder', d: 'Choisir l\'indice, l\'échéance, les composants et le nombre de contrats (sizing vega-neutre).', on: false },
+      { n: '2', t: 'Risk Lab', d: 'Grecs, scénarios et P&L calculés sur les quantités réelles de la stratégie.', on: true },
+      { n: '3', t: 'Strategy Monitor', d: 'Suivi de la position une fois en marché.', on: false },
+    ];
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {lists && onModuleCtx && ctx.listId && (
+          <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={upd => onModuleCtx(upd)} onClear={() => onModuleCtx({ listId: null, listName: null })} />
+        )}
+        <div style={{ maxWidth: 720, margin: '24px auto 0', display: 'flex', flexDirection: 'column', gap: 22, textAlign: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-hover)' }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2 2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7L12 2Z" /><path d="M12 8v4M12 16h.01" /></svg>
+            </div>
+            <div>
+              <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 8px' }}>Construisez d'abord votre stratégie</h1>
+              <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 540 }}>
+                Le Risk Lab calcule les grecs, les scénarios et les P&L sur les <strong style={{ color: 'var(--text-soft)' }}>quantités réelles</strong> de votre stratégie (contrats indice + composants, sizing vega-neutre). Cette liste n'a pas encore de stratégie sauvegardée.
+              </p>
+            </div>
+          </div>
+
+          {/* Flux ordonné */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, textAlign: 'left' }}>
+            {flow.map(s => (
+              <div key={s.n} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 16px', background: 'var(--bg-card)', border: `1px solid ${s.on ? 'var(--accent-border)' : 'var(--border)'}`, borderRadius: 'var(--radius-lg)' }}>
+                <span style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 11px/1 var(--font-mono)', background: s.on ? 'var(--accent)' : 'var(--bg-elevated)', color: s.on ? '#fff' : 'var(--text-muted)', border: `1px solid ${s.on ? 'var(--accent)' : 'var(--border)'}`, marginTop: 1 }}>{s.n}</span>
+                <div>
+                  <div style={{ font: 'var(--type-title)', color: s.on ? 'var(--accent-hover)' : 'var(--text)' }}>{s.t}{s.on ? ' · vous êtes ici' : ''}</div>
+                  <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginTop: 2 }}>{s.d}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+            <button onClick={() => onNav && onNav('builder', { listId })} style={{ font: '600 13px/1 var(--font-sans)', padding: '12px 24px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+              Construire la stratégie →
+            </button>
+            <button onClick={() => setForceEstimate(true)} style={{ font: '500 12px/1 var(--font-sans)', padding: '4px 8px', borderRadius: 'var(--radius)', border: 'none', background: 'transparent', color: 'var(--text-dim)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
+              Voir une estimation vega-neutre (1 contrat indice) sans construire
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ── Scénarios canoniques (calculés depuis le moteur) ──
   const dur = model.duration;

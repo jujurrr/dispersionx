@@ -132,11 +132,13 @@ const NAV = [
   { group: 'Analyse', items: [
     { id: 'corr', label: 'Correlation Lab', icon: 'corr' },
     { id: 'vol', label: 'Volatility Lab', icon: 'vol' },
-    { id: 'risk', label: 'Risk Lab', icon: 'risk' },
   ]},
-  { group: 'Workflow', items: [
-    { id: 'builder', label: 'Strategy Builder', icon: 'builder' },
-    { id: 'monitor', label: 'Strategy Monitor', icon: 'monitor' },
+  // Flux de la stratégie, dans l'ordre : on construit les contrats (Builder),
+  // puis on analyse le risque (Risk Lab), puis on suit la position (Monitor).
+  { group: 'Stratégie', items: [
+    { id: 'builder', label: 'Strategy Builder', icon: 'builder', step: 1 },
+    { id: 'risk', label: 'Risk Lab', icon: 'risk', step: 2 },
+    { id: 'monitor', label: 'Strategy Monitor', icon: 'monitor', step: 3 },
   ]},
   { group: 'Aide', items: [
     { id: 'docs', label: 'Formules & Référence', icon: 'docs' },
@@ -186,6 +188,16 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
                 }}>
                   <Icon d={ICONS[it.icon]} />
                   <span style={{ flex: 1 }}>{it.label}</span>
+                  {it.step && (
+                    <span title={`Étape ${it.step}`} style={{
+                      width: 15, height: 15, borderRadius: '50%', flexShrink: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      font: '700 9px/1 var(--font-mono)',
+                      background: on ? 'var(--accent)' : 'var(--bg-elevated)',
+                      color: on ? '#fff' : 'var(--text-dim)',
+                      border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                    }}>{it.step}</span>
+                  )}
                   {it.id === 'lists' && listCount > 0 && (
                     <span style={{
                       font: '500 10px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8,
