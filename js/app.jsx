@@ -31,11 +31,19 @@ function App() {
   const [barVisible, setBarVisible] = React.useState(false);
 
   React.useEffect(() => {
-    const onProg = (e) => setDataProgress(e.detail);
+    // Throttle : le store émet des centaines d'events pendant le préchargement.
+    // On coalesce à un seul setState par frame (≤ 60/s) pour éviter une tempête
+    // de re-renders (qui faisait « clignoter » la page de présentation).
+    let raf = null, pending = null;
+    const onProg = (e) => {
+      pending = e.detail;
+      if (raf) return;
+      raf = requestAnimationFrame(() => { raf = null; if (pending) setDataProgress(pending); });
+    };
     window.addEventListener('dx-data-progress', onProg);
     // Précharge tout le site (indices, composants, cours, scores) une seule fois.
     if (window.DXStore) window.DXStore.preloadAll(duration);
-    return () => window.removeEventListener('dx-data-progress', onProg);
+    return () => { window.removeEventListener('dx-data-progress', onProg); if (raf) cancelAnimationFrame(raf); };
   }, []);
 
   // Affiche la barre fine du haut pendant le chargement, puis la masque
@@ -48,6 +56,12 @@ function App() {
       return () => clearTimeout(t);
     }
   }, [dataProgress]);
+
+  // Élément Landing mémoïsé : la page de présentation est statique et ne doit
+  // pas re-render quand l'App se met à jour (progression, listes…). On garde la
+  // MÊME référence d'élément → React saute son rendu. Le préchargement des
+  // données continue en parallèle (déclenché dans l'effet ci-dessus).
+  const landingEl = React.useMemo(() => (window.Landing ? <window.Landing /> : null), []);
 
   function handleAuth(u) {
     setUser(u);
@@ -195,7 +209,7 @@ function App() {
     return (
       <React.Fragment>
         <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
-          {window.Landing ? <window.Landing /> : null}
+          {landingEl}
         </div>
         {splashEl}
       </React.Fragment>
