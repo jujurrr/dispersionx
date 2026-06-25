@@ -25,6 +25,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/constituents"
+  to = "/.netlify/functions/constituents"
+  status = 200
+
+[[redirects]]
   from = "/api/options/atm"
   to = "/.netlify/functions/options-atm"
   status = 200

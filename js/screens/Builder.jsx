@@ -1,29 +1,28 @@
 /* ─── Sélection des composants (module-level pour conserver l'état de
    recherche/filtre entre les re-renders du Builder) ──────────────────── */
-function StepComposants({ components, index, selected, onToggle, onAdd, mode }) {
+function StepComposants({ components, index, selected, onToggle, onAdd, onSelectAll, onClearAll, mode }) {
   const { ScoreBadge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const adv = mode === 'Avancé';
   const cols = adv
     ? ['Ticker', 'Secteur', 'Poids ' + index, 'IV', 'HV', 'ρ', 'Vega', 'Score', '']
     : ['Ticker', 'Secteur', 'Poids ' + index, 'IV / HV', 'ρ', 'Score', ''];
   const [q, setQ] = React.useState('');
-  const [filterIdx, setFilterIdx] = React.useState('all');
-  const idxSyms = ((window.DXMock && window.DXMock.indices) || []).map(i => i.symbol);
+  const [onlySel, setOnlySel] = React.useState(false);
   const up = q.trim().toUpperCase();
 
-  // Recherche dans l'univers connu + possibilité d'ajouter tout symbole tapé.
+  // Recherche dans les constituants de l'indice + ajout de tout symbole tapé.
   const suggestions = up ? components.filter(c => c.t.includes(up) || (c.n || '').toUpperCase().includes(up)).slice(0, 6) : [];
   const known = components.some(c => c.t === up);
   const canAdd = up && /^[A-Z0-9.\-]{1,8}$/.test(up) && !known;
   function add(t) { onAdd(t); setQ(''); }
 
-  // Filtre (tous / sélectionnés / par indice) + tri membres-de-l'indice d'abord.
+  // Filtre (tous / sélectionnés) + tri : constituants de l'indice d'abord,
+  // puis par poids puis par score.
   let rows = [...components];
-  if (filterIdx === 'sel') rows = rows.filter(c => selected.has(c.t));
-  else if (filterIdx !== 'all') rows = rows.filter(c => (c.indices || []).includes(filterIdx));
+  if (onlySel) rows = rows.filter(c => selected.has(c.t));
   rows.sort((a, b) => {
-    const am = a.weights[index] != null ? 1 : 0, bm = b.weights[index] != null ? 1 : 0;
-    return bm - am || (b.score || 0) - (a.score || 0);
+    const am = a.member ? 1 : 0, bm = b.member ? 1 : 0;
+    return bm - am || (b.weights[index] || 0) - (a.weights[index] || 0) || (b.score || 0) - (a.score || 0);
   });
 
   return (
@@ -62,15 +61,12 @@ function StepComposants({ components, index, selected, onToggle, onAdd, mode }) 
         )}
       </div>
 
-      {/* Filtre par indice + compteur */}
+      {/* Actions de sélection + filtre + compteur */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-        {[{ v: 'all', l: 'Tous' }, { v: 'sel', l: 'Sélectionnés (' + selected.size + ')' }, ...idxSyms.map(s => ({ v: s, l: s }))].map(f => {
-          const on = filterIdx === f.v;
-          return (
-            <button key={f.v} onClick={() => setFilterIdx(f.v)} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', background: on ? 'var(--accent)' : 'var(--bg-elevated)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: on ? '#fff' : 'var(--text-soft)', cursor: 'pointer' }}>{f.l}</button>
-          );
-        })}
-        <span style={{ marginLeft: 'auto', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{rows.length} action(s) affichée(s)</span>
+        <button onClick={onSelectAll} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', background: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: 'var(--radius)', color: '#fff', cursor: 'pointer' }}>Tout sélectionner ({components.length})</button>
+        <button onClick={onClearAll} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-soft)', cursor: 'pointer' }}>Aucun</button>
+        <button onClick={() => setOnlySel(s => !s)} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', background: onlySel ? 'var(--accent)' : 'var(--bg-elevated)', border: `1px solid ${onlySel ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--radius)', color: onlySel ? '#fff' : 'var(--text-soft)', cursor: 'pointer' }}>Sélectionnés ({selected.size})</button>
+        <span style={{ marginLeft: 'auto', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{rows.length} action(s) · {index}</span>
       </div>
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
@@ -88,9 +84,7 @@ function StepComposants({ components, index, selected, onToggle, onAdd, mode }) 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                     <span style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{c.t}</span>
                     {c.earnings && <span title="Earnings proche" style={{ color: 'var(--warn)' }}>●</span>}
-                    {(c.indices || []).map(ix => (
-                      <span key={ix} style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: ix === index ? 'var(--accent-soft)' : 'var(--bg-elevated)', border: `1px solid ${ix === index ? 'var(--accent-border)' : 'var(--border)'}`, color: ix === index ? 'var(--accent-hover)' : 'var(--text-dim)' }}>{ix}</span>
-                    ))}
+                    {!c.member && <span style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}>ajouté</span>}
                   </div>
                   <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{c.n}</div>
                 </td>
@@ -128,6 +122,7 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
   const [stratData, setStratData] = React.useState(null);
   const [selectedIndex, setSelectedIndex] = React.useState('SPX');
   const [selectedDuration, setSelectedDuration] = React.useState(30);
+  const [indexConstituents, setIndexConstituents] = React.useState([]);  // constituants réels de l'indice
   const [selectedItems, setSelectedItems] = React.useState(new Set());
   const [extraTickers, setExtraTickers] = React.useState(new Set());  // tickers ajoutés à la recherche (hors base)
   const [sourceListId, setSourceListId] = React.useState(null);       // liste existante choisie comme source
@@ -149,6 +144,30 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
       }).catch(() => {});
     }
   }, [listId]);
+
+  // Constituants réels de l'indice sélectionné (liste complète), repli sur la
+  // base connue. Sert à peupler l'étape Composants avec TOUTES les actions de
+  // l'indice choisi (et seulement celui-là).
+  React.useEffect(() => {
+    let cancelled = false;
+    const fallback = (window.DXMock?.getComponents(selectedIndex) || []).map(c => c.ticker);
+    DXApi.getConstituents(selectedIndex).then(list => {
+      if (cancelled) return;
+      const full = (list && list.length) ? list : fallback;
+      setIndexConstituents(full);
+      // Pré-sélection par défaut (sauf si une liste pilote) : les constituants
+      // CONNUS (noms liquides avec vraies données). L'intégralité de l'indice
+      // reste listée et « Tout sélectionner » coche le reste — on ne pré-coche
+      // pas des centaines de noms (cela saturerait les appels quotes/mcap).
+      if (!listId && !sourceListId) {
+        const knownTickers = (window.DXMock?.getComponents(selectedIndex) || []).map(c => c.ticker).filter(t => full.includes(t));
+        setSelectedItems(new Set(knownTickers.length ? knownTickers : full.slice(0, 30)));
+      }
+    }).catch(() => {
+      if (!cancelled) setIndexConstituents(fallback);
+    });
+    return () => { cancelled = true; };
+  }, [selectedIndex]);
 
   // Liste effective : celle passée en contexte, une liste choisie comme source,
   // ou un brouillon créé à la volée — pour que les modules embarqués
@@ -204,24 +223,33 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
 
   const D = window.DXData;
 
-  // Univers = union des composants de TOUS les indices disponibles (dédupliqué),
-  // enrichi des tickers de la liste courante. Chaque action est taguée des
-  // indices dont elle fait partie, avec son poids par indice.
+  // Univers = TOUS les constituants de l'indice sélectionné (et lui seul),
+  // enrichis par la base connue (poids/score réels) ou via synthVol, plus les
+  // tickers ajoutés à la recherche.
   const components = React.useMemo(() => {
     const map = {};
-    ((window.DXMock && window.DXMock.indices) || []).forEach(ix => {
-      (window.DXMock.getComponents(ix.symbol) || []).forEach(c => {
-        if (!c.ticker) return;
-        const e = map[c.ticker] || (map[c.ticker] = {
+    const known = {};
+    (window.DXMock?.getComponents(selectedIndex) || []).forEach(c => { if (c.ticker) known[c.ticker] = c; });
+    const list0 = (indexConstituents && indexConstituents.length) ? indexConstituents : Object.keys(known);
+    list0.forEach(t => {
+      if (!t || map[t]) return;
+      const c = known[t];
+      if (c) {
+        map[t] = {
           t: c.ticker, n: c.name, sec: c.sector, iv: c.iv, hv: c.hv, rho: c.rho,
-          score: c.score, earnings: c.earnings, beta: c.beta, indices: [], weights: {},
-        });
-        if (!e.indices.includes(ix.symbol)) e.indices.push(ix.symbol);
-        e.weights[ix.symbol] = c.weight;
-      });
+          score: c.score, earnings: c.earnings, beta: c.beta, member: true,
+          indices: [selectedIndex], weights: { [selectedIndex]: c.weight },
+        };
+      } else {
+        const v = (window.DXMock && window.DXMock.synthVol) ? window.DXMock.synthVol(t) : {};
+        map[t] = {
+          t, n: v.name || t, sec: v.sector || 'Autre', iv: v.iv_est, hv: v.hv30, rho: v.correlation ?? 0.5,
+          score: (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null),
+          earnings: false, beta: v.beta, member: true, indices: [selectedIndex], weights: {},
+        };
+      }
     });
-    // Tickers supplémentaires (liste courante + recherche + sélection) non
-    // présents dans les compositions connues : on les enrichit via synthVol.
+    // Tickers ajoutés à la recherche / sélectionnés hors constituants connus.
     const extras = new Set([
       ...((list?.items || []).map(i => i.ticker)),
       ...extraTickers,
@@ -233,11 +261,11 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
       map[t] = {
         t, n: v.name || t, sec: v.sector || 'Autre', iv: v.iv_est, hv: v.hv30, rho: v.correlation ?? 0.5,
         score: (window.DXMock?.scoreFor ? window.DXMock.scoreFor(t) : null),
-        earnings: false, beta: v.beta, indices: ['Ajouté'], weights: {},
+        earnings: false, beta: v.beta, member: false, indices: ['Ajouté'], weights: {},
       };
     });
     return Object.values(map);
-  }, [list, extraTickers, selectedItems]);
+  }, [selectedIndex, indexConstituents, list, extraTickers, selectedItems]);
 
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
   const CONTRACT = 100;
@@ -368,7 +396,7 @@ function Builder({ listId, onNav, mode, lists, moduleCtx, onModuleCtx }) {
       {step === 0 && <StepIndice selected={selectedIndex} onSelect={setSelectedIndex} />}
       {step === 1 && <StepDuration selected={selectedDuration} onSelect={setSelectedDuration} />}
       {step === 2 && <StepSource lists={lists} sourceListId={sourceListId} onPickList={pickSourceList} onScratch={startScratch} />}
-      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={toggleItem} onAdd={addTicker} mode={mode} />}
+      {step === 3 && <StepComposants components={components} index={selectedIndex} selected={selectedItems} onToggle={toggleItem} onAdd={addTicker} onSelectAll={() => { setSourceListId(null); setSelectedItems(new Set(components.map(c => c.t))); }} onClearAll={() => { setSourceListId(null); setSelectedItems(new Set()); }} mode={mode} />}
 
       {/* Étapes reliées aux vrais modules du site (embarqués), pilotées par la
           liste effective (contexte ou brouillon créé depuis les composants). */}

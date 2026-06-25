@@ -96,6 +96,13 @@
     catch { return null; }
   }
 
+  // Liste complète des constituants d'un indice (tickers). Vide si indisponible
+  // → le client retombe sur la base connue.
+  async function getConstituents(index) {
+    try { const d = await _post('/constituents', { index }); return Array.isArray(d?.constituents) ? d.constituents : []; }
+    catch { return []; }
+  }
+
   /* ── Stocks (scoring) ────────────────────────────────────────── */
   // Cache mémoïsé : une même (indice, action, durée) renvoie TOUJOURS le
   // même résultat, pour que la table de l'indice, le ScoreModal et les
@@ -274,7 +281,7 @@
   window.DXApi = {
     checkHealth, isConnected,
     getIndices, getIndex, getSnapshot, getComponents, getSources,
-    batchQuotes, getMarketCaps,
+    batchQuotes, getMarketCaps, getConstituents,
     autoScore, getCachedScore, clearScoreCache, getOptionAtm,
     getLists, createList, getList, updateList, deleteList,
     addListItem, removeListItem, getListAnalysis,
