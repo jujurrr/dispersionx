@@ -22,6 +22,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [base,     setBase]     = React.useState(null);
   const [nIndex,   setNIndex]   = React.useState(1);
   const [sizing,   setSizing]   = React.useState('vega_neutral');
+  const [weightBasis, setWeightBasis] = React.useState('index');   // index (w_i) | variance (w_i²) | equal
   const [duration, setDuration] = React.useState(durationOverride || 30);
   const [savedTick, setSavedTick] = React.useState(0);
 
@@ -30,7 +31,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     if (!listId) return;
     try {
       const raw = localStorage.getItem('dx-strategy-' + listId);
-      if (raw) { const s = JSON.parse(raw); if (s) { setNIndex(s.nIndex || 1); setSizing(s.sizingMethod || 'vega_neutral'); if (!durationOverride) setDuration(s.duration || 30); } }
+      if (raw) { const s = JSON.parse(raw); if (s) { setNIndex(s.nIndex || 1); setSizing(s.sizingMethod || 'vega_neutral'); if (s.weightBasis) setWeightBasis(s.weightBasis); if (!durationOverride) setDuration(s.duration || 30); } }
     } catch {}
   }, [listId]);
 
@@ -58,6 +59,12 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       const priceMap = {};
       try { const q = await DXApi.batchQuotes(tickers); (q || []).forEach(r => { if (r?.ticker) priceMap[r.ticker] = parseFloat(r.price) || null; }); } catch {}
 
+      // Vrais poids de l'action dans l'indice (source de vérité du sizing) :
+      // on prend le poids de la liste s'il existe, sinon celui de la composition
+      // réelle de l'indice.
+      const idxComps = window.DXMock?.getComponents ? window.DXMock.getComponents(indexSym) : [];
+      const idxWeights = {}; idxComps.forEach(c => { if (c.ticker && c.weight != null) idxWeights[c.ticker] = c.weight; });
+
       const idxG = sg(indexPrice, indexIV, duration);
       const perTicker = tickers.map(t => {
         const v = window.DXMock?.synthVol ? window.DXMock.synthVol(t, indexSym) : {};
@@ -65,17 +72,25 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         const iv = v.iv_est != null ? v.iv_est : 30;
         const hv = v.hv30  != null ? v.hv30  : 27;
         const beta = v.beta != null ? v.beta : 1.0;
-        return { ticker: t, price, iv, hv, beta, sector: v.sector || 'Autre', weight: weightMap[t], g: sg(price, iv, duration) };
+        const weight = (weightMap[t] != null ? weightMap[t] : (idxWeights[t] != null ? idxWeights[t] : null));
+        return { ticker: t, price, iv, hv, beta, sector: v.sector || 'Autre', weight, g: sg(price, iv, duration) };
       });
       if (!cancelled) { setBase({ indexSym, indexPrice, indexIV, idxG, perTicker }); setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [listId, indexSym, duration]);
 
-  // Dimensionnement vega-neutre (réparti par poids de l'indice si disponible)
+  // Dimensionnement : chaque jambe reçoit une part du vega indice selon la
+  // base de pondération choisie (poids indice w_i, variance w_i², ou égale),
+  // puis on convertit cette cible de vega en nombre de contrats entiers.
   const sized = React.useMemo(() => {
     if (!base) return null;
-    const rawW = base.perTicker.map(t => (t.weight != null ? t.weight : 1));
+    const rawW = base.perTicker.map(t => {
+      if (weightBasis === 'equal') return 1;
+      const w = (t.weight != null && t.weight > 0) ? t.weight : null;
+      if (w == null) return 0.0001;                     // hors-indice → poids négligeable (1 lot mini)
+      return weightBasis === 'variance' ? w * w : w;
+    });
     const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
     const targetVega = base.idxG.vega * nIndex;          // vega à neutraliser
     const comps = base.perTicker.map((t, i) => {
@@ -83,7 +98,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       const n = (sizing === 'vega_neutral' && t.g.vega > 0)
         ? Math.max(1, Math.round(targetVega * wNorm / t.g.vega))
         : 1;
-      return { ...t, nContracts: n, vega: t.g.vega * n, theta: t.g.theta * n, premium: t.g.premium * n, notional: t.price * CONTRACT * n };
+      return { ...t, share: wNorm * 100, nContracts: n, vega: t.g.vega * n, theta: t.g.theta * n, premium: t.g.premium * n, notional: t.price * CONTRACT * n };
     });
     const compVega  = comps.reduce((s, c) => s + c.vega, 0);
     const compTheta = comps.reduce((s, c) => s + c.theta, 0);
@@ -101,13 +116,13 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       compNotional: comps.reduce((s, c) => s + c.notional, 0),
       totalLots: comps.reduce((s, c) => s + c.nContracts, 0),
     };
-  }, [base, nIndex, sizing]);
+  }, [base, nIndex, sizing, weightBasis]);
 
   function buildStrategy() {
     if (!base || !sized) return null;
     return {
       listId, index: base.indexSym, duration, builtAt: new Date().toISOString(),
-      nIndex, sizingMethod: sizing,
+      nIndex, sizingMethod: sizing, weightBasis,
       components: sized.comps.map(c => ({
         ticker: c.ticker, price: c.price, iv: c.iv, hv: c.hv, beta: c.beta,
         sector: c.sector, weight: c.weight, nContracts: c.nContracts,
@@ -225,7 +240,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
           {/* Sizing */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Méthode de répartition</div>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Méthode de sizing</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
                 { v: 'vega_neutral', label: 'Vega-neutre', desc: 'n_i = round(vega_indice × poids_i / vega_i). Sensibilité IV des composants ≈ celle de l\'indice short.' },
@@ -243,6 +258,28 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               ))}
             </div>
           </div>
+
+          {/* Pondération du panier */}
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, opacity: sizing === 'vega_neutral' ? 1 : 0.5 }}>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Pondération du panier</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Comment répartir le vega entre composants — par poids dans l'indice (standard), par variance (réplication), ou égale. Vega-neutre uniquement.</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[
+                { v: 'index', label: 'Poids indice', sub: 'w_i' },
+                { v: 'variance', label: 'Variance', sub: 'w_i²' },
+                { v: 'equal', label: 'Égale', sub: '1/N' },
+              ].map(opt => {
+                const on = weightBasis === opt.v;
+                return (
+                  <button key={opt.v} onClick={() => sizing === 'vega_neutral' && setWeightBasis(opt.v)} disabled={sizing !== 'vega_neutral'}
+                    style={{ flex: 1, padding: '10px 6px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: sizing === 'vega_neutral' ? 'pointer' : 'default', textAlign: 'center' }}>
+                    <div style={{ font: '600 12px/1 var(--font-sans)' }}>{opt.label}</div>
+                    <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{opt.sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* ── Aperçu des quantités ── */}
@@ -250,22 +287,22 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           <div style={{ padding: '11px 16px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
             <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Répartition des contrats · {sized.comps.length} composants</span>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 58px 78px 64px 86px', padding: '7px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-            {['Composant', 'Lots', 'Vega/lot', 'Prix', 'Total vega'].map(h => (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 58px 50px 74px 86px', padding: '7px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
+            {['Composant', 'Poids', 'Lots', 'Vega/lot', 'Total vega'].map(h => (
               <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: h === 'Composant' ? 'left' : 'right' }}>{h}</span>
             ))}
           </div>
           {sized.comps.map((c, i) => (
-            <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 58px 78px 64px 86px', padding: '9px 16px', borderBottom: i < sized.comps.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
+            <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 58px 50px 74px 86px', padding: '9px 16px', borderBottom: i < sized.comps.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                 <div style={{ width: 18, height: 18, borderRadius: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border)', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <img src={`https://assets.parqet.com/logos/symbol/${c.ticker.split('.')[0]}`} alt="" style={{ width: 13, height: 13, objectFit: 'contain' }} onError={e => { e.currentTarget.style.display = 'none'; }} />
                 </div>
                 <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.ticker}</span>
               </div>
+              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>{c.weight != null ? c.weight.toFixed(1) + '%' : '—'}</span>
               <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{c.nContracts}</span>
-              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>+{Math.round(c.g.vega)} $</span>
-              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>{Math.round(c.price)} $</span>
+              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>+{Math.round(c.g.vega)} $</span>
               <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{Math.round(c.vega)} $/1%</span>
             </div>
           ))}
