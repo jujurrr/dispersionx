@@ -23,7 +23,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [base,     setBase]     = React.useState(null);
   const [nIndex,   setNIndex]   = React.useState(1);
   const [sizing,   setSizing]   = React.useState('vega_neutral');
-  const [weightBasis, setWeightBasis] = React.useState('index');   // index (w_i) | variance (w_i²) | equal
+  const [weightBasis, setWeightBasis] = React.useState('capped');  // capped (défaut) | index (w_i) | variance (w_i²) | equal
   // Échéances réelles : vendredis d'expiration options proches de 14/30/45/60 j.
   // On stocke la DATE (expiry) dans la stratégie ; duration = DTE jusqu'à elle.
   const expiryOpts = React.useMemo(() => (window.DXExpiry ? window.DXExpiry.expiriesFor([14, 30, 45, 60]) : []), []);
@@ -142,14 +142,39 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     const estS    = known.length ? Math.min(...known) : 1;     // titre hors base ≈ plus petit connu
     const resolveW = sizeRaw.map(s => ({ w: (s != null && s > 0) ? s : estS, est: !(s != null && s > 0) }));
     const sumLin   = resolveW.reduce((a, r) => a + r.w, 0) || 1;  // pour le poids % affiché (linéaire)
-    const rawW = resolveW.map(r => {
-      if (weightBasis === 'equal') return 1;
-      return weightBasis === 'variance' ? r.w * r.w : r.w;
-    });
-    const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
+    // Pondération « Capée » : capitalisation plafonnée à 20 % du vega total
+    // par jambe (comme un indice capped) — l'excédent des méga-caps est
+    // redistribué proportionnellement aux autres. Évite qu'une dispersion
+    // devienne un pari sur 2-3 titres. Si N ≤ 5, le plafond devient 1/N
+    // (équipondération, seule répartition possible).
+    function capWeights(wNorm, cap) {
+      let out = wNorm.slice();
+      for (let iter = 0; iter < 20; iter++) {
+        const over = out.map(x => x > cap + 1e-9);
+        const excess = out.reduce((s, x, i) => s + (over[i] ? x - cap : 0), 0);
+        if (excess < 1e-9) break;
+        const freeSum = out.reduce((s, x, i) => s + (over[i] ? 0 : x), 0);
+        if (freeSum <= 0) break;
+        out = out.map((x, i) => (over[i] ? cap : x + excess * (x / freeSum)));
+      }
+      return out;
+    }
+    let wNormArr;
+    if (weightBasis === 'capped') {
+      const lin = resolveW.map(r => r.w);
+      const s = lin.reduce((a, b) => a + b, 0) || 1;
+      wNormArr = capWeights(lin.map(x => x / s), Math.max(0.20, 1 / lin.length));
+    } else {
+      const rawW = resolveW.map(r => {
+        if (weightBasis === 'equal') return 1;
+        return weightBasis === 'variance' ? r.w * r.w : r.w;
+      });
+      const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
+      wNormArr = rawW.map(x => x / sumW);
+    }
     const targetVega = base.idxG.vega * nIndex;          // vega à neutraliser
     const comps = base.perTicker.map((t, i) => {
-      const wNorm = rawW[i] / sumW;
+      const wNorm = wNormArr[i];
       const n = (sizing === 'vega_neutral' && t.g.vega > 0)
         ? Math.max(1, Math.round(targetVega * wNorm / t.g.vega))
         : 1;
@@ -186,6 +211,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       indexHedgeNotional: Math.abs(hedgeUnits) * base.indexPrice * CONTRACT,
       nEstimated: comps.filter(c => c.weightEst).length,
       weightSource: base.perTicker.some(t => t.mcap > 0) ? 'cap' : 'idx',
+      // Concentration : part du vega composants portée par la plus grosse jambe
+      topComp: comps.reduce((a, c) => (c.vega > (a ? a.vega : -1) ? c : a), null),
+      topVegaShare: compVega > 0 ? Math.max(...comps.map(c => c.vega)) / compVega : 0,
       netVega: compVega - idxVega,
       netTheta: compTheta + idxThetaGain,
       netPremium: idxPrem - compPrem,
@@ -401,9 +429,10 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           {/* Pondération du panier */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, opacity: sizing === 'vega_neutral' ? 1 : 0.5 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Pondération du panier</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Comment répartir le vega entre composants — par {sized.weightSource === 'cap' ? 'capitalisation' : 'poids indice'} (standard), par variance (réplication), ou égale. Vega-neutre uniquement.</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Comment répartir le vega entre composants. « Capée 20 % » (recommandée) : par {sized.weightSource === 'cap' ? 'capitalisation' : 'poids indice'} mais plafonnée à 20 % par jambe — les méga-caps ne monopolisent pas la dispersion. Vega-neutre uniquement.</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
+                { v: 'capped', label: 'Capée 20 %', sub: 'min(w_i, 20 %)' },
                 { v: 'index', label: sized.weightSource === 'cap' ? 'Capitalisation' : 'Poids indice', sub: 'w_i' },
                 { v: 'variance', label: 'Variance', sub: 'w_i²' },
                 { v: 'equal', label: 'Égale', sub: '1/N' },
@@ -476,6 +505,14 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           <span style={{ color: 'var(--warn)', fontWeight: 700 }}>~</span>
           <span>{sized.nEstimated} composant(s) hors base de poids connue : poids estimé (plus petit poids connu du panier) — jamais ignoré dans le sizing. Pour un poids exact, partez d'une liste issue d'un indice, ou choisissez la base « Égale ».</span>
         </div>
+      )}
+
+      {/* Alerte de concentration : une jambe domine le vega composants */}
+      {sizing === 'vega_neutral' && sized.topVegaShare > 0.35 && sized.topComp && (
+        <WarningPanel tone="warn" title="Concentration du vega">
+          <strong>{sized.topComp.ticker}</strong> porte {Math.round(sized.topVegaShare * 100)} % du vega composants — la « dispersion » repose surtout sur ce titre (un seul earnings domine le P&L).
+          {weightBasis !== 'capped' ? ' Passez à la pondération « Capée 20 % » pour répartir le pari.' : ' Ajoutez des composants pour mieux répartir le pari.'}
+        </WarningPanel>
       )}
 
       {/* ── Delta de la stratégie / couverture ── */}
