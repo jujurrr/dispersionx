@@ -498,12 +498,18 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
   }
 
   function StepDuration({ selected, onSelect }) {
+    // Vraies dates d'expiration options (vendredis) proches de chaque durée
+    // cible — l'étape Construction convertira le choix en date précise.
+    const expiries = window.DXExpiry ? window.DXExpiry.expiriesFor([14, 30, 45, 60]) : [];
     const durations = [
-      { d: 14, label: '14 jours', desc: 'Theta élevé, décision rapide.' },
-      { d: 30, label: '30 jours', desc: 'Équilibre standard. Recommandé.' },
-      { d: 45, label: '45 jours', desc: 'Plus de temps, coût supérieur.' },
-      { d: 60, label: '60 jours', desc: 'Long terme, adapté aux positions larges.' },
-    ];
+      { d: 14, desc: 'Theta élevé, décision rapide.' },
+      { d: 30, desc: 'Équilibre standard. Recommandé.' },
+      { d: 45, desc: 'Plus de temps, coût supérieur.' },
+      { d: 60, desc: 'Long terme, adapté aux positions larges.' },
+    ].map(item => {
+      const exp = expiries.reduce((best, o) => (!best || Math.abs(o.target - item.d) < Math.abs(best.target - item.d) ? o : best), null);
+      return { ...item, exp };
+    });
     return (
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
         {durations.map((item) => {
@@ -514,8 +520,13 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
               borderRadius: 'var(--radius-lg)', padding: 18, cursor: 'pointer', textAlign: 'center',
               boxShadow: on ? '0 0 0 3px var(--accent-soft)' : 'none',
             }}>
-              <div style={{ font: '800 28px/1 var(--font-mono)', color: on ? 'var(--accent-hover)' : 'var(--text)', marginBottom: 8 }}>{item.d}</div>
-              <div style={{ font: 'var(--type-title)', color: 'var(--text-soft)', marginBottom: 6 }}>{item.label}</div>
+              <div style={{ font: '800 28px/1 var(--font-mono)', color: on ? 'var(--accent-hover)' : 'var(--text)', marginBottom: 8 }}>{item.exp ? item.exp.dte : item.d}</div>
+              <div style={{ font: 'var(--type-title)', color: 'var(--text-soft)', marginBottom: 6 }}>{item.exp ? item.exp.dte + ' jours' : item.d + ' jours'}</div>
+              {item.exp && (
+                <div style={{ font: '600 11px/1.4 var(--font-mono)', color: on ? 'var(--accent-hover)' : 'var(--text-muted)', marginBottom: 6 }}>
+                  exp. {window.DXExpiry.fmtExpiry(item.exp.date)}
+                </div>
+              )}
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{item.desc}</div>
             </div>
           );
@@ -625,7 +636,7 @@ function TradeBrief({ data, onNav }) {
         theta:  '+' + Math.round(port.idxTheta || 0) + ' $/j',
         qty:    strategy.nIndex,
         action: 'Vendre straddle',
-        exp:    strategy.duration + ' DTE',
+        exp:    strategy.expiry && window.DXExpiry ? `exp. ${window.DXExpiry.fmtExpiry(strategy.expiry)} (${strategy.duration} DTE)` : strategy.duration + ' DTE',
       },
       basket: strategy.components.map(c => ({
         t:     c.ticker,

@@ -249,8 +249,13 @@
   function strategyMetrics(s) {
     const p = s.portfolio || {};
     const built = s.builtAt ? new Date(s.builtAt) : null;
-    const daysSince = (built && !isNaN(built)) ? Math.max(0, Math.floor((Date.now() - built.getTime()) / 86400000)) : 0;
-    const dte = Math.max(0, (s.duration || 30) - daysSince);
+    let daysSince = (built && !isNaN(built)) ? Math.max(0, Math.floor((Date.now() - built.getTime()) / 86400000)) : 0;
+    // DTE restant : priorité à la vraie date d'échéance (expiry, vendredi
+    // d'expiration options) ; repli : durée initiale − jours écoulés.
+    let dte;
+    const dteLeft = s.expiry && window.DXExpiry ? window.DXExpiry.dteTo(s.expiry) : null;
+    if (dteLeft != null) { dte = dteLeft; daysSince = Math.max(0, (s.duration || 30) - dteLeft); }
+    else dte = Math.max(0, (s.duration || 30) - daysSince);
     // Avancée du temps : pour un straddle ATM, vega ∝ √T et theta ∝ 1/√T.
     // Les grecs stockés (à la construction) sont ramenés au DTE restant pour
     // que le suivi reflète la position d'aujourd'hui, pas celle de J0.

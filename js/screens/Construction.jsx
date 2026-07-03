@@ -24,20 +24,42 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [nIndex,   setNIndex]   = React.useState(1);
   const [sizing,   setSizing]   = React.useState('vega_neutral');
   const [weightBasis, setWeightBasis] = React.useState('index');   // index (w_i) | variance (w_i²) | equal
-  const [duration, setDuration] = React.useState(durationOverride || 30);
+  // Échéances réelles : vendredis d'expiration options proches de 14/30/45/60 j.
+  // On stocke la DATE (expiry) dans la stratégie ; duration = DTE jusqu'à elle.
+  const expiryOpts = React.useMemo(() => (window.DXExpiry ? window.DXExpiry.expiriesFor([14, 30, 45, 60]) : []), []);
+  const nearestOpt = (days) => expiryOpts.reduce((best, o) => (!best || Math.abs(o.dte - days) < Math.abs(best.dte - days) ? o : best), null);
+  const initOpt = nearestOpt(durationOverride || 30);
+  const [duration, setDuration] = React.useState(initOpt ? initOpt.dte : (durationOverride || 30));
+  const [expiry,   setExpiry]   = React.useState(initOpt ? initOpt.date : null);
   const [deltaHedge, setDeltaHedge] = React.useState('none');      // none | index | legs
   const [savedTick, setSavedTick] = React.useState(0);
+  const [importMsg, setImportMsg] = React.useState(null);
+
+  function pickExpiry(o) { if (!o) return; setExpiry(o.date); setDuration(Math.max(1, o.dte)); }
 
   // Préremplir depuis une stratégie déjà construite pour cette liste
   React.useEffect(() => {
     if (!listId) return;
     try {
       const raw = localStorage.getItem('dx-strategy-' + listId);
-      if (raw) { const s = JSON.parse(raw); if (s) { setNIndex(s.nIndex || 1); setSizing(s.sizingMethod || 'vega_neutral'); if (s.weightBasis) setWeightBasis(s.weightBasis); if (s.deltaHedge) setDeltaHedge(s.deltaHedge); if (!durationOverride) setDuration(s.duration || 30); } }
+      if (raw) {
+        const s = JSON.parse(raw);
+        if (s) {
+          setNIndex(s.nIndex || 1); setSizing(s.sizingMethod || 'vega_neutral');
+          if (s.weightBasis) setWeightBasis(s.weightBasis);
+          if (s.deltaHedge) setDeltaHedge(s.deltaHedge);
+          if (!durationOverride) {
+            // Reprendre l'échéance réelle si encore dans le futur, sinon défaut
+            const dte = s.expiry && window.DXExpiry ? window.DXExpiry.dteTo(s.expiry) : null;
+            if (dte != null && dte > 0) { setExpiry(s.expiry); setDuration(dte); }
+            else pickExpiry(nearestOpt(s.duration || 30));
+          }
+        }
+      }
     } catch {}
   }, [listId]);
 
-  React.useEffect(() => { if (durationOverride) setDuration(durationOverride); }, [durationOverride]);
+  React.useEffect(() => { if (durationOverride) pickExpiry(nearestOpt(durationOverride)); }, [durationOverride]);
 
   // Charger données marché + grecs locaux (recalcul si durée change)
   React.useEffect(() => {
@@ -176,7 +198,8 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   function buildStrategy() {
     if (!base || !sized) return null;
     return {
-      listId, index: base.indexSym, indexEtf: base.indexEtf, indexPrice: base.indexPrice, duration, builtAt: new Date().toISOString(),
+      listId, index: base.indexSym, indexEtf: base.indexEtf, indexPrice: base.indexPrice,
+      duration, expiry, builtAt: new Date().toISOString(),
       nIndex, sizingMethod: sizing, weightBasis, deltaHedge,
       // Contrats de future indice à trader : couverture globale (index) ou de la
       // seule jambe indice (legs — les composants sont couverts en actions).
@@ -209,6 +232,47 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     if (goRisk && onNav) onNav('risk', { listId });
   }
 
+  // Export : télécharge la stratégie courante en .json (ré-importable).
+  function exportStrategy() {
+    const s = buildStrategy();
+    if (!s) return;
+    const blob = new Blob([JSON.stringify(s, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `dx-strategie-${s.index}-${(s.expiry || '').replace(/-/g, '') || s.duration + 'j'}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // Import : recharge une stratégie exportée dans la liste courante — les
+  // réglages (contrats, sizing, pondération, couverture, échéance) sont
+  // adoptés et la stratégie est enregistrée telle quelle pour cette liste.
+  function importStrategy(file) {
+    if (!file || !listId) return;
+    file.text().then(txt => {
+      let s = null;
+      try { s = JSON.parse(txt); } catch {}
+      if (!s || !Array.isArray(s.components) || !s.portfolio) {
+        setImportMsg({ tone: 'err', text: 'Fichier invalide — attendu : un export de stratégie DispersionX (.json).' });
+        return;
+      }
+      s.listId = listId;   // la stratégie importée s'applique à la liste courante
+      try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
+      setNIndex(s.nIndex || 1);
+      setSizing(s.sizingMethod || 'vega_neutral');
+      if (s.weightBasis) setWeightBasis(s.weightBasis);
+      setDeltaHedge(s.deltaHedge || 'none');
+      if (!durationOverride) {
+        const dte = s.expiry && window.DXExpiry ? window.DXExpiry.dteTo(s.expiry) : null;
+        if (dte != null && dte > 0) { setExpiry(s.expiry); setDuration(dte); }
+        else pickExpiry(nearestOpt(s.duration || 30));
+      }
+      setSavedTick(t => t + 1);
+      if (onSaved) onSaved(s);
+      setImportMsg({ tone: 'ok', text: `Stratégie importée (${s.index} · ${(s.components || []).length} composants) — réglages adoptés et enregistrés pour cette liste.` });
+    }).catch(() => setImportMsg({ tone: 'err', text: 'Lecture du fichier impossible.' }));
+  }
+
   // Embarqué dans le Builder : on persiste automatiquement à chaque ajustement,
   // pour que l'étape de synthèse dispose toujours de la stratégie courante.
   React.useEffect(() => {
@@ -217,7 +281,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     if (!s) return;
     try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
     if (onSaved) onSaved(s);
-  }, [embedded, sized, listId, deltaHedge]);
+  }, [embedded, sized, listId, deltaHedge, expiry]);
 
   // ── États sans contexte ──
   if (!hasCtx) {
@@ -288,20 +352,27 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
             </div>
           </div>
 
-          {/* Échéance */}
+          {/* Échéance — vraies dates d'expiration options (vendredis) */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Échéance{durationOverride ? ' (définie dans le Builder)' : ''}</div>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Échéance{durationOverride ? ' (définie dans le Builder)' : ''}</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Dates réelles d'expiration des options (vendredis) — le DTE restant sera compté par rapport à cette date.</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {[14, 30, 45, 60].map(d => {
-                const on = duration === d;
+              {expiryOpts.map(o => {
+                const on = expiry === o.date;
                 return (
-                  <button key={d} onClick={() => !durationOverride && setDuration(d)} disabled={!!durationOverride}
-                    style={{ flex: 1, minWidth: 64, padding: '10px 0', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', font: '700 13px/1 var(--font-mono)', cursor: durationOverride ? 'default' : 'pointer' }}>
-                    {d}<span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}> DTE</span>
+                  <button key={o.date} onClick={() => !durationOverride && pickExpiry(o)} disabled={!!durationOverride}
+                    style={{ flex: 1, minWidth: 84, padding: '9px 4px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: durationOverride ? 'default' : 'pointer', textAlign: 'center' }}>
+                    <div style={{ font: '700 12px/1 var(--font-mono)' }}>{window.DXExpiry ? window.DXExpiry.fmtExpiry(o.date).replace(/ \d{4}$/, '') : o.date}</div>
+                    <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{o.dte} DTE · ven.</div>
                   </button>
                 );
               })}
             </div>
+            {expiry && (
+              <div style={{ marginTop: 10, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                Expiration : <strong style={{ color: 'var(--text)' }}>{window.DXExpiry ? window.DXExpiry.fmtExpiry(expiry) : expiry}</strong> · {duration} jours restants
+              </div>
+            )}
           </div>
 
           {/* Sizing */}
@@ -496,17 +567,32 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           La répartition est enregistrée automatiquement — l'étape « Risque » et le Risk Lab l'utiliseront.
         </div>
       ) : (
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <button onClick={() => save(false)} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 22px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
-            Enregistrer la stratégie
-          </button>
-          <button onClick={() => save(true)} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
-            Enregistrer puis ouvrir le Risk Lab →
-          </button>
-          {savedTick > 0 && (
-            <span style={{ font: 'var(--type-body-sm)', color: 'var(--pos-bright)', display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ font: '700 13px/1 var(--font-mono)' }}>✓</span> Stratégie enregistrée — le Risk Lab l'utilisera.
-            </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => save(false)} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 22px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+              Enregistrer la stratégie
+            </button>
+            <button onClick={() => save(true)} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+              Enregistrer puis ouvrir le Risk Lab →
+            </button>
+            <button onClick={exportStrategy} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+              ↓ Télécharger (.json)
+            </button>
+            <label style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+              ↑ Importer une stratégie
+              <input type="file" accept=".json,application/json" style={{ display: 'none' }}
+                onChange={e => { const f = e.target.files && e.target.files[0]; if (f) importStrategy(f); e.target.value = ''; }} />
+            </label>
+            {savedTick > 0 && !importMsg && (
+              <span style={{ font: 'var(--type-body-sm)', color: 'var(--pos-bright)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ font: '700 13px/1 var(--font-mono)' }}>✓</span> Stratégie enregistrée — le Risk Lab l'utilisera.
+              </span>
+            )}
+          </div>
+          {importMsg && (
+            <div style={{ font: 'var(--type-body-sm)', color: importMsg.tone === 'ok' ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
+              {importMsg.tone === 'ok' ? '✓ ' : '✗ '}{importMsg.text}
+            </div>
           )}
         </div>
       )}

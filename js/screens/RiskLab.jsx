@@ -479,13 +479,20 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
     const indexSym = strategy?.index || ctx.listIndex || 'SPX';
     // Avancée du temps : les grecs sont calculés sur le DTE RESTANT, pas sur
     // la durée initiale — une stratégie à 30j n'a plus les mêmes valeurs à J+10.
+    // Priorité à la vraie date d'échéance (expiry) ; repli : builtAt + durée.
     const dteTotal = strategy?.duration || 30;
-    let daysSince = 0;
-    if (strategy?.builtAt) {
-      const d = Math.floor((Date.now() - new Date(strategy.builtAt).getTime()) / 86400000);
-      if (isFinite(d) && d > 0) daysSince = d;
+    let daysSince = 0, duration;
+    const dteLeft = strategy?.expiry && window.DXExpiry ? window.DXExpiry.dteTo(strategy.expiry) : null;
+    if (dteLeft != null) {
+      duration = Math.max(1, dteLeft);
+      daysSince = Math.max(0, dteTotal - dteLeft);
+    } else {
+      if (strategy?.builtAt) {
+        const d = Math.floor((Date.now() - new Date(strategy.builtAt).getTime()) / 86400000);
+        if (isFinite(d) && d > 0) daysSince = d;
+      }
+      duration = Math.max(1, dteTotal - daysSince);
     }
-    const duration = Math.max(1, dteTotal - daysSince);
 
     (async () => {
       let tickers = strategy?.components?.map(c => c.ticker) || null;
@@ -705,7 +712,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie · {model.nIndex} contrat(s) {model.indexLabel || model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'quantités calculées'}{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? ' · Δ couvert (' + (strategy.deltaHedge === 'index' ? "ETF indice" : "par sous-jacent") + ')' : ''}{model.daysSince > 0 ? ` · J+${model.daysSince} · ${model.duration} DTE restant sur ${model.dteTotal}` : ''} — P&L sur quantités réelles
+            Stratégie · {model.nIndex} contrat(s) {model.indexLabel || model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'quantités calculées'}{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? ' · Δ couvert (' + (strategy.deltaHedge === 'index' ? "ETF indice" : "par sous-jacent") + ')' : ''}{strategy.expiry && window.DXExpiry ? ` · échéance ${window.DXExpiry.fmtExpiry(strategy.expiry)}` : ''}{model.daysSince > 0 ? ` · J+${model.daysSince} · ${model.duration} DTE restant sur ${model.dteTotal}` : ''} — P&L sur quantités réelles
           </span>
           {onNav && <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>Recalculer</button>}
         </div>

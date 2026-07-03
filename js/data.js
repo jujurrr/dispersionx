@@ -66,6 +66,44 @@
   }
   window.DXProxy = { PROXY_SCALE, tradableIndex };
 
+  // ── Échéances d'options réelles ──────────────────────────────────
+  // Les options actions/ETF US expirent le VENDREDI (weeklies + 3e vendredi
+  // mensuel). Pour chaque durée cible (14/30/45/60 j) on propose le vendredi
+  // le plus proche : l'échéance choisie est une vraie date, stockée dans la
+  // stratégie, et le DTE restant se calcule ensuite par rapport à elle.
+  function _fridayNear(targetDays) {
+    const d = new Date(); d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + targetDays);
+    let delta = 5 - d.getDay();            // 5 = vendredi
+    if (delta > 3) delta -= 7;             // arrondi au vendredi le plus proche
+    d.setDate(d.getDate() + delta);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    while (d <= today) d.setDate(d.getDate() + 7);   // jamais dans le passé
+    return d;
+  }
+  function _isoDay(d) { return d.toISOString().slice(0, 10); }
+  function dteTo(iso) {
+    if (!iso) return null;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    return Math.max(0, Math.round((new Date(iso + 'T12:00:00') - today) / 86400000));
+  }
+  function fmtExpiry(iso) {
+    if (!iso) return '';
+    try { return new Date(iso + 'T12:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' }); }
+    catch { return iso; }
+  }
+  function expiriesFor(targets) {
+    const seen = {};
+    return (targets || [14, 30, 45, 60]).map(t => {
+      const d = _fridayNear(t);
+      const iso = _isoDay(d);
+      if (seen[iso]) return null;
+      seen[iso] = true;
+      return { date: iso, dte: dteTo(iso), target: t };
+    }).filter(Boolean);
+  }
+  window.DXExpiry = { expiriesFor, dteTo, fmtExpiry };
+
   const COMPONENTS = {
     SPX: [
       { ticker: 'NVDA', name: 'Nvidia', sector: 'Technology', weight: 7.3, score: 84, iv: 46.2, hv: 41.8, rho: 0.58, earnings: false, liq: 'Élevée', beta: 1.62 },

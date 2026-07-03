@@ -177,7 +177,7 @@ function StrategyMonitor({ mode, lists, onNav }) {
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
                 <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>Repères</div>
                 <MonitorRow k="Indice" v={cur.s.indexEtf && cur.s.indexEtf !== cur.s.index ? cur.s.indexEtf + ' (' + cur.s.index + ')' : cur.s.index} />
-                <MonitorRow k="Échéance" v={(cur.s.duration || 30) + ' jours'} />
+                <MonitorRow k="Échéance" v={cur.s.expiry && window.DXExpiry ? `${window.DXExpiry.fmtExpiry(cur.s.expiry)} · ${cur.m.dte} DTE restant` : (cur.s.duration || 30) + ' jours'} />
                 <MonitorRow k="Composants" v={String(cur.m.nComp)} />
                 <MonitorRow k="Sizing" v={cur.s.sizingMethod === 'vega_neutral' ? 'Vega-neutre' : 'Poids égaux'} />
                 <MonitorRow k="Couverture delta" v={cur.s.deltaHedge && cur.s.deltaHedge !== 'none' ? (cur.s.deltaHedge === 'index' ? 'Par l\'indice (future/ETF)' : 'Par sous-jacent') : 'Aucune'} last />
