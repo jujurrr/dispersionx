@@ -62,7 +62,7 @@ function Landing() {
               Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.
             </h1>
             <p style={{ ...lede, fontSize: 19, marginTop: 22 }}>
-              Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutral et testez vos risques avant exécution.
+              Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.
             </p>
             <div style={{ display: 'flex', gap: 12, marginTop: 32, flexWrap: 'wrap' }}>
               <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
@@ -119,7 +119,7 @@ function Landing() {
   // ═══════════════════════ 1. COMPRENDRE ═══════════════════════
   const CAPTURE = [
     { icon: 'M3 3v18h18', t: 'Prime de corrélation', d: 'Comparer la corrélation implicite pricée par le marché à la corrélation réalisée observée sur les composants.' },
-    { icon: 'M3 12h7l3-9 4 18 3-9h1', t: 'Écart indice / composants', d: "Identifier si la volatilité de l'indice est chère ou bon marché face à celle des single names." },
+    { icon: 'M3 12h7l3-9 4 18 3-9h1', t: 'Écart indice / composants', d: "Identifier si la volatilité de l'indice est chère ou bon marché face à celle des actions individuelles." },
     { icon: 'M12 2v4M12 18v4M2 12h4M18 12h4M5 5l3 3M16 16l3 3M19 5l-3 3M8 16l-3 3', t: 'Mouvements idiosyncratiques', d: "Chercher des composants capables de bouger indépendamment de l'indice, moteur de la dispersion." },
   ];
   function Comprendre() {
@@ -128,7 +128,7 @@ function Landing() {
         <div style={eyebrow}>Comprendre la dispersion</div>
         <h2 style={h2}>Les options ne pricent pas que la volatilité.</h2>
         <p style={{ ...lede, fontSize: 18, marginTop: 18 }}>
-          Les options d'indice et les options sur actions individuelles pricent aussi la <strong style={{ color: 'var(--text)' }}>corrélation</strong> entre les composants. Une stratégie de dispersion cherche à exploiter l'écart entre la volatilité de l'indice et celle des actions qui le composent.
+          La volatilité d'un indice dépend de celle de ses composants <strong style={{ color: 'var(--text)' }}>et</strong> de leur <strong style={{ color: 'var(--text)' }}>corrélation</strong>. Les options d'indice embarquent donc un prix de la corrélation — que l'on peut comparer à la corrélation réellement observée. Une stratégie de dispersion exploite l'écart entre la volatilité de l'indice et celle des actions qui le composent.
         </p>
         <p style={{ ...lede, fontSize: 18, marginTop: 14 }}>
           Quand les actions bougent beaucoup individuellement mais que leurs mouvements se compensent, l'indice reste relativement stable. C'est précisément cette différence que la dispersion mesure et cherche à monétiser.
@@ -145,6 +145,10 @@ function Landing() {
             Une prime <strong style={{ color: 'var(--pos-bright)' }}>positive</strong> signifie que le marché price une synchronisation plus forte que celle réellement observée : un contexte historiquement favorable à la dispersion.
           </div>
         </div>
+
+        <p style={{ ...lede, fontSize: 18, marginTop: 22 }}>
+          Concrètement : on <strong style={{ color: 'var(--text)' }}>vend la volatilité de l'indice</strong> (short straddle) et on <strong style={{ color: 'var(--text)' }}>achète celle des composants</strong> (long straddles), en équilibrant les deux jambes pour ne garder que le pari sur la dispersion.
+        </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 28 }}>
           {CAPTURE.map(c => (
@@ -165,7 +169,7 @@ function Landing() {
   const WHY = [
     ['Analyse structurée', 'La stratégie est examinée sous plusieurs angles avant toute décision.'],
     ['Meilleure compréhension du risque', 'Grecs, theta, scénarios de stress et coûts rendus visibles.'],
-    ['Construction vega-neutral', 'Équilibrage entre la jambe indice et le panier de composants.'],
+    ['Construction vega-neutre', 'Équilibrage entre la jambe indice et le panier de composants.'],
     ['Scénarios de stress', 'Sell-off corrélé, vol crush, hausse IV — testés avant exécution.'],
     ['Lecture pédagogique', 'Explications « en clair » et tooltips pour les débutants sérieux.'],
     ['Outil avancé', 'Matrices, formules et exports pour les utilisateurs expérimentés.'],
@@ -192,12 +196,12 @@ function Landing() {
 
   // ═══════════════════════ 3. WORKFLOW ═══════════════════════
   const STEPS = [
-    ['1', 'Choisir un indice', 'SPX, NDX, DJI, CAC 40, DAX 40 — liquidité et caractéristiques.'],
+    ['1', 'Choisir un indice et une échéance', 'SPX, NDX, DJI, CAC 40, DAX 40 — liquidité, caractéristiques, durée.'],
     ['2', 'Analyser les composants', 'Score décomposé, IV/HV, β, filtres et avertissements earnings.'],
     ['3', 'Construire la liste', 'Constituer le panier, suivre le score pondéré et l\'edge moyen.'],
     ['4', 'Mesurer la corrélation', 'ρ implicite vs ρ̂ réalisée, prime, z-score et contributions.'],
-    ['5', 'Construire la stratégie', 'Sizing vega-neutral entre la jambe indice et le panier.'],
-    ['6', 'Tester le risque', 'Scénarios de stress, grecs, heatmap et coût bid/ask.'],
+    ['5', 'Construire la stratégie', 'Sizing vega-neutre + couverture delta (ETF indice ou par jambe).'],
+    ['6', 'Tester le risque', 'Scénarios de stress, grecs, simulateur de P&L interactif.'],
     ['7', 'Checklist & suivi', 'Valider, committer la position, snapshots et P&L en direct.'],
   ];
   function Workflow() {
@@ -225,8 +229,8 @@ function Landing() {
   // ═══════════════════════ 4. RISQUES ═══════════════════════
   const RISKS = [
     ['Sell-off corrélé', 'L\'indice baisse, sa volatilité monte et les composants suivent dans la même direction — le principal risque de la dispersion.'],
-    ['Vol crush', 'La volatilité réalisée des composants s\'effondre ; les jambes long perdent leur valeur temps rapidement.'],
-    ['Theta & échéance', 'À l\'approche de l\'expiration, la position peut perdre sa valeur temps plus vite qu\'anticipé.'],
+    ['Vol crush', 'La volatilité implicite des composants retombe (après earnings, par exemple) : les straddles longs perdent de la valeur même si l\'action ne bouge pas.'],
+    ['Theta & échéance', 'Les straddles longs composants brûlent du theta chaque jour : si la dispersion attendue ne se réalise pas, le portage coûte.'],
     ['Coût d\'exécution', 'Le bid/ask aller-retour peut absorber une part significative de l\'edge théorique.'],
   ];
   const BOUNDARIES = ['Ne donne pas de conseil financier', 'Ne garantit aucune performance', 'Ne remplace pas Risk Navigator ni une validation humaine', "N'exécute jamais automatiquement sans contrôle"];
@@ -235,7 +239,7 @@ function Landing() {
       <section id="risques" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ ...sectionPad, ...wrap }}>
           <div style={eyebrow}>Les risques, rendus visibles</div>
-          <h2 style={{ ...h2, marginBottom: 14 }}>Un portefeuille vega-neutral n'est pas sans risque.</h2>
+          <h2 style={{ ...h2, marginBottom: 14 }}>Un portefeuille vega-neutre n'est pas sans risque.</h2>
           <p style={{ ...lede, marginBottom: 32 }}>La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
             {RISKS.map(([t, d]) => (
