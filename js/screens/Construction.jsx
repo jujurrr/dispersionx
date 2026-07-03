@@ -343,9 +343,11 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Jambe indice · short straddle {idxLabel}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
               <button onClick={() => setNIndex(n => Math.max(1, n - 1))} style={BtnStyle}>−</button>
-              <span style={{ font: '800 38px/1 var(--font-mono)', color: 'var(--text)', minWidth: 50, textAlign: 'center' }}>{nIndex}</span>
-              <button onClick={() => setNIndex(n => Math.min(20, n + 1))} style={BtnStyle}>+</button>
-              <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginLeft: 4 }}>contrat{nIndex > 1 ? 's' : ''}</div>
+              <input type="number" min={1} max={999} value={nIndex}
+                onChange={e => { const v = parseInt(e.target.value, 10); setNIndex(isNaN(v) ? 1 : Math.max(1, Math.min(999, v))); }}
+                style={{ font: '800 38px/1 var(--font-mono)', color: 'var(--text)', width: 96, textAlign: 'center', background: 'transparent', border: 'none', borderBottom: '2px solid var(--border)', outline: 'none', MozAppearance: 'textfield' }} />
+              <button onClick={() => setNIndex(n => Math.min(999, n + 1))} style={BtnStyle}>+</button>
+              <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginLeft: 4 }}>contrat{nIndex > 1 ? 's' : ''} <span style={{ color: 'var(--text-dim)' }}>(saisie directe possible · max 999)</span></div>
             </div>
             <div style={{ marginTop: 12, padding: '8px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
               Vega short : <strong style={{ color: 'var(--neg-bright)' }}>−{Math.round(sized.idxVega)} $/1%</strong> · Theta : <strong style={{ color: 'var(--pos-bright)' }}>+{Math.round(sized.idxThetaGain)} $/j</strong> · Notionnel {fmtNot(sized.idxNotional)}
