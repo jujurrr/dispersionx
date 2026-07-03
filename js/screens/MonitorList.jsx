@@ -11,22 +11,9 @@ function MonitorList({ listId, onNav, addToast, mode }) {
       DXApi.getPositions(listId).catch(() => null),
     ]).then(([list, posData]) => {
       setListName(list?.name || `Liste ${listId}`);
-      const pos = posData?.positions || posData || [];
-      // Fallback to mock if empty
-      if (!pos.length) {
-        setPositions(window.DXMock?.positions?.map(p => ({
-          ...p,
-          index_symbol: p.idx || p.index_symbol || 'SPX',
-          strategy_type: p.strategy_type || 'dispersion',
-          committed_at: p.opened || '',
-          n_snapshots: 2,
-          list_id: listId,
-          list_name: list?.name || '',
-          status: p.status === 'sain' ? 'open' : p.status,
-        })) || []);
-      } else {
-        setPositions(pos);
-      }
+      // Positions réelles uniquement (serveur ou store local dx-positions) —
+      // plus de positions de démonstration.
+      setPositions(posData?.positions || posData || []);
       setLoading(false);
     });
   }, [listId]);
@@ -97,7 +84,7 @@ function MonitorList({ listId, onNav, addToast, mode }) {
 
 function PositionCard({ pos, onNav }) {
   const isOpen = pos.status === 'open' || pos.status === 'sain' || pos.status === 'surveiller';
-  const pnl = pos.pnl || 0;
+  const pnl = pos.pnl;   // null = P&L de marché non disponible (position locale)
   const date = (pos.committed_at || pos.opened || '').slice(0, 10);
 
   return (
@@ -128,8 +115,8 @@ function PositionCard({ pos, onNav }) {
         {date && ` · ouvert le ${date}`}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div style={{ font: 'var(--type-data)', color: pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-          {pnl >= 0 ? '+' : ''}{pnl.toLocaleString('fr-FR')} $
+        <div style={{ font: 'var(--type-data)', color: pnl == null ? 'var(--text-muted)' : pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
+          {pnl == null ? (pos.dte != null ? pos.dte + ' DTE restant' : '—') : (pnl >= 0 ? '+' : '') + pnl.toLocaleString('fr-FR') + ' $'}
         </div>
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
           {pos.n_snapshots || 0} snapshot(s)

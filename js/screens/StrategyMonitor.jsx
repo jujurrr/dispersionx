@@ -13,6 +13,9 @@ function StrategyMonitor({ mode, lists, onNav }) {
   React.useEffect(() => { reload(); }, [reload]);
 
   const fmtS  = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR');
+  // Seuils partagés avec le Risk Lab / la Construction (mêmes couleurs partout)
+  const VEGA_NEUTRAL = (window.DXRisk && window.DXRisk.VEGA_NEUTRAL) || 60;
+  const VEGA_ALERT   = (window.DXRisk && window.DXRisk.VEGA_ALERT) || 250;
   const statusTone = { sain: 'pos', surveiller: 'warn', risque: 'neg' };
   const statusRisk = { sain: 'faible', surveiller: 'modéré', risque: 'élevé' };
 
@@ -77,7 +80,7 @@ function StrategyMonitor({ mode, lists, onNav }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <MetricCard label="Stratégies suivies" value={String(rows.length)} accent="var(--accent)" />
         <MetricCard label="Prime nette cumulée" value={fmtS(totalPrem) + ' $'} hint={totalPrem >= 0 ? 'Crédit net' : 'Débit net'} accent="var(--info)" />
-        <MetricCard label="Vega net cumulé" value={fmtS(totalVega) + ' $/1%'} hint={Math.abs(totalVega) < 120 ? 'Quasi-neutre ✓' : 'À surveiller'} accent={Math.abs(totalVega) < 120 ? 'var(--pos)' : 'var(--warn)'} />
+        <MetricCard label="Vega net cumulé" value={fmtS(totalVega) + ' $/1%'} hint={Math.abs(totalVega) < VEGA_NEUTRAL ? 'Quasi-neutre ✓' : Math.abs(totalVega) < VEGA_ALERT ? 'Modéré' : 'À surveiller'} accent={Math.abs(totalVega) < VEGA_NEUTRAL ? 'var(--pos)' : 'var(--warn)'} />
         <MetricCard label="Alertes actives" value={String(nAlerts)} accent={nAlerts ? 'var(--warn)' : 'var(--pos)'} />
       </div>
 
@@ -105,7 +108,7 @@ function StrategyMonitor({ mode, lists, onNav }) {
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{m.nComp}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.dte < 12 ? 'var(--neg-bright)' : 'var(--text-soft)' }}>{m.dte}j</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data)', color: m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netPremium)} $</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netVega) > 100 ? 'var(--warn)' : 'var(--text-soft)' }}>{fmtS(m.netVega)}</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netVega) > VEGA_ALERT ? 'var(--warn)' : 'var(--text-soft)' }}>{fmtS(m.netVega)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.netTheta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netTheta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netDelta) < 50 ? 'var(--text-soft)' : 'var(--warn)' }}>{fmtS(m.netDelta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}><Badge tone={statusTone[m.status] || 'neutral'} dot>{m.status}</Badge></td>

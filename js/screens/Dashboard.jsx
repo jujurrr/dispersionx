@@ -135,7 +135,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
               {opportunities.map((o) => (
                 <tr key={o.idx} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '12px 16px', font: 'var(--type-ticker)', color: 'var(--text)' }}>{o.idx}</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{o.dte}j</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }} title="Échéance de référence pour comparer les indices">{o.dte}j réf.</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data)', color: o.prime == null ? 'var(--text-dim)' : o.prime >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{o.prime == null ? '···' : (o.prime >= 0 ? '+' : '') + o.prime + ' pts'}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}>
                     <div style={{ display: 'inline-block' }}><ScoreBadge score={o.score} max={0} label="" /></div>

@@ -164,9 +164,6 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
   const lastDraftRef = React.useRef(null);                        // dernier brouillon (pour le supprimer au remplacement)
   const [building, setBuilding] = React.useState(false);
   const [nIndexContracts, setNIndexContracts] = React.useState(1);
-  const [sizingMethod, setSizingMethod] = React.useState('vega_neutral');
-  const [previewData, setPreviewData] = React.useState(null);
-  const [previewLoading, setPreviewLoading] = React.useState(false);
   const [buildError, setBuildError] = React.useState(null);
 
   React.useEffect(() => {
@@ -330,59 +327,6 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
 
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
   const CONTRACT = 100;
-
-  function computeStrategy(riskData, nIndex, sizing, idx, dur) {
-    const perTicker = riskData.per_ticker || [];
-    const nW        = perTicker.length || 1;
-    const idxG      = riskData.index_greeks;
-    if (!idxG) return null;
-
-    // Index-level greeks (SPX price ≈ SPY×10, etc.) — gives realistic lot counts
-    const idxVegaPerLot  = idxG.vega_per_lot;    // $/σ per 1 long index contract
-    const idxThetaPerLot = idxG.theta_per_lot;   // $/day gain per 1 short index contract
-    const idxPremPerLot  = idxG.premium_per_lot;  // $ premium per 1 index contract
-
-    // Vega-neutral: each component targets 1/nW of total index vega
-    const targetVegaTotal = idxVegaPerLot * nIndex;
-    const targetPerComp   = targetVegaTotal / nW;
-
-    const comps = perTicker.map(r => {
-      if (!r.greeks) return { ticker: r.ticker, price: r.price, iv: r.iv, hv: r.hv, beta: r.beta, nContracts: 1, greeks: null };
-      const vegaPerLot = r.greeks.vega * CONTRACT;  // $/σ per 1 component contract
-      const n = (sizing === 'vega_neutral' && vegaPerLot > 0)
-        ? Math.max(1, Math.round(targetPerComp / vegaPerLot))
-        : 1;
-      return { ticker: r.ticker, price: r.price, iv: r.iv, hv: r.hv, beta: r.beta, nContracts: n, greeks: r.greeks };
-    });
-
-    const compVegaRaw  = comps.reduce((s, c) => s + (c.greeks?.vega    || 0) * CONTRACT * c.nContracts, 0);
-    const compThetaRaw = comps.reduce((s, c) => s + (c.greeks?.theta   || 0) * CONTRACT * c.nContracts, 0);
-    const compPremRaw  = comps.reduce((s, c) => s + (c.greeks?.premium || 0) * CONTRACT * c.nContracts, 0);
-
-    return {
-      listId,
-      index:        idx,
-      duration:     dur,
-      builtAt:      new Date().toISOString(),
-      nIndex,
-      sizingMethod: sizing,
-      components:   comps,
-      portfolio: {
-        compVegaRaw,
-        compVegaPct:   compVegaRaw * 0.01,           // positive (long straddles)
-        idxVegaRaw:   -idxVegaPerLot * nIndex,        // negative (short straddle)
-        idxVegaPct:   -idxVegaPerLot * nIndex * 0.01,
-        netVegaPct:   (compVegaRaw - idxVegaPerLot * nIndex) * 0.01,
-        compTheta:     compThetaRaw,                  // negative (daily cost for long)
-        idxTheta:      idxThetaPerLot * nIndex,       // positive (daily gain from short)
-        netTheta:      compThetaRaw + idxThetaPerLot * nIndex,
-        netPremium:    compPremRaw - idxPremPerLot * nIndex,
-        idxVegaPerLot,
-        idxThetaPerLot,
-        idxPremPerLot,
-      },
-    };
-  }
 
   function handleBuild() {
     setBuilding(true);
@@ -659,184 +603,6 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
     );
   }
 
-  function StepConstruction({ nIndex, onNIndex, sizingMethod, onSizingMethod, index, duration, previewData, previewLoading }) {
-    // Compute live lot preview from fetched greeks
-    const preview = React.useMemo(() => {
-      if (!previewData?.index_greeks || !previewData?.per_ticker) return null;
-      const idxG = previewData.index_greeks;
-      const perTicker = previewData.per_ticker;
-      const nW = perTicker.length || 1;
-      const targetPerComp = (idxG.vega_per_lot * nIndex) / nW;
-      const rows = perTicker.map(r => {
-        const vegaPerLot = (r.greeks?.vega || 0) * 100;
-        const vegaPct = Math.round(vegaPerLot * 0.01);  // $/1% per lot
-        const n = sizingMethod === 'vega_neutral' && vegaPerLot > 0
-          ? Math.max(1, Math.round(targetPerComp / vegaPerLot))
-          : 1;
-        return { ticker: r.ticker, vegaPct, n, totalVegaPct: vegaPct * n };
-      });
-      const idxVegaPct   = Math.round(idxG.vega_per_lot * nIndex * 0.01);
-      const compVegaPct  = rows.reduce((s, r) => s + r.totalVegaPct, 0);
-      const netVegaPct   = compVegaPct - idxVegaPct;
-      const idxThetaDay  = Math.round(idxG.theta_per_lot * nIndex);
-      return { rows, idxVegaPct, compVegaPct, netVegaPct, idxThetaDay };
-    }, [previewData, nIndex, sizingMethod]);
-
-    const BtnStyle = { width: 32, height: 32, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text)', font: '700 18px/1 var(--font-mono)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' };
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, alignItems: 'start' }}>
-          {/* Left: config */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {/* Index contracts */}
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
-              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Jambe indice · short straddle {index}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <button onClick={() => onNIndex(Math.max(1, nIndex - 1))} style={BtnStyle}>−</button>
-                <span style={{ font: '800 40px/1 var(--font-mono)', color: 'var(--text)', minWidth: 52, textAlign: 'center' }}>{nIndex}</span>
-                <button onClick={() => onNIndex(Math.min(20, nIndex + 1))} style={BtnStyle}>+</button>
-                <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginLeft: 4 }}>contrat{nIndex > 1 ? 's' : ''} · {duration} DTE</div>
-              </div>
-              {preview && (
-                <div style={{ marginTop: 12, padding: '8px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                  Vega short indice : <strong style={{ color: 'var(--neg-bright)' }}>−{preview.idxVegaPct} $/1%</strong> · Theta : <strong style={{ color: 'var(--pos-bright)' }}>+{preview.idxThetaDay} $/j</strong>
-                </div>
-              )}
-            </div>
-
-            {/* Sizing method */}
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
-              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Méthode de sizing</div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[
-                  { v: 'vega_neutral', label: 'Vega-neutral', desc: 'n_i = round(|vega_idx × N| / (nW × vega_i × 100)) — position insensible aux chocs IV parallèles.' },
-                  { v: 'equal_weight', label: 'Poids égaux · 1 lot', desc: '1 contrat par composant. Simple mais position déséquilibrée si les IVs diffèrent.' },
-                ].map(opt => (
-                  <div key={opt.v} onClick={() => onSizingMethod(opt.v)} style={{ display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 'var(--radius)', border: `1px solid ${sizingMethod === opt.v ? 'var(--accent)' : 'var(--border)'}`, background: sizingMethod === opt.v ? 'var(--bg-elevated)' : 'transparent', cursor: 'pointer' }}>
-                    <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${sizingMethod === opt.v ? 'var(--accent)' : 'var(--text-dim)'}`, marginTop: 1, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      {sizingMethod === opt.v && <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />}
-                    </div>
-                    <div>
-                      <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 2 }}>{opt.label}</div>
-                      <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{opt.desc}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Right: live preview */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Aperçu des quantités</span>
-              {previewLoading && <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Chargement…</span>}
-            </div>
-            {preview ? (
-              <>
-                {/* Header */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 50px 80px', padding: '7px 16px', borderBottom: '1px solid var(--border-subtle)' }}>
-                  {['Composant', 'Vega/lot', 'Lots', 'Total vega'].map(h => (
-                    <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: h === 'Composant' ? 'left' : 'right' }}>{h}</span>
-                  ))}
-                </div>
-                {preview.rows.map((r, i) => (
-                  <div key={r.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 50px 80px', padding: '9px 16px', borderBottom: i < preview.rows.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
-                    <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{r.ticker}</span>
-                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>+{r.vegaPct} $/1%</span>
-                    <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{r.n}</span>
-                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{r.totalVegaPct} $/1%</span>
-                  </div>
-                ))}
-                {/* Totals */}
-                <div style={{ padding: '10px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 5 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                    <span>Vega composants</span>
-                    <span style={{ color: 'var(--pos-bright)', fontWeight: 700 }}>+{preview.compVegaPct} $/1%</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                    <span>Vega indice (short)</span>
-                    <span style={{ color: 'var(--neg-bright)', fontWeight: 700 }}>−{preview.idxVegaPct} $/1%</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', font: '700 11px/1 var(--font-mono)', marginTop: 3, paddingTop: 6, borderTop: '1px solid var(--border-subtle)' }}>
-                    <span style={{ color: 'var(--text-soft)' }}>Vega net</span>
-                    <span style={{ color: Math.abs(preview.netVegaPct) < 60 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{preview.netVegaPct >= 0 ? '+' : ''}{preview.netVegaPct} $/1%</span>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>
-                {previewLoading ? 'Récupération des données de marché…' : 'Données en cours de chargement'}
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  function StepRisque({ listId, index }) {
-    const saved = React.useMemo(() => {
-      if (!listId) return null;
-      try { return JSON.parse(localStorage.getItem('dx-strategy-' + listId) || 'null'); } catch { return null; }
-    }, [listId]);
-
-    if (saved) {
-      const d = new Date(saved.builtAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' });
-      const nW         = (saved.components || []).length;
-      const netTheta   = saved.portfolio?.netTheta   || 0;
-      const netVegaPct = saved.portfolio?.netVegaPct || 0;
-      return (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', align: 'center', gap: 10, padding: '12px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius-lg)' }}>
-            <span style={{ color: 'var(--pos-bright)', font: '700 14px/1 var(--font-mono)', marginRight: 6 }}>✓</span>
-            <div>
-              <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 2 }}>Stratégie déjà calculée — {d}</div>
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{saved.nIndex} contrat(s) {saved.index} · {nW} composants · {saved.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'}</div>
-            </div>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-            <MetricCard label="Vega net" value={(netVegaPct >= 0 ? '+' : '') + Math.round(netVegaPct)} unit="$/1%" accent="var(--pos)" hint="Net après sizing" />
-            <MetricCard label="Theta /jour" value={(netTheta >= 0 ? '+' : '') + Math.round(netTheta)} unit="$" accent="var(--warn)" hint="Position totale" />
-            <MetricCard label="Composants" value={String(nW)} accent="var(--info)" hint={saved.sizingMethod === 'vega_neutral' ? 'Lots calculés' : '1 lot chacun'} />
-          </div>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 80px', gap: 0, padding: '8px 16px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-              {['Composant', 'Lots', 'Vega/lot', 'Theta/lot'].map(h => (
-                <div key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</div>
-              ))}
-            </div>
-            {(saved.components || []).map((c, i) => (
-              <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 80px 80px 80px', gap: 0, padding: '9px 16px', borderBottom: i < saved.components.length - 1 ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
-                <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker}</span>
-                <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--accent)' }}>{c.nContracts}</span>
-                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{c.greeks ? '+' + Math.round(c.greeks.vega * 100 * 0.01) + ' $/1%' : '—'}</span>
-                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>{c.greeks ? Math.round(c.greeks.theta * 100) + ' $/j' : '—'}</span>
-              </div>
-            ))}
-          </div>
-          <WarningPanel tone="pos" title="Prêt pour le Risk Lab">
-            La stratégie est calculée. Cliquez « Construire la stratégie » pour valider et accéder au Trade Brief, puis naviguez vers le Risk Lab pour voir les P&L calculés sur ces quantités réelles.
-          </WarningPanel>
-        </div>
-      );
-    }
-
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <WarningPanel tone="warn" title="Stratégie non encore calculée">
-          Cliquez « Construire la stratégie » ci-dessus. Le calcul récupère les données réelles de marché, détermine les quantités vega-neutral, et sauvegarde la stratégie. Le Risk Lab utilisera ensuite ces données pour afficher des P&L précis.
-        </WarningPanel>
-        <div style={{ background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)', padding: 40, textAlign: 'center' }}>
-          <div style={{ font: '700 14px/1 var(--font-mono)', color: 'var(--text-dim)', marginBottom: 8 }}>Évaluation du risque</div>
-          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', maxWidth: 400, margin: '0 auto' }}>
-            Les graphiques de sensibilité (P&L par choc de vol, par mouvement de l'indice, par scénario de corrélation) seront disponibles dans le Risk Lab après construction de la stratégie.
-          </div>
-        </div>
-      </div>
-    );
-  }
 }
 
 /* ─── Trade Brief inlined (shown at step 7) ─────────────────────── */
@@ -911,13 +677,13 @@ function TradeBrief({ data, onNav }) {
             {strategy?.index || D.index_symbol || 'SPX'} · dispersion · {strategy?.duration || D.duration || 30} DTE · généré le {today}
           </div>
         </div>
-        <ScoreBadge score={D.score || 82} size="lg" />
+        {D.score ? <ScoreBadge score={D.score} size="lg" /> : null}
       </div>
       {strategy && (
         <div style={{ padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'center' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)' }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{Math.round(strategy.portfolio?.netVega || 0)} $/1%</strong>{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? <> · Δ couvert <strong style={{ color: 'var(--pos-bright)' }}>({strategy.deltaHedge === 'index' ? 'par l\'indice' : 'par sous-jacent'})</strong></> : ''}
+            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{Math.round(strategy.portfolio?.netVega || 0)} $/1%</strong>{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? <> · Δ couvert <strong style={{ color: 'var(--pos-bright)' }}>({strategy.deltaHedge === 'index' ? 'par l\'indice' : 'par sous-jacent'})</strong></> : ''}
           </span>
         </div>
       )}
@@ -925,7 +691,7 @@ function TradeBrief({ data, onNav }) {
       {/* Résumé */}
       <Section n="01" title="Résumé">
         <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--accent)', borderRadius: 'var(--radius)', padding: '16px 18px', font: 'var(--type-body)', fontSize: 16, lineHeight: 1.6, color: 'var(--text-soft)' }}>
-          Vous <strong style={{ color: 'var(--text)' }}>vendez la volatilité de l'indice</strong> (short straddle {D.index_symbol || 'SPX'}) et <strong style={{ color: 'var(--text)' }}>achetez la volatilité des composants</strong> (long straddles). La stratégie est approximativement <strong style={{ color: 'var(--pos-bright)' }}>vega-neutral</strong> et <strong style={{ color: 'var(--text)' }}>short corrélation</strong> : elle profite si les composants se dispersent davantage que ce que l'indice price.
+          Vous <strong style={{ color: 'var(--text)' }}>vendez la volatilité de l'indice</strong> (short straddle {D.index_symbol || 'SPX'}) et <strong style={{ color: 'var(--text)' }}>achetez la volatilité des composants</strong> (long straddles). La stratégie est approximativement <strong style={{ color: 'var(--pos-bright)' }}>vega-neutre</strong> et <strong style={{ color: 'var(--text)' }}>short corrélation</strong> : elle profite si les composants se dispersent davantage que ce que l'indice price.
         </div>
       </Section>
 
@@ -978,7 +744,7 @@ function TradeBrief({ data, onNav }) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
         <Section n="03" title="Pourquoi ce trade ?">
           <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
-            {['Prime de corrélation positive (+6.4 pts)', 'ρ implicite (0.61) > ρ̂ réalisée (0.48)', 'Composants à faible ρ disponibles', 'Position quasi vega-neutral'].map((t) => (
+            {['Prime de corrélation mesurée à l\'étape Corrélation', 'ρ implicite > ρ̂ réalisée observé sur le panier', 'Composants à faible corrélation disponibles', 'Position quasi vega-neutre'].map((t) => (
               <div key={t} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                 <span style={{ color: 'var(--pos-bright)', marginTop: 2, flexShrink: 0 }}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -1009,18 +775,16 @@ function TradeBrief({ data, onNav }) {
           const netP = port ? Math.round(port.netPremium || 0) : 1240;
           const nW   = (L.basket || []).length || 5;
           const dur  = strategy?.duration || D.duration || 30;
-          const thetaRef = Math.max(40, Math.abs(netT) * dur);
-          const worstCase = -Math.round(Math.min(thetaRef * 3, 2500) * 2.6);
           return (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
               <MetricCard label="Vega net" value={(netV >= 0 ? '+' : '') + netV} unit="$/1%" accent="var(--pos)" hint={strategy ? 'Position réelle' : 'Estimé'} />
               <MetricCard label="Theta /jour" value={(netT >= 0 ? '+' : '') + netT} unit="$" accent="var(--warn)" hint={strategy ? 'Position réelle' : 'Estimé'} />
               <MetricCard label="Prime nette" value={(netP >= 0 ? '+' : '') + netP.toLocaleString('fr-FR')} unit="$" accent="var(--accent)" />
-              <MetricCard label="Composants" value={String(nW)} accent="var(--info)" hint={strategy?.sizingMethod === 'vega_neutral' ? 'Lots calculés (vega-neutral)' : '1 lot chacun'} />
+              <MetricCard label="Composants" value={String(nW)} accent="var(--info)" hint={strategy?.sizingMethod === 'vega_neutral' ? 'Lots calculés (vega-neutre)' : '1 lot chacun'} />
               <MetricCard label="Contrats indice" value={String(strategy?.nIndex || 1)} accent="var(--info)" hint={'Short straddle ' + (strategy?.index || 'SPX')} />
               <MetricCard label="Durée" value={String(dur)} unit="DTE" accent="var(--info)" />
-              <MetricCard label="Pire scénario" value={worstCase.toLocaleString('fr-FR')} unit="$" accent="var(--neg)" hint="Sell-off corrélé" />
-              <MetricCard label="Données" value={strategy ? 'Réelles' : 'Estimées'} accent={strategy ? 'var(--pos)' : 'var(--warn)'} hint={strategy ? 'Yahoo + MarketData' : 'HV estimée'} />
+              <MetricCard label="Pire scénario" value="Sell-off corrélé" accent="var(--neg)" hint="À chiffrer dans le Risk Lab" />
+              <MetricCard label="Données" value={strategy ? 'Prix réels' : 'Estimées'} accent={strategy ? 'var(--pos)' : 'var(--warn)'} hint={strategy ? 'IV estimée depuis la HV' : 'HV estimée'} />
             </div>
           );
         })()}

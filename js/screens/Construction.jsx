@@ -68,15 +68,18 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         }
       } catch {}
 
-      // Prix + capitalisations boursières réelles (en parallèle). La market cap
-      // donne un vrai poids type indice (cap-weighted) pour N'IMPORTE quel ticker.
-      const priceMap = {}, mcapMap = {};
-      const [quotes, mcaps] = await Promise.all([
+      // Prix + capitalisations boursières + volatilités réelles (en parallèle).
+      // La vol vient de la même source que le Volatility Lab (HV Yahoo) — repli
+      // synthVol si l'endpoint est indisponible : mêmes chiffres partout.
+      const priceMap = {}, mcapMap = {}, volLive = {};
+      const [quotes, mcaps, volBatch] = await Promise.all([
         DXApi.batchQuotes(tickers).catch(() => null),
         DXApi.getMarketCaps(tickers).catch(() => null),
+        DXApi.getBatchVol(tickers, indexSym).catch(() => null),
       ]);
       (quotes || []).forEach(r => { if (r?.ticker) priceMap[r.ticker] = parseFloat(r.price) || null; });
       (mcaps || []).forEach(r => { if (r?.ticker && r.mcap != null && r.mcap > 0) mcapMap[r.ticker] = r.mcap; });
+      (volBatch?.results || []).forEach(r => { if (r?.ticker && !r.error) volLive[r.ticker] = r; });
 
       // Poids indice connu (composition réelle) — repli quand pas de market cap.
       const idxComps = window.DXMock?.getComponents ? window.DXMock.getComponents(indexSym) : [];
@@ -85,6 +88,8 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       const idxG = sg(indexPrice, indexIV, duration);
       const perTicker = tickers.map(t => {
         const v = window.DXMock?.synthVol ? window.DXMock.synthVol(t, indexSym) : {};
+        const live = volLive[t];
+        if (live) ['iv_est', 'hv30', 'beta'].forEach(k => { if (live[k] != null) v[k] = live[k]; });
         const price = priceMap[t] || 100;
         const iv = v.iv_est != null ? v.iv_est : 30;
         const hv = v.hv30  != null ? v.hv30  : 27;
@@ -254,7 +259,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           <div>
             <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Construction</h1>
             <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 660 }}>
-              Combien de contrats par jambe ? On fixe le short straddle indice, puis on dimensionne les long straddles composants pour neutraliser le vega. Délta-neutre par construction (straddles ATM).
+              Combien de contrats par jambe ? On fixe le short straddle indice, puis on dimensionne les long straddles composants pour neutraliser le vega. Quasi delta-neutre (straddles ATM) — le résidu directionnel se mesure et se couvre plus bas.
             </p>
           </div>
         </div>
@@ -262,7 +267,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
       {mode === 'Débutant' && !embedded && (
         <BeginnerExplanationBox>
-          La position est <strong>delta-neutre</strong> car composée de straddles ATM (insensibles à un petit mouvement directionnel). Le sizing <strong>vega-neutre</strong> ajuste le nombre de contrats composants pour que leur sensibilité à la volatilité compense exactement celle de la jambe indice short — il ne reste que le pari sur la <strong>dispersion</strong> et la corrélation.
+          La position est <strong>quasi delta-neutre</strong> (straddles ATM, peu sensibles à un petit mouvement directionnel) — le résidu se couvre dans la section « Neutraliser le delta ». Le sizing <strong>vega-neutre</strong> ajuste le nombre de contrats composants pour que leur sensibilité à la volatilité compense celle de la jambe indice short — il ne reste que le pari sur la <strong>dispersion</strong> et la corrélation.
         </BeginnerExplanationBox>
       )}
 

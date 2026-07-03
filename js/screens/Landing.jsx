@@ -86,7 +86,7 @@ function Landing() {
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--neg)' }} />
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--warn)' }} />
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--pos)' }} />
-          <span style={{ marginLeft: 8, font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>SPX · 31 DTE · dispersion</span>
+          <span style={{ marginLeft: 8, font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>SPX · 31 DTE · dispersion · illustration</span>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 14 }}>
@@ -202,7 +202,7 @@ function Landing() {
     ['4', 'Mesurer la corrélation', 'ρ implicite vs ρ̂ réalisée, prime, z-score et contributions.'],
     ['5', 'Construire la stratégie', 'Sizing vega-neutre + couverture delta (ETF indice ou par jambe).'],
     ['6', 'Tester le risque', 'Scénarios de stress, grecs, simulateur de P&L interactif.'],
-    ['7', 'Checklist & suivi', 'Valider, committer la position, snapshots et P&L en direct.'],
+    ['7', 'Checklist & suivi', 'Valider la checklist, committer la position et suivre grecs, DTE et alertes.'],
   ];
   function Workflow() {
     return (

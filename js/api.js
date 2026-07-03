@@ -292,27 +292,105 @@
     try { return await _get('/monitor/checklist/' + list_id); }
     catch { return window.DXMock.checklist; }
   }
+
+  /* ── Positions locales (repli sans backend serveur) ─────────────
+     Committées depuis la Checklist à partir de la VRAIE stratégie
+     construite (dx-strategy-<listId>) — plus de positions de démo.
+     Suivi honnête : grecs recalculés au DTE restant (lois √T d'un
+     straddle ATM) ; le P&L de marché n'est PAS inventé (il nécessite
+     de vraies données d'options). Stockage : 'dx-positions'. */
+  const LS_POS = 'dx-positions';
+  function _loadPositions() { try { return JSON.parse(localStorage.getItem(LS_POS) || '[]') || []; } catch { return []; } }
+  function _savePositions(arr) { try { localStorage.setItem(LS_POS, JSON.stringify(arr)); } catch {} }
+  function _isLocalPos(cid) { return String(cid).indexOf('loc-') === 0; }
+  function _localPositionRow(p) {
+    const s = p.strategy || {};
+    const m = strategyMetrics(s);
+    return {
+      id: p.id, list_id: p.list_id, name: p.name || m.name,
+      index_symbol: (s.indexEtf && s.indexEtf !== s.index) ? s.indexEtf + ' (' + s.index + ')' : (s.index || 'SPX'),
+      strategy_type: 'dispersion', status: p.status,
+      committed_at: p.committed_at, n_snapshots: (p.snapshots || []).length,
+      pnl: null, dte: m.dte, local: true,
+    };
+  }
+  function _localPositionDetail(cid) {
+    const p = _loadPositions().find(x => x.id === cid);
+    if (!p) return null;
+    const s = p.strategy || {}; const port = s.portfolio || {};
+    const m = strategyMetrics(s);
+    const entryDelta = Math.round(port.netDelta != null ? port.netDelta : (port.netDeltaRaw || 0));
+    const legs = [
+      { symbol: s.indexEtf || s.index || 'SPX', side: 'short', quantity: s.nIndex || 1, role: 'index_leg', pnl: null },
+      ...(s.components || []).map(c => ({ symbol: c.ticker, side: 'long', quantity: c.nContracts, current_iv: c.iv, role: 'component', pnl: null })),
+    ];
+    return {
+      local: true,
+      position: { id: p.id, name: p.name || m.name, index_symbol: s.index || 'SPX', strategy_type: 'dispersion', status: p.status, committed_at: p.committed_at, list_id: p.list_id },
+      monitoring: {
+        total_pnl: null, exit_cost_estimate: null, net_pnl_after_exit: null,
+        n_legs_priced: 0, n_legs_total: legs.length,
+        entry_greeks:   { delta: entryDelta, vega: Math.round(port.netVega || 0), theta: Math.round(port.netTheta || 0) },
+        current_greeks: { delta: m.netDelta, vega: m.netVega, theta: m.netTheta },
+        greek_changes:  { delta: m.netDelta - entryDelta, vega: m.netVega - Math.round(port.netVega || 0), theta: m.netTheta - Math.round(port.netTheta || 0) },
+        legs,
+      },
+      correlation_change: null,
+      snapshots: p.snapshots || [],
+    };
+  }
+
   async function commitPosition(list_id, name) {
     try { return await _post('/monitor/commit', { list_id, name }); }
-    catch { return { success: true, commitment_id: 'demo-' + Date.now() }; }
+    catch {
+      let s = null;
+      try { s = JSON.parse(localStorage.getItem('dx-strategy-' + list_id) || 'null'); } catch {}
+      if (!s || !s.components) throw new Error("aucune stratégie construite pour cette liste — construisez-la d'abord (Builder ou Construction)");
+      const id = 'loc-' + Date.now();
+      const arr = _loadPositions();
+      arr.push({ id, list_id, name: name || null, strategy: s, committed_at: new Date().toISOString(), status: 'open', snapshots: [] });
+      _savePositions(arr);
+      return { success: true, commitment_id: id, local: true };
+    }
   }
   async function getPositions(list_id) {
     try { return await _get('/monitor/positions' + (list_id ? '?list_id=' + list_id : '')); }
-    catch { return window.DXMock.positions; }
+    catch {
+      const rows = _loadPositions().filter(p => !list_id || String(p.list_id) === String(list_id)).map(_localPositionRow);
+      return { positions: rows, local: true };
+    }
   }
   async function getPosition(cid) {
+    if (_isLocalPos(cid)) return _localPositionDetail(cid);
     try { return await _get('/monitor/position/' + cid); }
-    catch { return window.DXMock.positions.find(p => p.id === cid) || window.DXMock.positions[0]; }
+    catch { return _localPositionDetail(cid); }
   }
   async function snapshotPosition(cid) {
+    if (_isLocalPos(cid)) {
+      const arr = _loadPositions(); const p = arr.find(x => x.id === cid);
+      if (!p) return { success: false };
+      const m = strategyMetrics(p.strategy || {});
+      (p.snapshots = p.snapshots || []).push({ taken_at: new Date().toISOString(), total_pnl: null, daily_pnl: null, dte: m.dte, netVega: m.netVega, netTheta: m.netTheta });
+      _savePositions(arr);
+      return { success: true, local: true };
+    }
     try { return await _post('/monitor/position/' + cid + '/snapshot', {}); }
     catch { return { success: true }; }
   }
   async function closePosition(cid) {
+    if (_isLocalPos(cid)) {
+      const arr = _loadPositions(); const p = arr.find(x => x.id === cid);
+      if (p) { p.status = 'closed'; _savePositions(arr); }
+      return { success: true, local: true };
+    }
     try { return await _post('/monitor/position/' + cid + '/close', {}); }
     catch { return { success: true }; }
   }
   async function deletePosition(cid) {
+    if (_isLocalPos(cid)) {
+      _savePositions(_loadPositions().filter(x => x.id !== cid));
+      return { success: true, local: true };
+    }
     try { return await _delete('/monitor/position/' + cid); }
     catch { return { success: true }; }
   }

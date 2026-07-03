@@ -513,12 +513,22 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         }
       } catch {}
 
-      const priceMap = {};
-      try { const q = await DXApi.batchQuotes(tickers); (q || []).forEach(rr => { if (rr?.ticker) priceMap[rr.ticker] = parseFloat(rr.price) || null; }); } catch {}
+      // Prix + volatilités réelles en parallèle — même source que le Volatility
+      // Lab et la Construction (HV Yahoo), repli synthVol : chiffres identiques.
+      const priceMap = {}, volLive = {};
+      const [q, volBatch] = await Promise.all([
+        DXApi.batchQuotes(tickers).catch(() => null),
+        DXApi.getBatchVol(tickers, indexSym).catch(() => null),
+      ]);
+      (q || []).forEach(rr => { if (rr?.ticker) priceMap[rr.ticker] = parseFloat(rr.price) || null; });
+      (volBatch?.results || []).forEach(rr => { if (rr?.ticker && !rr.error) volLive[rr.ticker] = rr; });
 
       const volMap = {};
       tickers.forEach(t => {
-        volMap[t] = window.DXMock?.synthVol ? window.DXMock.synthVol(t, indexSym) : {};
+        const v = window.DXMock?.synthVol ? window.DXMock.synthVol(t, indexSym) : {};
+        const live = volLive[t];
+        if (live) ['iv_est', 'hv30', 'beta'].forEach(k => { if (live[k] != null) v[k] = live[k]; });
+        volMap[t] = v;
         if (!priceMap[t]) priceMap[t] = 100;
       });
 
@@ -695,7 +705,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie · {model.nIndex} contrat(s) {model.indexLabel || model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'quantités calculées'}{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? ' · Δ couvert (' + (strategy.deltaHedge === 'index' ? "ETF indice" : "par sous-jacent") + ')' : ''}{model.daysSince > 0 ? ` · J+${model.daysSince} · ${model.duration} DTE restant sur ${model.dteTotal}` : ''} — P&L sur quantités réelles
+            Stratégie · {model.nIndex} contrat(s) {model.indexLabel || model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'quantités calculées'}{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? ' · Δ couvert (' + (strategy.deltaHedge === 'index' ? "ETF indice" : "par sous-jacent") + ')' : ''}{model.daysSince > 0 ? ` · J+${model.daysSince} · ${model.duration} DTE restant sur ${model.dteTotal}` : ''} — P&L sur quantités réelles
           </span>
           {onNav && <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>Recalculer</button>}
         </div>
@@ -927,5 +937,6 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
 
 window.RiskLab = RiskLab;
 // Helpers partagés (réutilisés par le module Construction) — une seule source
-// de vérité pour les grecs d'un straddle ATM.
-window.DXRisk = { straddleGreeks, CONTRACT, fmtMoney };
+// de vérité pour les grecs d'un straddle ATM. Seuils partagés par tous les
+// écrans : |vega net| < VEGA_NEUTRAL → quasi-neutre ✓ · > VEGA_ALERT → alerte.
+window.DXRisk = { straddleGreeks, CONTRACT, fmtMoney, VEGA_NEUTRAL: 60, VEGA_ALERT: 250 };

@@ -7,17 +7,11 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
   function load() {
     setLoading(true);
+    // Position réelle (serveur ou store local dx-positions) — pas de démo.
     DXApi.getPosition(positionId).then(d => {
-      setData(d);
+      setData(d || null);
       setLoading(false);
-    }).catch(() => {
-      // Fallback mock
-      const pos = window.DXMock?.positions?.find(p => p.id === positionId) || window.DXMock?.positions?.[0];
-      if (pos) {
-        setData(buildMockDetail(pos));
-      }
-      setLoading(false);
-    });
+    }).catch(() => { setData(null); setLoading(false); });
   }
 
   React.useEffect(() => { load(); }, [positionId]);
@@ -26,7 +20,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
     setSnapLoading(true);
     try {
       const r = await DXApi.snapshotPosition(positionId);
-      addToast && addToast(`Snapshot pris : P&L ${(r.total_pnl || 0).toLocaleString('fr-FR')} $.`, 'ok');
+      addToast && addToast(r.total_pnl != null ? `Snapshot pris : P&L ${r.total_pnl.toLocaleString('fr-FR')} $.` : 'Snapshot enregistré (grecs au DTE restant).', 'ok');
       load();
     } catch (err) {
       addToast && addToast(`Erreur : ${err.message}`, 'error');
@@ -74,7 +68,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   const cc = data.correlation_change;
   const snaps = data.snapshots || [];
   const isOpen = pos.status === 'open' || pos.status === 'sain' || pos.status === 'surveiller';
-  const totalPnl = m.total_pnl ?? pos.pnl ?? 0;
+  const totalPnl = m.total_pnl ?? pos.pnl ?? null;   // null = pas de valorisation de marché
   const cg = m.current_greeks || {};
   const eg = m.entry_greeks || {};
   const gc = m.greek_changes || {};
@@ -110,9 +104,19 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         </div>
       </div>
 
+      {/* Bannière position locale : suivi théorique, pas de P&L de marché */}
+      {data.local && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--info)', borderRadius: 'var(--radius-lg)' }}>
+          <span style={{ color: 'var(--info)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>i</span>
+          <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+            Position locale — suivie depuis la stratégie construite. Les grecs sont recalculés au DTE restant ; le P&L de marché nécessite de vraies données d'options (non disponibles).
+          </span>
+        </div>
+      )}
+
       {/* P&L summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <MetricCard label="P&L total" value={(totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString('fr-FR')} unit="$" accent={totalPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
+        <MetricCard label="P&L total" value={totalPnl != null ? (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString('fr-FR') : '—'} unit={totalPnl != null ? '$' : ''} accent={totalPnl == null ? 'var(--info)' : totalPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
         <MetricCard label="Coût sortie estimé" value={m.exit_cost_estimate != null ? '−' + Math.abs(m.exit_cost_estimate).toLocaleString('fr-FR') : '—'} unit="$" accent="var(--neg)" />
         <MetricCard label="P&L net après sortie" value={m.net_pnl_after_exit != null ? (m.net_pnl_after_exit >= 0 ? '+' : '') + m.net_pnl_after_exit.toLocaleString('fr-FR') : '—'} unit="$" accent={(m.net_pnl_after_exit || 0) >= 0 ? 'var(--pos)' : 'var(--neg)'} />
         <MetricCard label="Jambes valorisées" value={m.n_legs_priced != null ? `${m.n_legs_priced}/${m.n_legs_total}` : String(legs.length)} accent="var(--info)" />
@@ -181,7 +185,8 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
             </thead>
             <tbody>
               {legs.map((l, i) => {
-                const lpnl = l.pnl ?? 0;
+                const lpnl = l.pnl;   // null = jambe non valorisée
+                const lpnlPos = (lpnl || 0) >= 0;
                 return (
                   <tr key={l.symbol || i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '11px 16px' }}>
@@ -198,7 +203,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                       {l.current_iv != null ? l.current_iv + '%' : '—'}
                       {l.iv_change != null && <span style={{ color: l.iv_change >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginLeft: 6, fontSize: 10 }}>{l.iv_change > 0 ? '+' : ''}{l.iv_change}</span>}
                     </td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: lpnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: lpnl == null ? 'var(--text-muted)' : lpnlPos ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>
                       {lpnl != null ? (lpnl >= 0 ? '+' : '') + lpnl.toLocaleString('fr-FR') + ' $' : '—'}
                     </td>
                   </tr>
@@ -231,9 +236,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
             <tbody>
               {snaps.map((s, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{(s.taken_at || '').slice(0, 16).replace('T', ' ')}</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: (s.total_pnl || 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{(s.total_pnl || 0).toLocaleString('fr-FR')} $</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: (s.daily_pnl || 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{(s.daily_pnl || 0).toLocaleString('fr-FR')} $</td>
+                  <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{(s.taken_at || '').slice(0, 16).replace('T', ' ')}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.total_pnl != null ? s.total_pnl.toLocaleString('fr-FR') + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? s.daily_pnl.toLocaleString('fr-FR') + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
                 </tr>
               ))}
             </tbody>
@@ -246,37 +251,6 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
       </div>
     </div>
   );
-}
-
-function buildMockDetail(pos) {
-  return {
-    position: {
-      id: pos.id, name: pos.name, index_symbol: pos.idx || 'SPX',
-      strategy_type: pos.strategy_type || 'dispersion', status: pos.status,
-      committed_at: pos.opened || '', list_id: 1, list_name: 'Demo Liste',
-    },
-    monitoring: {
-      total_pnl: pos.pnl || 0,
-      exit_cost_estimate: Math.abs(pos.pnl || 0) * 0.05,
-      net_pnl_after_exit: (pos.pnl || 0) - Math.abs(pos.pnl || 0) * 0.05,
-      n_legs_priced: 4, n_legs_total: 5,
-      current_greeks: { delta: 8, gamma: -0.6, vega: pos.vega || -48, theta: pos.theta || 96 },
-      entry_greeks:  { delta: 2, gamma: -0.8, vega: pos.vega ? pos.vega - 12 : -60, theta: pos.theta ? pos.theta - 10 : 86 },
-      greek_changes: { delta: 6, gamma: 0.2, vega: 12, theta: 10 },
-      legs: [
-        { symbol: pos.idx || 'SPX', side: 'short', quantity: 1, entry_mid: 48.20, current_mid: 42.40, current_iv: 18.2, iv_change: -0.4, pnl: Math.round((pos.pnl || 0) * 0.6), role: 'index_leg' },
-        { symbol: 'NVDA', side: 'long', quantity: 2, entry_mid: 58.40, current_mid: 64.20, current_iv: 46.2, iv_change: +1.2, pnl: Math.round((pos.pnl || 0) * 0.2), role: 'component' },
-        { symbol: 'TSLA', side: 'long', quantity: 1, entry_mid: 82.10, current_mid: 89.60, current_iv: 54.3, iv_change: +2.1, pnl: Math.round((pos.pnl || 0) * 0.12), role: 'component' },
-        { symbol: 'META', side: 'long', quantity: 1, entry_mid: 49.80, current_mid: 52.40, current_iv: 38.5, iv_change: +0.6, pnl: Math.round((pos.pnl || 0) * 0.08), role: 'component' },
-      ],
-    },
-    correlation_change: {
-      entry_premium: pos.primeIn ?? 5.8,
-      current_premium: pos.primeNow ?? 6.4,
-      premium_change: +((pos.primeNow ?? 6.4) - (pos.primeIn ?? 5.8)).toFixed(1),
-    },
-    snapshots: [],
-  };
 }
 
 window.PositionDetail = PositionDetail;
