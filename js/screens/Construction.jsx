@@ -12,6 +12,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const fmtMoney  = (window.DXRisk && window.DXRisk.fmtMoney) || (n => Math.round(n).toLocaleString('fr-FR') + ' $');
   const fmtNot    = v => (Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + ' M$' : Math.round(v / 1000) + ' k$');
   const fmtS      = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n));
+  const fmtQty    = q => { const a = Math.abs(q); return a >= 0.01 ? a.toFixed(2) : a.toFixed(3); };
 
   const listId  = listIdParam || moduleCtx?.listId || null;
   const ctx     = moduleCtx || {};
@@ -119,6 +120,10 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         ...t, weightUsed: resolveW[i].w / sumLin * 100, weightEst: resolveW[i].est, share: wNorm * 100,
         nContracts: n, vega: t.g.vega * n, theta: t.g.theta * n, premium: t.g.premium * n,
         delta: t.g.delta1pct * n, notional: t.price * CONTRACT * n,
+        // Couverture par jambe : actions du sous-jacent à trader pour annuler
+        // le delta de ce straddle (long straddle → delta positif → vendre).
+        hedgeShares: -(t.g.deltaSh * CONTRACT * n),
+        hedgeNotional: Math.abs(t.g.deltaSh * CONTRACT * n) * t.price,
       };
     });
     const compVega  = comps.reduce((s, c) => s + c.vega, 0);
@@ -133,10 +138,16 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     // Couverture : $ delta par contrat de future indice (≈ sous-jacent) pour +1%
     const idxUnitDelta = base.indexPrice * 0.01 * CONTRACT;
     const hedgeUnits   = idxUnitDelta ? -netDelta / idxUnitDelta : 0;  // contrats future indice à trader
+    // Couverture par jambe : la jambe indice se neutralise avec son propre future
+    const idxLegHedgeUnits  = idxUnitDelta ? -idxDelta / idxUnitDelta : 0;
+    const legsHedgeNotional = comps.reduce((s, c) => s + c.hedgeNotional, 0)
+      + Math.abs(idxLegHedgeUnits) * base.indexPrice * CONTRACT;
     return {
       comps, compVega, compTheta, compPrem, compDelta,
       idxVega, idxThetaGain, idxPrem, idxDelta, netDelta,
-      idxUnitDelta, hedgeUnits, nEstimated: comps.filter(c => c.weightEst).length,
+      idxUnitDelta, hedgeUnits, idxLegHedgeUnits, legsHedgeNotional,
+      indexHedgeNotional: Math.abs(hedgeUnits) * base.indexPrice * CONTRACT,
+      nEstimated: comps.filter(c => c.weightEst).length,
       weightSource: base.perTicker.some(t => t.mcap > 0) ? 'cap' : 'idx',
       netVega: compVega - idxVega,
       netTheta: compTheta + idxThetaGain,
@@ -152,18 +163,22 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     return {
       listId, index: base.indexSym, duration, builtAt: new Date().toISOString(),
       nIndex, sizingMethod: sizing, weightBasis, deltaHedge,
-      hedgeUnits: deltaHedge === 'index' ? sized.hedgeUnits : 0,
+      // Contrats de future indice à trader : couverture globale (index) ou de la
+      // seule jambe indice (legs — les composants sont couverts en actions).
+      hedgeUnits: deltaHedge === 'index' ? sized.hedgeUnits : (deltaHedge === 'legs' ? sized.idxLegHedgeUnits : 0),
+      hedgeNotional: deltaHedge === 'index' ? sized.indexHedgeNotional : (deltaHedge === 'legs' ? sized.legsHedgeNotional : 0),
       components: sized.comps.map(c => ({
         ticker: c.ticker, price: c.price, iv: c.iv, hv: c.hv, beta: c.beta,
         sector: c.sector, weight: c.weightUsed, weightEst: c.weightEst, nContracts: c.nContracts,
         vega: c.vega, theta: c.theta, premium: c.premium, delta: c.delta,
+        hedgeShares: deltaHedge === 'legs' ? c.hedgeShares : 0,
       })),
       portfolio: {
         idxVega: sized.idxVega, idxTheta: sized.idxThetaGain, idxPrem: sized.idxPrem,
         compVega: sized.compVega, compTheta: sized.compTheta, compPrem: sized.compPrem,
         netVega: sized.netVega, netTheta: sized.netTheta, netPremium: sized.netPremium,
         idxDelta: sized.idxDelta, compDelta: sized.compDelta,
-        netDelta: deltaHedge === 'index' ? 0 : sized.netDelta,
+        netDelta: deltaHedge !== 'none' ? 0 : sized.netDelta,
         netDeltaRaw: sized.netDelta,
         idxVegaPerLot: base.idxG.vega, idxThetaPerLot: -base.idxG.theta, idxPremPerLot: base.idxG.premium,
       },
@@ -356,8 +371,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       </div>
 
       {/* ── Récap grecs ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
         <MetricCard label="Vega net" value={fmtS(sized.netVega) + ' $/1%'} hint={Math.abs(sized.netVega) < 60 ? 'Quasi-neutre ✓' : 'À rééquilibrer'} accent={Math.abs(sized.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'} />
+        <MetricCard label="Delta net" value={fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta) + ' $/1%'} hint={deltaHedge === 'index' ? 'Couvert · future indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(sized.netDelta) < 50 ? 'Résidu faible' : 'Non couvert')} accent={deltaHedge !== 'none' || Math.abs(sized.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
         <MetricCard label="Theta net /jour" value={fmtS(sized.netTheta) + ' $'} hint={sized.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
         <MetricCard label="Prime nette" value={fmtMoney(sized.netPremium)} hint={sized.netPremium >= 0 ? 'Crédit net' : 'Débit net'} accent="var(--accent)" />
         <MetricCard label="Lots composants" value={String(sized.totalLots)} hint={'Notionnel ' + fmtNot(sized.compNotional)} accent="var(--info)" />
@@ -380,16 +396,20 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           </div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ font: '800 22px/1 var(--font-mono)', color: Math.abs(deltaHedge !== 'none' ? 0 : sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta)} $/1%</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>delta net {deltaHedge !== 'none' ? '· couvert' : 'global'}</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>delta net {deltaHedge === 'index' ? '· couvert (future indice)' : deltaHedge === 'legs' ? '· couvert (par jambe)' : 'global'}</div>
           </div>
         </div>
 
         {/* Décomposition par jambe */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${deltaHedge !== 'none' ? 5 : 3}, 1fr)`, gap: 10, marginBottom: 16 }}>
           {[
             { l: 'Composants (long)', v: sized.compDelta, c: 'var(--pos-bright)' },
             { l: 'Indice (short)', v: sized.idxDelta, c: 'var(--neg-bright)' },
             { l: 'Net (avant couverture)', v: sized.netDelta, c: Math.abs(sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' },
+            ...(deltaHedge !== 'none' ? [
+              { l: deltaHedge === 'index' ? 'Couverture (future)' : 'Couverture (par jambe)', v: -sized.netDelta, c: 'var(--info)' },
+              { l: 'Net final (couvert)', v: 0, c: 'var(--pos-bright)' },
+            ] : []),
           ].map(d => (
             <div key={d.l} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
               <div style={{ font: '9px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 5 }}>{d.l}</div>
@@ -403,8 +423,8 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         <div style={{ display: 'flex', gap: 8, marginBottom: deltaHedge !== 'none' ? 12 : 0 }}>
           {[
             { v: 'none', label: 'Aucune', sub: 'garder le résidu' },
-            { v: 'index', label: 'Future indice', sub: 'à part · total global' },
-            { v: 'legs', label: 'Par sous-jacent', sub: 'intégré aux jambes' },
+            { v: 'index', label: 'Par l\'indice', sub: 'future ou ETF · global' },
+            { v: 'legs', label: 'Par sous-jacent', sub: 'actions + future · par jambe' },
           ].map(opt => {
             const on = deltaHedge === opt.v;
             return (
@@ -419,12 +439,35 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
         {deltaHedge === 'index' && (
           <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Couverture globale : <strong style={{ color: 'var(--text)' }}>{sized.hedgeUnits >= 0 ? 'acheter' : 'vendre'} {Math.abs(sized.hedgeUnits).toFixed(2)} contrat(s) future {base.indexSym}</strong> (≈ {fmtNot(Math.abs(sized.hedgeUnits) * base.indexPrice * CONTRACT)} de notionnel directionnel) → delta net ≈ 0. Tenue <strong>à part</strong> de la dispersion, avec un total global.
+            {Math.abs(sized.hedgeUnits) < 0.001 ? (
+              <>Le delta net est déjà nul — aucune couverture à trader.</>
+            ) : (
+              <>Ordre de couverture : <strong style={{ color: 'var(--text)' }}>{sized.hedgeUnits >= 0 ? 'acheter' : 'vendre'} {fmtQty(sized.hedgeUnits)} contrat(s) de future sur {base.indexSym}</strong> (ou l'ETF répliquant l'indice) ≈ {fmtNot(sized.indexHedgeNotional)} de notionnel, pour annuler le delta net de {fmtS(sized.netDelta)} $/1% → <strong style={{ color: 'var(--pos-bright)' }}>delta net final ≈ 0</strong>. La couverture est intégrée à la stratégie enregistrée et reprise par le Risk Lab.</>
+            )}
           </div>
         )}
         {deltaHedge === 'legs' && (
-          <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Couverture <strong>intégrée</strong> : chaque jambe neutralisée par son sous-jacent (actions pour les composants, future pour l'indice). Total directionnel à trader ≈ <strong style={{ color: 'var(--text)' }}>{fmtNot(100 * (sized.comps.reduce((s, c) => s + Math.abs(c.delta), 0) + Math.abs(sized.idxDelta)))}</strong> de notionnel, réparti par jambe → delta net ≈ 0.
+          <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 12px', font: 'var(--type-body-sm)', color: 'var(--text-soft)', borderBottom: '1px solid var(--border-subtle)' }}>
+              Couverture <strong>jambe par jambe</strong> : chaque straddle est neutralisé par son propre sous-jacent (actions pour les composants, future pour l'indice) → <strong style={{ color: 'var(--pos-bright)' }}>delta net ≈ 0</strong>. Total ≈ <strong style={{ color: 'var(--text)' }}>{fmtNot(sized.legsHedgeNotional)}</strong> de notionnel directionnel. Intégrée à la stratégie enregistrée et reprise par le Risk Lab.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
+              {['Jambe', 'Ordre', 'Notionnel'].map(h => (
+                <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: h === 'Jambe' ? 'left' : 'right' }}>{h}</span>
+              ))}
+            </div>
+            {sized.comps.map(c => (
+              <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
+                <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· actions</span></span>
+                <span style={{ font: '600 11px/1 var(--font-mono)', color: c.hedgeShares >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>{c.hedgeShares >= 0 ? 'Acheter' : 'Vendre'} {Math.round(Math.abs(c.hedgeShares)) || '<1'}</span>
+                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>{fmtNot(c.hedgeNotional)}</span>
+              </div>
+            ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', alignItems: 'center' }}>
+              <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{base.indexSym} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· future (ou ETF)</span></span>
+              <span style={{ font: '600 11px/1 var(--font-mono)', color: sized.idxLegHedgeUnits >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>{sized.idxLegHedgeUnits >= 0 ? 'Acheter' : 'Vendre'} {fmtQty(sized.idxLegHedgeUnits)}</span>
+              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>{fmtNot(Math.abs(sized.idxLegHedgeUnits) * base.indexPrice * CONTRACT)}</span>
+            </div>
           </div>
         )}
       </div>

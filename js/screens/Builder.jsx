@@ -917,7 +917,7 @@ function TradeBrief({ data, onNav }) {
         <div style={{ padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'center' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)' }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{Math.round(strategy.portfolio?.netVega || 0)} $/1%</strong>
+            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{Math.round(strategy.portfolio?.netVega || 0)} $/1%</strong>{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? <> · Δ couvert <strong style={{ color: 'var(--pos-bright)' }}>({strategy.deltaHedge === 'index' ? 'par l\'indice' : 'par sous-jacent'})</strong></> : ''}
           </span>
         </div>
       )}

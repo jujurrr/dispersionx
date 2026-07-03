@@ -177,7 +177,7 @@ function StrategyMonitor({ mode, lists, onNav }) {
                 <MonitorRow k="Échéance" v={(cur.s.duration || 30) + ' jours'} />
                 <MonitorRow k="Composants" v={String(cur.m.nComp)} />
                 <MonitorRow k="Sizing" v={cur.s.sizingMethod === 'vega_neutral' ? 'Vega-neutre' : 'Poids égaux'} />
-                <MonitorRow k="Couverture delta" v={cur.s.deltaHedge && cur.s.deltaHedge !== 'none' ? (cur.s.deltaHedge === 'index' ? 'Future indice' : 'Par sous-jacent') : 'Aucune'} last />
+                <MonitorRow k="Couverture delta" v={cur.s.deltaHedge && cur.s.deltaHedge !== 'none' ? (cur.s.deltaHedge === 'index' ? 'Par l\'indice (future/ETF)' : 'Par sous-jacent') : 'Aucune'} last />
               </div>
             </div>
           </div>

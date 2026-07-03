@@ -73,7 +73,7 @@ function buildRiskModel({ tickers, weightMap, priceMap, volMap, indexSym, indexP
     return {
       ticker: t, price: S, iv, hv, beta,
       sector: v.sector || 'Autre', weight: wNorm[i] * 100,
-      greeks: { vega: g.vega, theta: g.theta, gammaK: g.gammaK, premium: g.premium },
+      greeks: { vega: g.vega, theta: g.theta, gammaK: g.gammaK, premium: g.premium, delta1pct: g.delta1pct },
       nContracts,
     };
   });
@@ -88,11 +88,16 @@ function buildRiskModel({ tickers, weightMap, priceMap, volMap, indexSym, indexP
   const compPrem  = sum(t => t.greeks.premium * t.nContracts);
   const idxPrem   = idxG.premium * nIndex;
   const avgIV     = perTicker.length ? sum(t => t.iv) / perTicker.length : 0;
+  // Delta directionnel ($ pour +1% du sous-jacent) — résidu des straddles ATM
+  const compDelta = sum(t => t.greeks.delta1pct * t.nContracts);
+  const idxDelta  = -idxG.delta1pct * nIndex;               // short → delta opposé
 
   return {
     indexSym, indexPrice, indexIV, duration, nIndex, idxG, perTicker,
     compVega, idxVega, netVega: compVega + idxVega,
     compTheta, idxTheta, netTheta: compTheta + idxTheta,
+    compDelta, idxDelta, netDelta: compDelta + idxDelta,
+    deltaHedge: strategy?.deltaHedge || 'none',
     Kcomp, Kidx, compPrem, idxPrem, netPremium: idxPrem - compPrem,
     avgIV,
     // Mouvement de breakeven du short straddle indice (≈ 1 écart-type) :
@@ -128,35 +133,54 @@ function scenarioPnL(model, p) {
   const vegaCompPnL = model.compVega * (p.dIVcomp || 0);
   const idxPnL  = model.idxPrem * (1 - move / model.beIdx);          // short straddle indice
   const dispPnL = model.compPrem * (dispFactor(model, rho) - 1);     // straddles longs composants
+  // Delta directionnel : annulé si une couverture (future indice ou par jambe) est active
+  const hedged   = model.deltaHedge && model.deltaHedge !== 'none';
+  const deltaPnL = hedged ? 0 : (model.netDelta || 0) * (p.spot || 0);
   return {
     vegaIdxPnL, vegaCompPnL, vegaPnL: vegaIdxPnL + vegaCompPnL,
-    idxPnL, dispPnL,
-    total: idxPnL + dispPnL + vegaIdxPnL + vegaCompPnL,
+    idxPnL, dispPnL, deltaPnL,
+    total: idxPnL + dispPnL + vegaIdxPnL + vegaCompPnL + deltaPnL,
   };
 }
 
 /* ── Attribution du P&L par jambe (somme = scenarioPnL.total) ────── */
 function legAttribution(model, p) {
   const move = Math.abs(p.spot || 0);
+  const spot = p.spot || 0;
   const rho = p.rho != null ? p.rho : model.rhoBase;
   const df = dispFactor(model, rho) - 1;
+  const hedge = model.deltaHedge || 'none';
+  // « legs » : chaque jambe est neutralisée par son sous-jacent → pas de terme delta.
+  // « index » : les jambes gardent leur delta, une jambe « couverture » l'annule globalement.
+  const legDeltaOn = hedge !== 'legs';
   const indexLeg = {
     label: model.indexSym + ' (short)', logo: null, sector: 'Indice',
-    value: Math.round(model.idxPrem * (1 - move / model.beIdx) + model.idxVega * (p.dIVidx || 0)),
+    value: Math.round(model.idxPrem * (1 - move / model.beIdx) + model.idxVega * (p.dIVidx || 0)
+      + (legDeltaOn ? (model.idxDelta || 0) * spot : 0)),
   };
   const comps = model.perTicker.map(t => ({
     label: t.ticker, logo: t.ticker, sector: t.sector,
     value: Math.round(
       t.greeks.premium * t.nContracts * df                // payoff straddle long (dispersion)
       + t.greeks.vega * t.nContracts * (p.dIVcomp || 0)   // vega long composant
+      + (legDeltaOn ? (t.greeks.delta1pct || 0) * t.nContracts * spot : 0)
     ),
   }));
-  return { indexLeg, comps };
+  const hedgeLeg = hedge === 'index' ? {
+    label: 'Couverture Δ', logo: null, sector: 'Couverture',
+    value: Math.round(-(model.netDelta || 0) * spot),
+  } : null;
+  return { indexLeg, comps, hedgeLeg };
 }
 
 /* ── Dynamic warnings ────────────────────────────────────────────── */
 function buildWarnings(model) {
   const w = [];
+  const hedged = model.deltaHedge && model.deltaHedge !== 'none';
+  if (!hedged && Math.abs(model.netDelta || 0) > 150)
+    w.push({ tone: 'warn', title: 'Delta résiduel non couvert', msg: `Delta net ${fmtMoney(model.netDelta)}/1% — exposition directionnelle. Activez la couverture delta (par l'indice ou par sous-jacent).` });
+  if (hedged)
+    w.push({ tone: 'pos', title: 'Delta couvert', msg: `Couverture ${model.deltaHedge === 'index' ? 'globale par future indice' : 'par sous-jacent (jambe par jambe)'} — delta net ≈ 0, le P&L des scénarios en tient compte.` });
   if (Math.abs(model.netVega) > 250)
     w.push({ tone: 'warn', title: 'Vega résiduel', msg: `Vega net ${fmtMoney(model.netVega)}/1% — position sensible aux chocs d'IV. Rééquilibrer le dimensionnement.` });
   if (model.netTheta < -150)
@@ -322,6 +346,7 @@ function ScenarioSimulator({ model, storageKey }) {
     { label: 'Dispersion', value: r.dispPnL },
     { label: 'Vega idx', value: r.vegaIdxPnL },
     { label: 'Vega comp', value: r.vegaCompPnL },
+    { label: model.deltaHedge && model.deltaHedge !== 'none' ? 'Δ (couvert)' : 'Δ direction', value: r.deltaPnL },
   ];
 
   return (
@@ -423,6 +448,8 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   const [loading,  setLoading]  = React.useState(true);
   const [scenario, setScenario] = React.useState(0);
   const [strategy, setStrategy] = React.useState(null);
+  // Couverture delta : suit ce qui a été choisi à la Construction, modifiable ici
+  const [deltaHedge, setDeltaHedge] = React.useState('none');
   // En mode embarqué (dans le Builder) on n'affiche pas la garde : on est déjà
   // dans le flux de construction.
   const [forceEstimate, setForceEstimate] = React.useState(!!embedded);
@@ -436,11 +463,13 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   // liste courante n'en a pas) — le Risk Lab s'aligne sur cette stratégie.
   React.useEffect(() => {
     setForceEstimate(!!embedded);
-    if (!listId) { setStrategy(null); return; }
+    if (!listId) { setStrategy(null); setDeltaHedge('none'); return; }
     try {
       const raw = localStorage.getItem('dx-strategy-' + listId);
-      setStrategy(raw ? JSON.parse(raw) : null);
-    } catch { setStrategy(null); }
+      const s = raw ? JSON.parse(raw) : null;
+      setStrategy(s);
+      setDeltaHedge(s?.deltaHedge || 'none');
+    } catch { setStrategy(null); setDeltaHedge('none'); }
   }, [listId]);
 
   React.useEffect(() => {
@@ -548,6 +577,10 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
     );
   }
 
+  // ── Modèle effectif : le choix de couverture courant (hérité de la
+  //    Construction, modifiable ici) pilote le terme delta de tous les calculs ──
+  const hModel = { ...model, deltaHedge };
+
   // ── Scénarios canoniques (calculés depuis le moteur) ──
   const dur = model.duration;
   const scenarioDefs = [
@@ -556,19 +589,25 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
     { name: 'Marché calme',        risk: 'modéré',   params: { spot: 0, dIVidx: -3, dIVcomp: -3, rho: 0.74 } },
   ];
   const scenarios = scenarioDefs.map(s => {
-    const pnl = scenarioPnL(model, s.params).total;
+    const pnl = scenarioPnL(hModel, s.params).total;
     return { ...s, pnl: Math.round(pnl), up: pnl >= 0 };
   });
   const selScen = scenarios[scenario] || scenarios[0];
 
   // ── Attribution sous le scénario sélectionné ──
-  const attrib = legAttribution(model, selScen.params);
-  const pnlByName = [{ t: model.indexSym + ' (short)', pnl: attrib.indexLeg.value }, ...attrib.comps.map(c => ({ t: c.label, pnl: c.value }))]
-    .sort((a, b) => b.pnl - a.pnl);
+  const attrib = legAttribution(hModel, selScen.params);
+  const pnlByName = [
+    { t: model.indexSym + ' (short)', pnl: attrib.indexLeg.value },
+    ...(attrib.hedgeLeg ? [{ t: attrib.hedgeLeg.label, pnl: attrib.hedgeLeg.value }] : []),
+    ...attrib.comps.map(c => ({ t: c.label, pnl: c.value })),
+  ].sort((a, b) => b.pnl - a.pnl);
   const secMap = {};
   attrib.comps.forEach(c => { secMap[c.sector] = (secMap[c.sector] || 0) + c.value; });
-  const pnlBySector = [{ s: 'Indice', pnl: attrib.indexLeg.value }, ...Object.entries(secMap).map(([s, pnl]) => ({ s, pnl }))]
-    .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
+  const pnlBySector = [
+    { s: 'Indice', pnl: attrib.indexLeg.value },
+    ...(attrib.hedgeLeg ? [{ s: 'Couverture Δ', pnl: attrib.hedgeLeg.value }] : []),
+    ...Object.entries(secMap).map(([s, pnl]) => ({ s, pnl })),
+  ].sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl));
   const maxByName = Math.max(...pnlByName.map(r => Math.abs(r.pnl)), 1);
   const maxBySec  = Math.max(...pnlBySector.map(r => Math.abs(r.pnl)), 1);
 
@@ -582,12 +621,16 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
     // Prime de dispersion (payoff des straddles longs) : ρ basse = gain.
     rhoBars:   [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].map(rho => ({ label: 'ρ ' + rho.toFixed(1), value: Math.round(model.compPrem * (dispFactor(model, rho) - 1)) })),
     // P&L total (toutes jambes, ρ et IV de base) : pic de gain à mouvement nul.
-    netSpot:   [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: Math.round(scenarioPnL(model, { spot: x, rho: model.rhoBase }).total) })),
+    netSpot:   [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: Math.round(scenarioPnL(hModel, { spot: x, rho: model.rhoBase }).total) })),
     compMov:   model.perTicker.map(t => ({ label: t.ticker, logo: t.ticker, value: Math.round(t.greeks.vega * t.nContracts * 10) })).sort((a, b) => b.value - a.value),
-    selloff:   [{ label: model.indexSym + ' (short)', logo: null, value: attrib.indexLeg.value }, ...attrib.comps.map(c => ({ label: c.label, logo: c.logo, value: c.value }))].sort((a, b) => b.value - a.value),
+    selloff:   [
+      { label: model.indexSym + ' (short)', logo: null, value: attrib.indexLeg.value },
+      ...(attrib.hedgeLeg ? [{ label: attrib.hedgeLeg.label, logo: null, value: attrib.hedgeLeg.value }] : []),
+      ...attrib.comps.map(c => ({ label: c.label, logo: c.logo, value: c.value })),
+    ].sort((a, b) => b.value - a.value),
   };
 
-  const warnings = buildWarnings(model);
+  const warnings = buildWarnings(hModel);
   const maxVega  = Math.max(...model.perTicker.map(t => Math.abs(t.greeks.vega * t.nContracts)), 1);
   const maxTheta = Math.max(...model.perTicker.map(t => Math.abs(t.greeks.theta * t.nContracts)), 1);
 
@@ -630,7 +673,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie · {model.nIndex} contrat(s) {model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'quantités calculées'} — P&L sur quantités réelles
+            Stratégie · {model.nIndex} contrat(s) {model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'quantités calculées'}{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? ' · Δ couvert (' + (strategy.deltaHedge === 'index' ? 'future indice' : 'par sous-jacent') + ')' : ''} — P&L sur quantités réelles
           </span>
           {onNav && <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>Recalculer</button>}
         </div>
@@ -675,8 +718,36 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
             Position nette indice + composants — ATM straddle {dur}j · {strategy ? 'quantités réelles' : 'dimensionnement vega-neutre'}
           </p>
         </div>
+        {/* Couverture delta — héritée de la Construction, modifiable ici pour simuler */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ marginRight: 'auto', minWidth: 240 }}>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Couverture delta</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 3 }}>
+              {strategy
+                ? (deltaHedge === (strategy.deltaHedge || 'none')
+                  ? 'Héritée de la stratégie construite — le P&L, les scénarios et les alertes en tiennent compte.'
+                  : 'Modifiée ici pour simuler (la stratégie enregistrée reste inchangée).')
+                : 'Aucune stratégie construite — choix libre pour la simulation.'}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              { v: 'none', l: 'Aucune' },
+              { v: 'index', l: 'Par l\'indice' },
+              { v: 'legs', l: 'Par sous-jacent' },
+            ].map(o => {
+              const on = deltaHedge === o.v;
+              return (
+                <button key={o.v} onClick={() => setDeltaHedge(o.v)}
+                  style={{ padding: '8px 14px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', font: '600 12px/1 var(--font-sans)', cursor: 'pointer' }}>
+                  {o.l}{strategy && (strategy.deltaHedge || 'none') === o.v ? ' ·✓' : ''}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
-          <MetricCard label="Δ net"     value="≈ 0" hint="ATM straddles delta-neutre" accent="var(--pos)" />
+          <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 $ ✓' : fmtS(model.netDelta) + ' $/1%'} hint={deltaHedge === 'index' ? 'Couvert · future indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(model.netDelta) < 50 ? 'Résidu faible' : 'Résidu directionnel')} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
           <MetricCard label="Vega net"  value={fmtS(model.netVega) + ' $/1%'} hint={Math.abs(model.netVega) < 60 ? 'Quasi-neutre ✓' : 'Vega résiduel'} accent={Math.abs(model.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'} />
           <MetricCard label="Θ /jour"   value={fmtS(model.netTheta) + ' $'} hint={model.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
           <MetricCard label="Vega idx"  value={fmtS(model.idxVega) + ' $/1%'} hint={'Short · ' + model.nIndex + ' contrat(s)'} accent="var(--neg)" />
@@ -687,7 +758,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
 
       {/* ── Simulateur interactif ── */}
       <section>
-        <ScenarioSimulator model={model} storageKey={'dx-risk-scen-' + (listId || 'demo')} />
+        <ScenarioSimulator model={hModel} storageKey={'dx-risk-scen-' + (listId || 'demo')} />
       </section>
 
       {/* ── Exposition par composant ── */}
@@ -804,7 +875,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 14 }}>Par jambe</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {pnlByName.map(r => <AttribRow key={r.t} label={r.t} pnl={r.pnl} max={maxByName} logo={!r.t.includes('short') ? r.t : null} />)}
+              {pnlByName.map(r => <AttribRow key={r.t} label={r.t} pnl={r.pnl} max={maxByName} logo={!r.t.includes('short') && !r.t.includes('Couverture') ? r.t : null} />)}
             </div>
           </div>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
