@@ -154,7 +154,7 @@ function legAttribution(model, p) {
   // « index » : les jambes gardent leur delta, une jambe « couverture » l'annule globalement.
   const legDeltaOn = hedge !== 'legs';
   const indexLeg = {
-    label: model.indexSym + ' (short)', logo: null, sector: 'Indice',
+    label: (model.indexLabel || model.indexSym) + ' (short)', logo: null, sector: 'Indice',
     value: Math.round(model.idxPrem * (1 - move / model.beIdx) + model.idxVega * (p.dIVidx || 0)
       + (legDeltaOn ? (model.idxDelta || 0) * spot : 0)),
   };
@@ -180,7 +180,7 @@ function buildWarnings(model) {
   if (!hedged && Math.abs(model.netDelta || 0) > 150)
     w.push({ tone: 'warn', title: 'Delta résiduel non couvert', msg: `Delta net ${fmtMoney(model.netDelta)}/1% — exposition directionnelle. Activez la couverture delta (par l'indice ou par sous-jacent).` });
   if (hedged)
-    w.push({ tone: 'pos', title: 'Delta couvert', msg: `Couverture ${model.deltaHedge === 'index' ? 'globale par future indice' : 'par sous-jacent (jambe par jambe)'} — delta net ≈ 0, le P&L des scénarios en tient compte.` });
+    w.push({ tone: 'pos', title: 'Delta couvert', msg: `Couverture ${model.deltaHedge === 'index' ? "globale par l'ETF indice" : 'par sous-jacent (jambe par jambe)'} — delta net ≈ 0, le P&L des scénarios en tient compte.` });
   if (Math.abs(model.netVega) > 250)
     w.push({ tone: 'warn', title: 'Vega résiduel', msg: `Vega net ${fmtMoney(model.netVega)}/1% — position sensible aux chocs d'IV. Rééquilibrer le dimensionnement.` });
   if (model.netTheta < -150)
@@ -342,7 +342,7 @@ function ScenarioSimulator({ model, storageKey }) {
   // Décomposition (somme exacte = r.total) : la jambe short straddle indice
   // (idxPnL) est maximale quand l'indice ne bouge pas — c'est le cœur du gain.
   const decomp = [
-    { label: model.indexSym + ' short', value: r.idxPnL },
+    { label: (model.indexLabel || model.indexSym) + ' short', value: r.idxPnL },
     { label: 'Dispersion', value: r.dispPnL },
     { label: 'Vega idx', value: r.vegaIdxPnL },
     { label: 'Vega comp', value: r.vegaCompPnL },
@@ -477,7 +477,15 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
     let cancelled = false;
     setLoading(true);
     const indexSym = strategy?.index || ctx.listIndex || 'SPX';
-    const duration = strategy?.duration || 30;
+    // Avancée du temps : les grecs sont calculés sur le DTE RESTANT, pas sur
+    // la durée initiale — une stratégie à 30j n'a plus les mêmes valeurs à J+10.
+    const dteTotal = strategy?.duration || 30;
+    let daysSince = 0;
+    if (strategy?.builtAt) {
+      const d = Math.floor((Date.now() - new Date(strategy.builtAt).getTime()) / 86400000);
+      if (isFinite(d) && d > 0) daysSince = d;
+    }
+    const duration = Math.max(1, dteTotal - daysSince);
 
     (async () => {
       let tickers = strategy?.components?.map(c => c.ticker) || null;
@@ -492,8 +500,18 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
       }
       if (!tickers || !tickers.length) tickers = DEMO;
 
-      let indexPrice = 6000, indexIV = 18;
-      try { const sn = await DXApi.getSnapshot(indexSym); if (sn) { indexPrice = sn.price || indexPrice; indexIV = sn.iv_est || indexIV; } } catch {}
+      // Prix négociable de l'indice = ETF proxy (QQQ, SPY…) — cohérent avec la
+      // Construction et avec ce que cote le broker.
+      let indexPrice = 600, indexIV = 18, indexEtf = strategy?.indexEtf || indexSym;
+      try {
+        const sn = await DXApi.getSnapshot(indexSym);
+        if (sn) {
+          indexIV = sn.iv_est || indexIV;
+          const tr = window.DXProxy ? window.DXProxy.tradableIndex(sn, indexSym) : null;
+          if (tr && tr.price) { indexPrice = tr.price; indexEtf = tr.etf; }
+          else if (sn.price) indexPrice = sn.price;
+        }
+      } catch {}
 
       const priceMap = {};
       try { const q = await DXApi.batchQuotes(tickers); (q || []).forEach(rr => { if (rr?.ticker) priceMap[rr.ticker] = parseFloat(rr.price) || null; }); } catch {}
@@ -505,6 +523,10 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
       });
 
       const m = buildRiskModel({ tickers, weightMap, priceMap, volMap, indexSym, indexPrice, indexIV, duration, strategy });
+      m.indexEtf = indexEtf;
+      m.indexLabel = indexEtf !== indexSym ? indexEtf + ' (' + indexSym + ')' : indexSym;
+      m.daysSince = daysSince;
+      m.dteTotal = dteTotal;
       if (!cancelled) { setModel(m); setLoading(false); }
     })();
     return () => { cancelled = true; };
@@ -597,7 +619,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   // ── Attribution sous le scénario sélectionné ──
   const attrib = legAttribution(hModel, selScen.params);
   const pnlByName = [
-    { t: model.indexSym + ' (short)', pnl: attrib.indexLeg.value },
+    { t: attrib.indexLeg.label, pnl: attrib.indexLeg.value },
     ...(attrib.hedgeLeg ? [{ t: attrib.hedgeLeg.label, pnl: attrib.hedgeLeg.value }] : []),
     ...attrib.comps.map(c => ({ t: c.label, pnl: c.value })),
   ].sort((a, b) => b.pnl - a.pnl);
@@ -624,7 +646,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
     netSpot:   [-8, -6, -4, -2, 0, 2, 4, 6, 8].map(x => ({ label: (x >= 0 ? '+' : '') + x + '%', value: Math.round(scenarioPnL(hModel, { spot: x, rho: model.rhoBase }).total) })),
     compMov:   model.perTicker.map(t => ({ label: t.ticker, logo: t.ticker, value: Math.round(t.greeks.vega * t.nContracts * 10) })).sort((a, b) => b.value - a.value),
     selloff:   [
-      { label: model.indexSym + ' (short)', logo: null, value: attrib.indexLeg.value },
+      { label: attrib.indexLeg.label, logo: null, value: attrib.indexLeg.value },
       ...(attrib.hedgeLeg ? [{ label: attrib.hedgeLeg.label, logo: null, value: attrib.hedgeLeg.value }] : []),
       ...attrib.comps.map(c => ({ label: c.label, logo: c.logo, value: c.value })),
     ].sort((a, b) => b.value - a.value),
@@ -673,7 +695,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius-lg)', flexWrap: 'wrap' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie · {model.nIndex} contrat(s) {model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'quantités calculées'}{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? ' · Δ couvert (' + (strategy.deltaHedge === 'index' ? 'future indice' : 'par sous-jacent') + ')' : ''} — P&L sur quantités réelles
+            Stratégie · {model.nIndex} contrat(s) {model.indexLabel || model.indexSym} short · {model.perTicker.length} composants long · {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutral' : 'quantités calculées'}{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? ' · Δ couvert (' + (strategy.deltaHedge === 'index' ? "ETF indice" : "par sous-jacent") + ')' : ''}{model.daysSince > 0 ? ` · J+${model.daysSince} · ${model.duration} DTE restant sur ${model.dteTotal}` : ''} — P&L sur quantités réelles
           </span>
           {onNav && <button onClick={() => onNav('builder', { listId })} style={{ marginLeft: 'auto', font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>Recalculer</button>}
         </div>
@@ -696,7 +718,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           </p>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-          <MetricCard label={'Contrats ' + model.indexSym} value={String(model.nIndex)} hint="Short straddle indice" accent="var(--neg)" />
+          <MetricCard label={'Contrats ' + (model.indexEtf || model.indexSym)} value={String(model.nIndex)} hint={'Short straddle ' + (model.indexLabel || model.indexSym)} accent="var(--neg)" />
           <MetricCard label="Notionnel indice" value={fmtNotional(idxNotional)} hint={Math.round(model.indexPrice) + ' × ' + CONTRACT + ' × ' + model.nIndex} accent="var(--neg)" />
           <MetricCard label="Prime collectée" value={fmtMoney(model.idxPrem)} hint="Gain max si indice immobile" accent="var(--pos)" />
           <MetricCard label="Lots composants" value={String(totalCompLots)} hint={model.perTicker.length + ' actions long'} accent="var(--pos)" />
@@ -747,7 +769,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
-          <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 $ ✓' : fmtS(model.netDelta) + ' $/1%'} hint={deltaHedge === 'index' ? 'Couvert · future indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(model.netDelta) < 50 ? 'Résidu faible' : 'Résidu directionnel')} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
+          <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 $ ✓' : fmtS(model.netDelta) + ' $/1%'} hint={deltaHedge === 'index' ? 'Couvert · ETF indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(model.netDelta) < 50 ? 'Résidu faible' : 'Résidu directionnel')} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
           <MetricCard label="Vega net"  value={fmtS(model.netVega) + ' $/1%'} hint={Math.abs(model.netVega) < 60 ? 'Quasi-neutre ✓' : 'Vega résiduel'} accent={Math.abs(model.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'} />
           <MetricCard label="Θ /jour"   value={fmtS(model.netTheta) + ' $'} hint={model.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
           <MetricCard label="Vega idx"  value={fmtS(model.idxVega) + ' $/1%'} hint={'Short · ' + model.nIndex + ' contrat(s)'} accent="var(--neg)" />

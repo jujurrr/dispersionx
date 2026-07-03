@@ -852,7 +852,7 @@ function TradeBrief({ data, onNav }) {
     const port = strategy.portfolio || {};
     L = {
       index: {
-        t:      strategy.index || 'SPX',
+        t:      (strategy.indexEtf && strategy.indexEtf !== strategy.index ? strategy.indexEtf + ' (' + strategy.index + ')' : strategy.index) || 'SPX',
         strike: 'ATM',
         prime:  '−' + Math.round(Math.abs(port.idxPrem || 0)).toLocaleString('fr-FR') + ' $',
         vega:   '−' + Math.round(Math.abs(port.idxVega || 0)) + ' $/1%',

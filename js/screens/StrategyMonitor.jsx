@@ -173,7 +173,7 @@ function StrategyMonitor({ mode, lists, onNav }) {
                 : <WarningPanel tone="pos" title="Profil sain">Vega équilibré et échéance confortable. Surveillez la prime de corrélation dans le Risk Lab.</WarningPanel>}
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
                 <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>Repères</div>
-                <MonitorRow k="Indice" v={cur.s.index} />
+                <MonitorRow k="Indice" v={cur.s.indexEtf && cur.s.indexEtf !== cur.s.index ? cur.s.indexEtf + ' (' + cur.s.index + ')' : cur.s.index} />
                 <MonitorRow k="Échéance" v={(cur.s.duration || 30) + ' jours'} />
                 <MonitorRow k="Composants" v={String(cur.m.nComp)} />
                 <MonitorRow k="Sizing" v={cur.s.sizingMethod === 'vega_neutral' ? 'Vega-neutre' : 'Poids égaux'} />

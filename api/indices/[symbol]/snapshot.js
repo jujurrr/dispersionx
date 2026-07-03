@@ -73,6 +73,9 @@ function computeSnapshot(bars, scale) {
 
   return {
     price:   Number((last * scale).toFixed(2)),
+    // Prix réel de l'ETF proxy (ce que le broker trade : QQQ, SPY…) — les
+    // modules de stratégie l'utilisent pour que les valeurs collent au marché.
+    etf_price: Number(last.toFixed(2)),
     change:  r2(((last - prev) / prev) * 100),
     hv30:    r1(hv30),
     hv1y:    r1(hv(252)),
@@ -104,5 +107,5 @@ export default async (req) => {
 
   if (!bars) return Response.json({ error: 'no_data' }, { status: 502 });
 
-  return Response.json({ ...computeSnapshot(bars, map.scale), source: barSource });
+  return Response.json({ ...computeSnapshot(bars, map.scale), etf: map.etf, source: barSource });
 };

@@ -100,6 +100,9 @@ export default async (req, context) => {
 
     return Response.json({
       price: Number((last * map.scale).toFixed(2)),
+      // Prix réel de l'ETF proxy (ce que le broker trade : QQQ, SPY…)
+      etf_price: Number(last.toFixed(2)),
+      etf: map.etf,
       change: r2(((last - prev) / prev) * 100),
       hv30: r1(hv30),
       hv1y: r1(hv(Math.min(252, rets.length))),

@@ -38,12 +38,33 @@
   ];
 
   const SNAPSHOTS = {
-    SPX: { price: 6432.18, change: +0.42, hv30: 15.6, hv1y: 18.1, iv_est: 18.2, perf5d: +1.3, perf30d: +3.8, ytd: +11.4 },
-    NDX: { price: 22148.42, change: -0.18, hv30: 19.2, hv1y: 22.4, iv_est: 21.4, perf5d: -0.6, perf30d: +2.1, ytd: +14.2 },
-    DJI: { price: 42891.10, change: +0.31, hv30: 12.1, hv1y: 14.8, iv_est: 14.4, perf5d: +0.9, perf30d: +2.9, ytd: +7.8 },
-    CAC: { price: 7842.30, change: -0.22, hv30: 14.8, hv1y: 17.2, iv_est: 16.4, perf5d: -0.4, perf30d: +1.8, ytd: +4.2 },
-    DAX: { price: 18620.44, change: +0.55, hv30: 13.9, hv1y: 16.6, iv_est: 15.8, perf5d: +1.1, perf30d: +3.2, ytd: +9.1 },
+    SPX: { price: 6432.18, etf: 'SPY', etf_price: 643.22, change: +0.42, hv30: 15.6, hv1y: 18.1, iv_est: 18.2, perf5d: +1.3, perf30d: +3.8, ytd: +11.4 },
+    NDX: { price: 22148.42, etf: 'QQQ', etf_price: 540.21, change: -0.18, hv30: 19.2, hv1y: 22.4, iv_est: 21.4, perf5d: -0.6, perf30d: +2.1, ytd: +14.2 },
+    DJI: { price: 42891.10, etf: 'DIA', etf_price: 428.91, change: +0.31, hv30: 12.1, hv1y: 14.8, iv_est: 14.4, perf5d: +0.9, perf30d: +2.9, ytd: +7.8 },
+    CAC: { price: 7842.30, etf: 'EWQ', etf_price: 40.01, change: -0.22, hv30: 14.8, hv1y: 17.2, iv_est: 16.4, perf5d: -0.4, perf30d: +1.8, ytd: +4.2 },
+    DAX: { price: 18620.44, etf: 'EWG', etf_price: 32.96, change: +0.55, hv30: 13.9, hv1y: 16.6, iv_est: 15.8, perf5d: +1.1, perf30d: +3.2, ytd: +9.1 },
   };
+
+  // Ratio niveau d'indice / prix ETF proxy (même table que le backend) —
+  // repli quand un snapshot ne fournit pas etf_price.
+  const PROXY_SCALE = {
+    SPX: { etf: 'SPY', scale: 10 },
+    NDX: { etf: 'QQQ', scale: 41 },
+    DJI: { etf: 'DIA', scale: 100 },
+    CAC: { etf: 'EWQ', scale: 196 },
+    DAX: { etf: 'EWG', scale: 565 },
+  };
+  // Prix « négociable » de l'indice : celui de l'ETF proxy (QQQ, SPY…) — c'est
+  // lui que le broker cote. Tous les modules de stratégie doivent passer par ici
+  // pour que les valeurs (primes, notionnels, hedge) collent au marché réel.
+  function tradableIndex(sn, symbol) {
+    const p = PROXY_SCALE[symbol] || null;
+    const etf = (sn && sn.etf) || (p && p.etf) || symbol;
+    let price = sn && sn.etf_price != null ? sn.etf_price : null;
+    if (price == null && sn && sn.price != null) price = p ? sn.price / p.scale : sn.price;
+    return { etf, price };
+  }
+  window.DXProxy = { PROXY_SCALE, tradableIndex };
 
   const COMPONENTS = {
     SPX: [

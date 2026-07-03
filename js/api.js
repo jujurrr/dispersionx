@@ -251,17 +251,23 @@
     const built = s.builtAt ? new Date(s.builtAt) : null;
     const daysSince = (built && !isNaN(built)) ? Math.max(0, Math.floor((Date.now() - built.getTime()) / 86400000)) : 0;
     const dte = Math.max(0, (s.duration || 30) - daysSince);
-    const netVega = Math.round(p.netVega || 0);
-    const netTheta = Math.round(p.netTheta || 0);
-    const netPremium = Math.round(p.netPremium || 0);
-    const netDelta = Math.round(p.netDelta != null ? p.netDelta : (p.netDeltaRaw || 0));
+    // Avancée du temps : pour un straddle ATM, vega ∝ √T et theta ∝ 1/√T.
+    // Les grecs stockés (à la construction) sont ramenés au DTE restant pour
+    // que le suivi reflète la position d'aujourd'hui, pas celle de J0.
+    const T0 = Math.max(1, s.duration || 30);
+    const k  = Math.sqrt(Math.max(1, dte) / T0);
+    const netVega = Math.round((p.netVega || 0) * k);
+    const netTheta = Math.round((p.netTheta || 0) / k);
+    const netPremium = Math.round(p.netPremium || 0);   // prime d'entrée — figée
+    const netDelta = Math.round((p.netDelta != null ? p.netDelta : (p.netDeltaRaw || 0)) * k);
     let status = 'sain', alert = null;
     if (dte <= 7)               { status = 'risque';     alert = 'Theta critique · ' + dte + ' DTE'; }
     else if (Math.abs(netVega) > 250) { status = 'surveiller'; alert = 'Vega déséquilibré (' + netVega + ' $/1%)'; }
     else if (netTheta < -150)   { status = 'surveiller'; alert = 'Coût de portage élevé'; }
     const nComp = (s.components || []).length;
+    const idxLabel = (s.indexEtf && s.indexEtf !== s.index) ? s.indexEtf + ' (' + (s.index || '') + ')' : (s.index || 'SPX');
     return { dte, daysSince, netVega, netTheta, netPremium, netDelta, status, alert, nComp,
-      name: (s.index || 'SPX') + ' ' + (s.duration || 30) + 'j · dispersion' + (s.listName ? ' · ' + s.listName : '') };
+      name: idxLabel + ' ' + (s.duration || 30) + 'j · dispersion' + (s.listName ? ' · ' + s.listName : '') };
   }
 
   /* ── Volatility (par ticker ou batch) ───────────────────────── */
