@@ -136,17 +136,20 @@
       { ticker: 'HD',   name: 'Home Depot', sector: 'Consumer Disc.', weight: 7.2, score: 61, iv: 22.4, hv: 20.8, rho: 0.62, earnings: false, liq: 'Bonne', beta: 1.04 },
       { ticker: 'CAT',  name: 'Caterpillar', sector: 'Industrials', weight: 6.8, score: 66, iv: 28.6, hv: 26.4, rho: 0.55, earnings: false, liq: 'Bonne', beta: 1.18 },
     ],
+    // Tickers avec suffixe de place (.PA Paris, .DE Francfort) — mêmes symboles
+    // que les constituants statiques de l'API : Yahoo les résout correctement
+    // (les formes nues renvoient d'autres sociétés, ex. SAN = Banco Santander).
     CAC: [
-      { ticker: 'LVMH', name: 'LVMH Moët Hennessy', sector: 'Consumer Disc.', weight: 11.2, score: 72, iv: 24.6, hv: 22.8, rho: 0.54, earnings: false, liq: 'Bonne', beta: 0.88 },
-      { ticker: 'TTE',  name: 'TotalEnergies', sector: 'Energy', weight: 9.4, score: 64, iv: 22.8, hv: 21.2, rho: 0.58, earnings: false, liq: 'Bonne', beta: 0.96 },
-      { ticker: 'SAN',  name: 'Sanofi', sector: 'Healthcare', weight: 8.1, score: 58, iv: 18.4, hv: 17.6, rho: 0.62, earnings: false, liq: 'Bonne', beta: 0.72 },
-      { ticker: 'BNP',  name: 'BNP Paribas', sector: 'Financials', weight: 7.4, score: 66, iv: 24.2, hv: 22.6, rho: 0.61, earnings: false, liq: 'Bonne', beta: 1.14 },
+      { ticker: 'MC.PA',  name: 'LVMH Moët Hennessy', sector: 'Consumer Disc.', weight: 11.2, score: 72, iv: 24.6, hv: 22.8, rho: 0.54, earnings: false, liq: 'Bonne', beta: 0.88 },
+      { ticker: 'TTE.PA', name: 'TotalEnergies', sector: 'Energy', weight: 9.4, score: 64, iv: 22.8, hv: 21.2, rho: 0.58, earnings: false, liq: 'Bonne', beta: 0.96 },
+      { ticker: 'SAN.PA', name: 'Sanofi', sector: 'Healthcare', weight: 8.1, score: 58, iv: 18.4, hv: 17.6, rho: 0.62, earnings: false, liq: 'Bonne', beta: 0.72 },
+      { ticker: 'BNP.PA', name: 'BNP Paribas', sector: 'Financials', weight: 7.4, score: 66, iv: 24.2, hv: 22.6, rho: 0.61, earnings: false, liq: 'Bonne', beta: 1.14 },
     ],
     DAX: [
-      { ticker: 'SAP',  name: 'SAP SE', sector: 'Technology', weight: 12.8, score: 68, iv: 22.4, hv: 20.8, rho: 0.56, earnings: false, liq: 'Bonne', beta: 0.94 },
-      { ticker: 'SIE',  name: 'Siemens', sector: 'Industrials', weight: 9.6, score: 62, iv: 20.8, hv: 19.4, rho: 0.61, earnings: false, liq: 'Bonne', beta: 1.08 },
-      { ticker: 'ALV',  name: 'Allianz', sector: 'Financials', weight: 8.4, score: 58, iv: 18.2, hv: 17.4, rho: 0.64, earnings: false, liq: 'Bonne', beta: 0.88 },
-      { ticker: 'MUV2', name: 'Munich Re', sector: 'Financials', weight: 7.2, score: 55, iv: 16.8, hv: 16.2, rho: 0.67, earnings: false, liq: 'Bonne', beta: 0.82 },
+      { ticker: 'SAP.DE',  name: 'SAP SE', sector: 'Technology', weight: 12.8, score: 68, iv: 22.4, hv: 20.8, rho: 0.56, earnings: false, liq: 'Bonne', beta: 0.94 },
+      { ticker: 'SIE.DE',  name: 'Siemens', sector: 'Industrials', weight: 9.6, score: 62, iv: 20.8, hv: 19.4, rho: 0.61, earnings: false, liq: 'Bonne', beta: 1.08 },
+      { ticker: 'ALV.DE',  name: 'Allianz', sector: 'Financials', weight: 8.4, score: 58, iv: 18.2, hv: 17.4, rho: 0.64, earnings: false, liq: 'Bonne', beta: 0.88 },
+      { ticker: 'MUV2.DE', name: 'Munich Re', sector: 'Financials', weight: 7.2, score: 55, iv: 16.8, hv: 16.2, rho: 0.67, earnings: false, liq: 'Bonne', beta: 0.82 },
     ],
   };
 

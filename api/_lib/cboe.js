@@ -165,7 +165,12 @@ async function fetchYahooCloses(symbol, range = '1y', timeoutMs = 8000) {
   );
   const closes = j?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
   const valid = closes.filter(c => c != null && isFinite(c) && c > 0);
-  return valid.length >= 10 ? valid : null;
+  if (valid.length >= 10) return valid;
+  // Actions de classe US : « BRK.B » s'écrit « BRK-B » chez Yahoo. Une seule
+  // lettre après le point = classe d'action ; les suffixes de place (.PA, .DE…)
+  // font 2+ lettres et ne doivent pas être convertis.
+  if (/^[A-Z]+\.[A-Z]$/.test(symbol)) return fetchYahooCloses(symbol.replace('.', '-'), range, timeoutMs);
+  return null;
 }
 
 // Clôtures avec repli : Cboe (fiable côté serveur, ajusté) puis Yahoo
