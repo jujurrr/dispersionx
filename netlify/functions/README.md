@@ -10,9 +10,21 @@ erreur 5xx, le client (`js/api.js`) bascule automatiquement sur les données moc
 |------------------------------------|----------------------|---------------|
 | `GET  /api/health`                 | `health.mjs`         | Alpaca /clock |
 | `POST /api/quotes/batch`           | `quotes-batch.mjs`   | Alpaca data   |
-| `GET  /api/indices/:sym/snapshot`  | `index-snapshot.mjs` | Alpaca (ETF proxy) |
+| `GET  /api/iv/:symbol`             | `iv.mjs`             | **Cboe delayed CDN** (IV réelles, différé 15 min, gratuit, sans clé) |
+| `GET  /api/indices/:sym/snapshot`  | `index-snapshot.mjs` | Alpaca/Yahoo (barres) + Cboe (IV réelle) |
 | `GET  /api/indices/:sym/components`| `index-components.mjs` | FMP (etf-holder / constituent) |
-| `GET  /api/options/atm`            | `options-atm.mjs`    | MarketData.app (IV ATM + greeks) |
+| `GET  /api/options/atm`            | `options-atm.mjs`    | Cboe delayed (IV + greeks réels) ; repli MarketData.app |
+| `POST /api/vol/ticker`             | `vol-ticker.mjs`     | Cboe (IV + clôtures) ; repli Yahoo/HV |
+| `GET  /api/vol/spx`                | `vol-spx.mjs`        | Cboe `_SPX` (IV + terme + HV du vrai indice) |
+| `POST /api/stocks/auto-score`      | `stocks-auto-score.mjs` | Cboe (IV réelles titre + indice) + clôtures |
+| `POST /api/risk/portfolio`         | `risk-portfolio.mjs` | Cboe (IV réelles) + clôtures |
+
+> **Données de volatilité** : depuis juillet 2026, l'IV vient des chaînes d'options
+> différées 15 min du CDN public du Cboe (`cdn.cboe.com/api/global/delayed_quotes`) —
+> vraies IV de marché, gratuites, sans clé ni quota. Le champ `iv30` du Cboe est la
+> valeur comparable à celle affichée par IBKR. La HV est calculée sur les clôtures
+> historiques Cboe (ajustées des splits), repli Yahoo pour les valeurs non-US.
+> Ces fonctions sont des ré-exports des handlers `api/**` (Vercel) — source unique.
 
 > Les snapshots d'indices passent par l'ETF proxy (SPX→SPY, NDX→QQQ, DJI→DIA,
 > CAC→EWQ, DAX→EWG). Variation %, HV et perfs sont fiables ; le niveau absolu est

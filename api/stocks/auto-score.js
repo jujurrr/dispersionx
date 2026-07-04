@@ -1,7 +1,10 @@
 // POST /api/stocks/auto-score
 // Body: { index_symbol, stock_symbol, duration_days }
-// Calcule un score de dispersion réel depuis Yahoo Finance + MarketData
+// Score de dispersion : IV réelles Cboe (via /api/iv, cache CDN 15 min),
+// clôtures Cboe (repli Yahoo) pour HV/ρ/beta, repli MarketData si token.
 export const config = { runtime: 'edge' };
+
+import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
 
 const R = 0.043;
 const RHO_IMPL_EST = 0.65;
@@ -29,14 +32,8 @@ function bsAtm(S, sigma, T) {
 
 async function fetchBarsData(sym) {
   try {
-    const r = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=3mo`,
-      { headers: { 'User-Agent': 'Mozilla/5.0' } }
-    );
-    if (!r.ok) return null;
-    const closes = (await r.json())?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
-    const valid  = closes.filter(c => c != null && isFinite(c) && c > 0);
-    if (valid.length < 10) return null;
+    const valid = await fetchClosesSmart(sym, 70);   // ~3 mois de clôtures
+    if (!valid || valid.length < 10) return null;
     const lastClose = valid[valid.length - 1];
     const rets = [];
     for (let i = 1; i < valid.length; i++) rets.push(Math.log(valid[i] / valid[i - 1]));
@@ -114,18 +111,22 @@ export default async (req) => {
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
-  const [stockData, idxData, ivMD] = await Promise.all([
+  const origin = new URL(req.url).origin;
+  const [stockData, idxData, ivCboe, ivIdxCboe] = await Promise.all([
     fetchBarsData(sym),
     fetchBarsData(idxEtf),
-    fetchIVFromMD(sym, duration, mdTok),
+    ivViaApi(origin, sym, duration),
+    ivViaApi(origin, indexSym, duration),
   ]);
 
   if (!stockData) return Response.json({ error: 'no_price_data', symbol: sym }, { status: 502 });
 
-  const price = stockData.lastClose;
+  // IV : Cboe (réelle, différée 15 min) → MarketData (si token) → HV×1.15
+  const ivMD  = ivCboe?.iv == null ? await fetchIVFromMD(sym, duration, mdTok) : null;
+  const price = ivCboe?.spot ?? stockData.lastClose;
   const hv30  = stockData.hv30 ?? 25;
-  const iv    = ivMD ?? Number((hv30 * 1.15).toFixed(1));
-  const ivSrc = ivMD ? 'marketdata' : 'estimated_from_hv';
+  const iv    = ivCboe?.iv ?? ivMD ?? Number((hv30 * 1.15).toFixed(1));
+  const ivSrc = ivCboe?.iv != null ? 'cboe_delayed' : (ivMD != null ? 'marketdata' : 'estimated_from_hv');
 
   const rho  = idxData?.rets ? Number((pearson(stockData.rets, idxData.rets) ?? 0.55).toFixed(3)) : 0.55;
   const beta = idxData?.rets ? (computeBeta(stockData.rets, idxData.rets) ?? 1.0) : 1.0;
@@ -172,10 +173,17 @@ export default async (req) => {
       symbol: sym, weight: 10.0, iv, hv: hv30, beta,
       last_price: Number(price.toFixed(2)), iv_source: ivSrc,
       earnings_in_strategy: false, days_to_earnings: 45, earnings_date: '—',
-      iv_rank: { iv_rank: ivRank, iv_percentile: ivPct, iv_min: ivMin, iv_max: ivMax, note: ivMD ? 'IV réelle MarketData — rang estimé depuis HV historique' : 'IV et rang estimés depuis la HV historique Yahoo Finance' },
-      greeks: g ? { delta: Number(g.delta.toFixed(3)), gamma: Number(g.gamma.toFixed(5)), vega: Number(g.vega.toFixed(1)), theta: Number(g.theta.toFixed(1)), strike: Number(price.toFixed(0)), expiry: expiryDate } : null,
+      iv_rank: { iv_rank: ivRank, iv_percentile: ivPct, iv_min: ivMin, iv_max: ivMax, note: ivSrc === 'cboe_delayed' ? 'IV réelle Cboe (différé 15 min) — rang estimé depuis HV historique' : ivSrc === 'marketdata' ? 'IV réelle MarketData — rang estimé depuis HV historique' : 'IV et rang estimés depuis la HV historique' },
+      // Grecs du straddle ATM (Black-Scholes) — désormais nourris par l'IV réelle.
+      // Strike/échéance réels de la chaîne Cboe quand disponibles.
+      greeks: g ? {
+        delta: Number(g.delta.toFixed(3)), gamma: Number(g.gamma.toFixed(5)),
+        vega: Number(g.vega.toFixed(1)), theta: Number(g.theta.toFixed(1)),
+        strike: ivCboe?.greeks?.strike ?? Number(price.toFixed(0)),
+        expiry: ivCboe?.greeks?.expiry ?? expiryDate,
+      } : null,
     },
-    index: { symbol: indexSym, name: { SPX: 'S&P 500', NDX: 'Nasdaq 100', DJI: 'Dow Jones', CAC: 'CAC 40', DAX: 'DAX' }[indexSym] || indexSym, iv: idxData?.hv30 ? Number((idxData.hv30 * 1.1).toFixed(1)) : null },
-    metadata: { duration_days: duration, source: ivMD ? 'marketdata+yahoo' : 'yahoo' },
+    index: { symbol: indexSym, name: { SPX: 'S&P 500', NDX: 'Nasdaq 100', DJI: 'Dow Jones', CAC: 'CAC 40', DAX: 'DAX' }[indexSym] || indexSym, iv: ivIdxCboe?.iv ?? (idxData?.hv30 ? Number((idxData.hv30 * 1.1).toFixed(1)) : null), iv_source: ivIdxCboe?.iv != null ? 'cboe_delayed' : 'estimated_from_hv' },
+    metadata: { duration_days: duration, source: ivSrc === 'cboe_delayed' ? 'cboe+closes' : (ivSrc === 'marketdata' ? 'marketdata+closes' : 'closes_only') },
   });
 };

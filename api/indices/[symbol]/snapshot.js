@@ -1,7 +1,10 @@
 // GET /api/indices/[symbol]/snapshot
 // Barres : Alpaca bars → Yahoo Finance bars
-// IV indice : HV×1.1 (Yahoo Finance options bloqué serveur-side, Alpaca options requiert plan payant)
+// IV indice : RÉELLE via /api/iv (chaînes Cboe différées 15 min, cache CDN) ;
+// repli HV×1.1 marqué `iv_source: estimated` si le Cboe est injoignable.
 export const config = { runtime: 'edge' };
+
+import { ivViaApi } from '../../_lib/cboe.js';
 
 const DATA_BASE = 'https://data.alpaca.markets';
 const FEED = process.env.ALPACA_DATA_FEED || 'iex';
@@ -95,6 +98,9 @@ export default async (req) => {
   let bars = null;
   let barSource = 'unknown';
 
+  // IV réelle (Cboe, cache CDN 15 min) en parallèle des barres
+  const ivPromise = ivViaApi(new URL(req.url).origin, symbol, 30).catch(() => null);
+
   // 1) Alpaca bars
   if (process.env.ALPACA_API_KEY_ID) {
     try { bars = await getBarsAlpaca(map.etf); if (bars) barSource = 'alpaca'; } catch { /* fallback */ }
@@ -107,5 +113,10 @@ export default async (req) => {
 
   if (!bars) return Response.json({ error: 'no_data' }, { status: 502 });
 
-  return Response.json({ ...computeSnapshot(bars, map.scale), etf: map.etf, source: barSource });
+  const snap = computeSnapshot(bars, map.scale);
+  const ivReal = await ivPromise;
+  if (ivReal?.iv != null) { snap.iv_est = ivReal.iv; snap.iv_source = 'cboe_delayed'; }
+  else snap.iv_source = 'estimated';
+
+  return Response.json({ ...snap, etf: map.etf, source: barSource });
 };

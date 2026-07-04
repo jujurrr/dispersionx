@@ -1,7 +1,10 @@
 // POST /api/risk/portfolio
 // Body: { tickers: string[], index: string, duration?: number }
-// Greeks ATM straddle + scénarios + beta calculé depuis les barres Yahoo Finance
+// Greeks ATM straddle (IV réelles Cboe via /api/iv, cache CDN 15 min)
+// + scénarios + beta depuis les clôtures Cboe (repli Yahoo)
 export const config = { runtime: 'edge' };
+
+import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
 
 const R = 0.043;
 
@@ -28,14 +31,8 @@ function bsAtm(S, sigma, T) {
 
 async function fetchBarsData(sym) {
   try {
-    const r = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=3mo`,
-      { headers: { 'User-Agent': 'Mozilla/5.0' } }
-    );
-    if (!r.ok) return null;
-    const closes = (await r.json())?.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
-    const valid  = closes.filter(c => c != null && isFinite(c) && c > 0);
-    if (valid.length < 6) return null;
+    const valid = await fetchClosesSmart(sym, 70);   // ~3 mois de clôtures
+    if (!valid || valid.length < 6) return null;
 
     const lastClose = valid[valid.length - 1];
     const slice = valid.slice(-32);
@@ -100,9 +97,11 @@ export default async (req) => {
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
-  const [idxData, ...tickerResults] = await Promise.all([
+  const origin = new URL(req.url).origin;
+  const [idxData, idxIVr, ...tickerResults] = await Promise.all([
     fetchBarsData(idxEtf),
-    ...tickers.flatMap(t => [fetchBarsData(t), fetchIVFromMD(t, duration, mdTok)]),
+    ivViaApi(origin, indexSym, duration),
+    ...tickers.flatMap(t => [fetchBarsData(t), ivViaApi(origin, t, duration)]),
   ]);
 
   const idxRets  = idxData?.rets || null;
@@ -110,18 +109,26 @@ export default async (req) => {
   const idxHV    = idxData?.hv30 || null;
 
   const perTicker = tickers.map((t, i) => {
-    const bars = tickerResults[i * 2];
-    const ivMD = tickerResults[i * 2 + 1];
+    const bars   = tickerResults[i * 2];
+    const ivCboe = tickerResults[i * 2 + 1];
     if (!bars) return { ticker: t, price: null, hv: null, iv: null, beta: null, ivSrc: null };
-    const price = bars.lastClose;
+    const price = ivCboe?.spot ?? bars.lastClose;
     const hv    = bars.hv30;
-    const iv    = ivMD ?? (hv ? Number((hv * 1.15).toFixed(1)) : null);
+    const iv    = ivCboe?.iv ?? (hv ? Number((hv * 1.15).toFixed(1)) : null);
     const beta  = bars.rets && idxRets ? computeBeta(bars.rets, idxRets) : null;
-    return { ticker: t, price, hv, iv, beta, ivSrc: ivMD ? 'marketdata' : (hv ? 'hv_estimate' : null) };
+    return { ticker: t, price, hv, iv, beta, ivSrc: ivCboe?.iv != null ? 'cboe_delayed' : (hv ? 'hv_estimate' : null) };
   }).filter(r => r.price && r.iv);
 
-  const idxIV   = await fetchIVFromMD(idxEtf, duration, mdTok);
-  const idxIVfn = idxIV ?? (idxHV ? Number((idxHV * 1.1).toFixed(1)) : null);
+  // Repli MarketData pour les tickers sans IV Cboe (si token configuré)
+  if (mdTok) {
+    const missing = perTicker.filter(r => r.ivSrc === 'hv_estimate');
+    const mdIVs = await Promise.all(missing.map(r => fetchIVFromMD(r.ticker, duration, mdTok)));
+    missing.forEach((r, i) => { if (mdIVs[i] != null) { r.iv = mdIVs[i]; r.ivSrc = 'marketdata'; } });
+  }
+
+  const idxIVfn = idxIVr?.iv
+    ?? await fetchIVFromMD(idxEtf, duration, mdTok)
+    ?? (idxHV ? Number((idxHV * 1.1).toFixed(1)) : null);
 
   if (perTicker.length === 0) return Response.json({ error: 'no_price_data' }, { status: 502 });
 
