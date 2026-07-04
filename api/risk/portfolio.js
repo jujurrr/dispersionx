@@ -206,6 +206,8 @@ export default async (req) => {
       iv:              idxIVfn,
       scale:           idxScale,
     } : null,
-    source: mdTok ? 'marketdata+yahoo' : 'yahoo_hv_estimate',
+    source: perTicker.some(r => r.ivSrc === 'cboe_delayed') ? 'cboe_delayed'
+          : perTicker.some(r => r.ivSrc === 'marketdata') ? 'marketdata'
+          : 'hv_estimate',
   });
 };
