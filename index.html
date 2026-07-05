@@ -7,11 +7,8 @@
   <meta name="description" content="Plateforme professionnelle d'analyse et de construction de stratégies de dispersion d'options." />
 
   <!-- Favicon (site logo) -->
-  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
-  <link rel="mask-icon" href="favicon.svg" color="#2bb877" />
-
-  <!-- Design System CSS -->
-  <link rel="stylesheet" href="project/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="mask-icon" href="/favicon.svg" color="#2bb877" />
 
   <!-- App shell styles -->
   <style>
@@ -88,47 +85,8 @@
 <body>
   <div id="root"></div>
 
-  <!-- Theme (must run before paint) -->
-  <script src="project/ui_kits/theme.js?v=20260705c"></script>
-
-  <!-- React + Babel (pinned versions) -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
-
-  <!-- Design System bundle -->
-  <script src="project/_ds_bundle.js?v=20260705c"></script>
-
-  <!-- Mock data + API client + global store/preloader -->
-  <script src="js/data.js?v=20260705c"></script>
-  <script src="js/api.js?v=20260705c"></script>
-  <script src="js/store.js?v=20260705c"></script>
-
-  <!-- Logique pure partagée (testée en CI) — expose window.DXMarket -->
-  <script src="js/lib/market-hours.js?v=20260705c"></script>
-
-  <!-- Screens (JSX — transpiled by Babel standalone, preset=react only) -->
-  <script type="text/babel" data-presets="react" src="js/screens/Shell.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Home.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/IndexDetail.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/ScoreModal.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Lists.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/ListDetail.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Dashboard.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/CorrelationLab.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/VolatilityLab.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/RiskLab.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Construction.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Builder.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/StrategyMonitor.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Checklist.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/MonitorList.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/PositionDetail.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Docs.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Landing.jsx?v=20260705c"></script>
-  <script type="text/babel" data-presets="react" src="js/screens/Auth.jsx?v=20260705c"></script>
-
-  <!-- App entry (last, mounts React) -->
-  <script type="text/babel" data-presets="react" src="js/app.jsx?v=20260705c"></script>
+  <!-- Un SEUL point d'entrée : Vite regroupe React, le design system, les
+       données, les écrans et l'app (voir src/main.jsx). Plus de Babel au runtime. -->
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>

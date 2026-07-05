@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DispersionX</title>
+  <meta name="description" content="Plateforme professionnelle d'analyse et de construction de stratégies de dispersion d'options." />
+
+  <!-- Favicon (site logo) -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="mask-icon" href="favicon.svg" color="#2bb877" />
+
+  <!-- Design System CSS -->
+  <link rel="stylesheet" href="project/styles.css" />
+
+  <!-- App shell styles -->
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body, #root {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    body {
+      background: var(--bg-base);
+      color: var(--text);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Sidebar width token */
+    :root {
+      --sidebar-w: 220px;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+
+    /* Smooth focus */
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+
+    /* Table resets */
+    table { border-collapse: collapse; }
+
+    /* Input / select resets */
+    input, select, textarea { font-family: inherit; }
+
+    /* Loading placeholder */
+    #root:empty::after {
+      content: '';
+      display: block;
+      width: 32px;
+      height: 32px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      margin: -16px 0 0 -16px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Section transition splash */
+    @keyframes dxSplashWrap {
+      0% { opacity: 0; }
+      14% { opacity: 1; }
+      76% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    @keyframes dxSplashTitle {
+      0% { opacity: 0; transform: translateY(12px) scale(0.94); letter-spacing: 0.4em; }
+      100% { opacity: 1; transform: none; letter-spacing: -0.01em; }
+    }
+    @keyframes dxSplashBar {
+      0% { transform: scaleX(0); }
+      100% { transform: scaleX(1); }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Theme (must run before paint) -->
+  <script src="project/ui_kits/theme.js?v=20260705c"></script>
+
+  <!-- React + Babel (pinned versions) -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
+
+  <!-- Design System bundle -->
+  <script src="project/_ds_bundle.js?v=20260705c"></script>
+
+  <!-- Mock data + API client + global store/preloader -->
+  <script src="js/data.js?v=20260705c"></script>
+  <script src="js/api.js?v=20260705c"></script>
+  <script src="js/store.js?v=20260705c"></script>
+
+  <!-- Logique pure partagée (testée en CI) — expose window.DXMarket -->
+  <script src="js/lib/market-hours.js?v=20260705c"></script>
+
+  <!-- Screens (JSX — transpiled by Babel standalone, preset=react only) -->
+  <script type="text/babel" data-presets="react" src="js/screens/Shell.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Home.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/IndexDetail.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/ScoreModal.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Lists.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/ListDetail.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Dashboard.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/CorrelationLab.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/VolatilityLab.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/RiskLab.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Construction.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Builder.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/StrategyMonitor.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Checklist.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/MonitorList.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/PositionDetail.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Docs.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Landing.jsx?v=20260705c"></script>
+  <script type="text/babel" data-presets="react" src="js/screens/Auth.jsx?v=20260705c"></script>
+
+  <!-- App entry (last, mounts React) -->
+  <script type="text/babel" data-presets="react" src="js/app.jsx?v=20260705c"></script>
+</body>
+</html>

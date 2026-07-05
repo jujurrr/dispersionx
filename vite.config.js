@@ -1,26 +1,23 @@
 import { defineConfig } from 'vite';
 
-// ── Build Vite EN PARALLÈLE de l'index.html de production ────────────────────
-// L'app actuelle utilise React/ReactDOM en globals (window.React) et du JSX
-// « classique » (React.createElement). On garde EXACTEMENT ce modèle : esbuild
-// transforme le JSX en React.createElement (sans runtime automatique), et
-// src/globals-setup.js pose window.React avant tout le reste.
+// ── Build de production (Vite) ───────────────────────────────────────────────
+// L'app utilise React/ReactDOM en globals (window.React) et du JSX « classique »
+// (React.createElement). On garde EXACTEMENT ce modèle : esbuild transforme le
+// JSX en React.createElement (sans runtime automatique), et src/globals-setup.js
+// pose window.React avant tout le reste.
 //
-// La production continue de servir index.html (Babel navigateur) tant que le
-// bundle Vite n'a pas été validé dans un vrai navigateur (`npm run vite`).
-// Le basculement se fait ensuite en une étape (voir README).
-// Cible du proxy /api en dev : ton backend EN LIGNE (Vercel), pour voir les
-// VRAIES données en local. Remplace l'URL ci-dessous par celle de ton site,
-// ou définis la variable d'environnement DX_API_TARGET.
+// index.html (entrée Vite) → dist/ avec des noms de fichiers À EMPREINTE
+// (app-a1b2c3.js) : un changement de code = un nouveau nom = plus jamais de
+// cache périmé. L'ancienne version CDN/Babel est conservée dans index.legacy.html.
+//
+// Dev (`npm run vite`) : le proxy renvoie /api vers le backend en ligne pour voir
+// les vraies données en local.
 const API_TARGET = process.env.DX_API_TARGET || 'https://dispersionx.vercel.app';
 
 export default defineConfig({
   root: '.',
   server: {
-    // Ouvre automatiquement la BONNE page (vite-index.html) — sinon « / »
-    // servirait l'ancien index.html (production).
-    open: '/vite-index.html',
-    // Les appels /api du site local sont renvoyés vers le vrai backend en ligne.
+    open: '/',
     // secure:false → ne vérifie pas le certificat TLS de la cible : nécessaire
     // sur ce poste (interception TLS d'entreprise), sans risque car ce proxy
     // DEV pointe vers ton propre backend. La prod n'est pas concernée.
@@ -36,6 +33,6 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    rollupOptions: { input: 'vite-index.html' },
+    rollupOptions: { input: 'index.html' },
   },
 });
