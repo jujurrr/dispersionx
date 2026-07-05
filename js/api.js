@@ -166,34 +166,47 @@
     return null; // l'appelant garde ses données estimées
   }
 
-  /* ── Lists ───────────────────────────────────────────────────── */
+  /* ── Lists ───────────────────────────────────────────────────────
+     Si un utilisateur est connecté et Supabase configuré (window.DXCloud.enabled),
+     les listes sont stockées/lues CÔTÉ SERVEUR (partagées entre appareils).
+     Sinon → localStorage (DXMock), comportement historique. Le format renvoyé
+     est identique dans les deux cas, donc l'UI ne change pas. */
+  const _cloud = () => (window.DXCloud && window.DXCloud.enabled ? window.DXCloud : null);
+
   async function getLists() {
-    try { return await _get('/lists'); }
-    catch { return window.DXMock.lists; }
+    const c = _cloud();
+    if (c) { try { return await c.lists.getAll(); } catch (e) { console.warn('cloud getLists', e); } }
+    return window.DXMock.lists;
   }
   async function createList(name, index_symbol, description = '') {
-    try { return await _post('/lists', { name, index_symbol, description }); }
-    catch { return window.DXMock.createList(name, index_symbol, description); }
+    const c = _cloud();
+    if (c) { try { return await c.lists.create(name, index_symbol, description); } catch (e) { console.warn('cloud createList', e); } }
+    return window.DXMock.createList(name, index_symbol, description);
   }
   async function getList(id) {
-    try { return await _get('/lists/' + id); }
-    catch { return window.DXMock.lists.find(l => l.id === id); }
+    const c = _cloud();
+    if (c) { try { return await c.lists.get(id); } catch (e) { console.warn('cloud getList', e); } }
+    return window.DXMock.lists.find(l => l.id === id);
   }
   async function updateList(id, name, description) {
-    try { return await _put('/lists/' + id, { name, description }); }
-    catch { return { id, name, description }; }
+    const c = _cloud();
+    if (c) { try { return await c.lists.update(id, name, description); } catch (e) { console.warn('cloud updateList', e); } }
+    return { id, name, description };
   }
   async function deleteList(id) {
-    try { return await _delete('/lists/' + id); }
-    catch { return window.DXMock.deleteList(id); }
+    const c = _cloud();
+    if (c) { try { return await c.lists.remove(id); } catch (e) { console.warn('cloud deleteList', e); } }
+    return window.DXMock.deleteList(id);
   }
   async function addListItem(id, ticker, score_data, notes = '') {
-    try { return await _post('/lists/' + id + '/items', { ticker, score_data, notes }); }
-    catch { return window.DXMock.addListItem(id, ticker, score_data); }
+    const c = _cloud();
+    if (c) { try { return await c.lists.addItem(id, ticker, score_data); } catch (e) { console.warn('cloud addListItem', e); } }
+    return window.DXMock.addListItem(id, ticker, score_data);
   }
   async function removeListItem(id, ticker) {
-    try { return await _delete('/lists/' + id + '/items/' + ticker); }
-    catch { return window.DXMock.removeListItem(id, ticker); }
+    const c = _cloud();
+    if (c) { try { return await c.lists.removeItem(id, ticker); } catch (e) { console.warn('cloud removeListItem', e); } }
+    return window.DXMock.removeListItem(id, ticker);
   }
   async function getListAnalysis(id) {
     try { return await _get('/lists/' + id + '/analysis'); }

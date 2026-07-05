@@ -7,6 +7,10 @@
 // 1) React/ReactDOM en global — AVANT tout le reste.
 import './globals-setup.js';
 
+// 1b) Couche cloud (Supabase) → window.DXCloud. Inactive sans clés VITE_SUPABASE_*
+//     (l'app reste en localStorage). Doit exister avant que les écrans tournent.
+import './cloud.js';
+
 // 2) Styles du design system.
 import '../project/styles.css';
 

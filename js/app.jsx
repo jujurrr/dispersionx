@@ -74,6 +74,16 @@ function App() {
     DXApi.getLists().then(data => setLists(data || [])).catch(() => {});
   }, []);
 
+  // Session Supabase (window.DXCloud) → état `user`. Se connecter/déconnecter
+  // ou migrer les listes recharge la liste des listes (source = cloud ou local).
+  React.useEffect(() => {
+    const reload = () => DXApi.getLists().then(d => setLists(d || [])).catch(() => {});
+    const onAuthChange = (e) => { handleAuth(e.detail); reload(); };
+    window.addEventListener('dx-auth-change', onAuthChange);
+    window.addEventListener('dx-lists-changed', reload);
+    return () => { window.removeEventListener('dx-auth-change', onAuthChange); window.removeEventListener('dx-lists-changed', reload); };
+  }, []);
+
   // Persist mode
   React.useEffect(() => {
     localStorage.setItem('dx-mode', mode);

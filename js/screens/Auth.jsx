@@ -23,7 +23,7 @@ function Auth({ onNav, user, onAuth }) {
   };
   const labelStyle = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 6, display: 'block' };
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     setError('');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setError('Adresse e-mail invalide.');
@@ -33,12 +33,37 @@ function Auth({ onNav, user, onAuth }) {
       if (pw !== pw2) return setError('Les mots de passe ne correspondent pas.');
     }
     setBusy(true);
-    setTimeout(() => {
-      const u = { email, name: name.trim() || email.split('@')[0] };
-      onAuth && onAuth(u);
-      setBusy(false);
-      onNav('home');
-    }, 650);
+    const C = window.DXCloud;
+    if (C && C.configured && C.auth) {
+      // Vrai backend Supabase
+      try {
+        const u = mode === 'signup'
+          ? await C.auth.signUpPassword(email, pw, name.trim())
+          : await C.auth.signInPassword(email, pw);
+        onAuth && onAuth(u);   // l'app se met aussi à jour via 'dx-auth-change'
+        onNav('home');
+      } catch (err) {
+        if (err && err.code === 'confirm_email') {
+          setError('Compte créé ! Vérifie ta boîte mail et clique le lien de confirmation, puis connecte-toi.');
+          setMode('login');
+        } else {
+          setError(err && err.message ? err.message : 'Échec de la connexion.');
+        }
+      } finally { setBusy(false); }
+    } else {
+      // Aucun backend configuré → session locale (comportement historique)
+      setTimeout(() => {
+        onAuth && onAuth({ email, name: name.trim() || email.split('@')[0] });
+        setBusy(false);
+        onNav('home');
+      }, 400);
+    }
+  }
+
+  async function google() {
+    setError('');
+    try { await window.DXCloud.auth.signInGoogle(); }   // redirige vers Google
+    catch (err) { setError(err && err.message ? err.message : 'Connexion Google indisponible.'); }
   }
 
   function demo() {
@@ -79,7 +104,7 @@ function Auth({ onNav, user, onAuth }) {
         <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginBottom: 26 }}>{user.email}</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <Button variant="primary" size="lg" full onClick={() => onNav('home')}>Aller à l'application</Button>
-          <Button variant="outline" size="md" full onClick={() => { onAuth && onAuth(null); onNav('landing'); }}>Se déconnecter</Button>
+          <Button variant="outline" size="md" full onClick={async () => { try { if (window.DXCloud && window.DXCloud.configured) await window.DXCloud.auth.signOut(); } catch {} onAuth && onAuth(null); onNav('landing'); }}>Se déconnecter</Button>
         </div>
       </div>
     );
@@ -140,6 +165,12 @@ function Auth({ onNav, user, onAuth }) {
         <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ou</span>
         <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
       </div>
+
+      {window.DXCloud && window.DXCloud.configured && (
+        <Button variant="outline" size="md" full onClick={google} type="button">Continuer avec Google</Button>
+      )}
+
+      <div style={{ height: 10 }} />
 
       <Button variant="outline" size="md" full onClick={demo}>Continuer en mode démo</Button>
 
