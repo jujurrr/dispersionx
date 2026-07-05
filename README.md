@@ -23,3 +23,47 @@ The design medium is **HTML/CSS/JS** — these are prototypes, not production co
 - `README.md` — this file
 - `chats/` — conversation transcripts (read these!)
 - `project/` — the `DispersionX Design System` project files (HTML prototypes, assets, components)
+
+---
+
+# DispersionX — développement, tests et déploiement
+
+L'application réelle vit à la racine (pas dans `project/`, qui ne contient que les
+maquettes de design d'origine).
+
+## Structure
+
+- `index.html` — point d'entrée ; charge React + Babel (CDN), puis les écrans JSX.
+- `js/` — front-end : écrans (`js/screens/*.jsx`), client API (`js/api.js`),
+  données de démo (`js/data.js`), logique pure partagée (`js/lib/*.js`).
+- `api/` — fonctions serverless **Vercel** (edge), avec la logique métier dans
+  `api/_lib/` (Cboe, échelles proxy…).
+- `netlify/functions/` — **miroir** des fonctions : de simples ré-exports des
+  handlers `api/` (sauf `correlation-matrix.mjs`, copie autonome).
+- `test/`, `scripts/`, `.github/workflows/` — tests, vérification JSX, CI.
+
+## Déploiement — Vercel fait foi
+
+**La plateforme canonique est Vercel** : les fonctions `api/**` sont écrites au
+format Vercel (edge runtime), et `vercel.json` sert la racine en statique. Le
+dossier `netlify/functions/` est un **miroir de secours** — chaque fichier
+ré-exporte le handler Vercel correspondant, donc les deux hébergeurs restent
+synchronisés, mais **Vercel est la référence**. En cas de doute, c'est `api/`
+et `vercel.json` qui priment.
+
+## Tests (aucune installation requise pour les tests unitaires)
+
+Les tests unitaires utilisent le lanceur intégré de Node (`node --test`) — pas
+de dépendance à installer.
+
+```bash
+npm test          # tests unitaires : grecs BS, IV, échelles proxy, horaires de marché
+npm run test:jsx  # vérifie que tous les .jsx compilent (nécessite `npm install`)
+npm run test:all  # les deux
+```
+
+## Intégration continue
+
+`.github/workflows/ci.yml` rejoue, à chaque push et pull request, la
+compilation JSX puis les tests unitaires. Un changement qui casse le JSX ou la
+logique financière échoue **avant** le déploiement.

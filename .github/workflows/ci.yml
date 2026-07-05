@@ -1,0 +1,23 @@
+name: CI
+
+# Filet de sécurité : à chaque push / pull request, on vérifie que le JSX
+# compile et que la logique financière + horaires de marché passe les tests.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Installer les dépendances de dev
+        run: npm install
+      - name: Vérifier la compilation JSX
+        run: npm run test:jsx
+      - name: Tests unitaires (grecs, IV, horaires de marché…)
+        run: npm test

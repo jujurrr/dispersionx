@@ -104,6 +104,9 @@
   <script src="js/api.js"></script>
   <script src="js/store.js"></script>
 
+  <!-- Logique pure partagée (testée en CI) — expose window.DXMarket -->
+  <script src="js/lib/market-hours.js"></script>
+
   <!-- Screens (JSX — transpiled by Babel standalone, preset=react only) -->
   <script type="text/babel" data-presets="react" src="js/screens/Shell.jsx"></script>
   <script type="text/babel" data-presets="react" src="js/screens/Home.jsx"></script>

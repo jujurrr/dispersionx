@@ -13,7 +13,7 @@ const R = 0.043;
 // l'ordre des résultats. Sert à ne pas marteler le CDN Cboe (barres + IV) avec
 // 30+ requêtes simultanées, ce qui déclenche son throttling (l'IV retombe alors
 // silencieusement sur l'estimation HV).
-async function mapLimit(items, limit, fn) {
+export async function mapLimit(items, limit, fn) {
   const out = new Array(items.length);
   let next = 0;
   const n = Math.max(1, Math.min(limit, items.length));
@@ -27,15 +27,15 @@ async function mapLimit(items, limit, fn) {
   return out;
 }
 
-function normPDF(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
-function normCDF(x) {
+export function normPDF(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
+export function normCDF(x) {
   const s = x < 0 ? -1 : 1, a = Math.abs(x);
   const t = 1 / (1 + 0.3275911 * a);
   const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-a * a);
   return 0.5 * (1 + s * y);
 }
 
-function bsAtm(S, sigma, T) {
+export function bsAtm(S, sigma, T) {
   if (T <= 0 || sigma <= 0 || S <= 0) return null;
   const sqrtT = Math.sqrt(T);
   const d1 = (R * sqrtT / sigma) + sigma * sqrtT / 2;

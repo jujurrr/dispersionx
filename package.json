@@ -1,5 +1,16 @@
 {
   "name": "dispersionx",
+  "version": "1.0.0",
+  "description": "Plateforme d'analyse et de construction de stratégies de dispersion d'options.",
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "test:jsx": "node scripts/check-jsx.mjs",
+    "test:all": "npm run test:jsx && npm test"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.10",
+    "@babel/preset-react": "^7.23.3"
+  }
 }
