@@ -9,6 +9,11 @@ import { proxyEtf } from '../_lib/proxy-scale.js';
 
 const R = 0.043;
 const RHO_IMPL_EST = 0.65;
+// Fenêtre de HV réalisée (jours de bourse) pour la prime de vol du score.
+// 45 j ≈ convention des brokers : assez long pour qu'un earnings isolé ne fasse
+// pas exploser la HV, assez court pour rester réactif. (30 j y était trop
+// sensible : ex. ZS 128 % vs ~110 % broker.)
+const HV_WINDOW = 45;
 
 function normPDF(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
 function normCDF(x) {
@@ -54,7 +59,7 @@ async function fetchBarsData(sym) {
     }
     const hvMin = windowedHVs.length ? Number((Math.min(...windowedHVs) * 0.85).toFixed(1)) : null;
     const hvMax = windowedHVs.length ? Number((Math.max(...windowedHVs) * 1.5).toFixed(1)) : null;
-    return { lastClose, hv30: hvOf(30), rets, hvMin, hvMax };
+    return { lastClose, hv: hvOf(HV_WINDOW), rets, hvMin, hvMax };
   } catch { return null; }
 }
 
@@ -124,19 +129,19 @@ export default async (req) => {
   // IV : Cboe (réelle, différée 15 min) → MarketData (si token) → HV×1.15
   const ivMD  = ivCboe?.iv == null ? await fetchIVFromMD(sym, duration, mdTok) : null;
   const price = ivCboe?.spot ?? stockData.lastClose;
-  const hv30  = stockData.hv30 ?? 25;
-  const iv    = ivCboe?.iv ?? ivMD ?? Number((hv30 * 1.15).toFixed(1));
+  const hv  = stockData.hv ?? 25;
+  const iv    = ivCboe?.iv ?? ivMD ?? Number((hv * 1.15).toFixed(1));
   const ivSrc = ivCboe?.iv != null ? 'cboe_delayed' : (ivMD != null ? 'marketdata' : 'estimated_from_hv');
 
   const rho  = idxData?.rets ? Number((pearson(stockData.rets, idxData.rets) ?? 0.55).toFixed(3)) : 0.55;
   const beta = idxData?.rets ? (computeBeta(stockData.rets, idxData.rets) ?? 1.0) : 1.0;
 
-  const ivMin  = stockData.hvMin ?? Number((hv30 * 0.6).toFixed(1));
-  const ivMax  = stockData.hvMax ?? Number((hv30 * 2.0).toFixed(1));
+  const ivMin  = stockData.hvMin ?? Number((hv * 0.6).toFixed(1));
+  const ivMax  = stockData.hvMax ?? Number((hv * 2.0).toFixed(1));
   const ivRank = ivMax > ivMin ? Math.round(Math.max(0, Math.min(100, (iv - ivMin) / (ivMax - ivMin) * 100))) : 50;
   const ivPct  = Math.round(Math.max(0, Math.min(100, ivRank * 0.95)));
 
-  const volPrem    = iv - hv30;
+  const volPrem    = iv - hv;
   const edgeRho    = (RHO_IMPL_EST - rho) * 40;
   const betaScore  = Math.max(0, 12 - Math.abs(beta - 1.1) * 10);
   const volContrib = Math.max(-25, Math.min(25, volPrem));
@@ -144,7 +149,7 @@ export default async (req) => {
   const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
 
   const subscores = {
-    vol_attractive:     { score: Math.round(Math.max(0, Math.min(99, 50 + volPrem * 1.8))), reason: `IV ${iv.toFixed(1)}% vs HV ${hv30.toFixed(1)}% (prime ${volPrem >= 0 ? '+' : ''}${volPrem.toFixed(1)} pts)` },
+    vol_attractive:     { score: Math.round(Math.max(0, Math.min(99, 50 + volPrem * 1.8))), reason: `IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}% (prime ${volPrem >= 0 ? '+' : ''}${volPrem.toFixed(1)} pts)` },
     dispersion_contrib: { score: Math.round(Math.max(0, Math.min(99, (1 - Math.max(0, rho)) * 120))), reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs indice (${rho < 0.5 ? 'faible = favorable' : rho < 0.7 ? 'modérée' : 'élevée = défavorable'})` },
     liquidity:          { score: Math.min(99, Math.round(50 + Math.log(Math.max(1, price)) * 5)), reason: `Prix ${price.toFixed(2)}$ — proxy liquidité` },
     execution:          { score: Math.min(99, Math.round(75 - rho * 28)), reason: `Spread estimé selon corrélation` },
@@ -170,7 +175,7 @@ export default async (req) => {
       recommendation: rec,
     },
     stock: {
-      symbol: sym, weight: 10.0, iv, hv: hv30, beta,
+      symbol: sym, weight: 10.0, iv, hv, beta,
       last_price: Number(price.toFixed(2)), iv_source: ivSrc,
       earnings_in_strategy: false, days_to_earnings: 45, earnings_date: '—',
       iv_rank: { iv_rank: ivRank, iv_percentile: ivPct, iv_min: ivMin, iv_max: ivMax, note: ivSrc === 'cboe_delayed' ? 'IV réelle Cboe (différé 15 min) — rang estimé depuis HV historique' : ivSrc === 'marketdata' ? 'IV réelle MarketData — rang estimé depuis HV historique' : 'IV et rang estimés depuis la HV historique' },
@@ -183,7 +188,7 @@ export default async (req) => {
         expiry: ivCboe?.greeks?.expiry ?? expiryDate,
       } : null,
     },
-    index: { symbol: indexSym, name: { SPX: 'S&P 500', NDX: 'Nasdaq 100', DJI: 'Dow Jones', CAC: 'CAC 40', DAX: 'DAX' }[indexSym] || indexSym, iv: ivIdxCboe?.iv ?? (idxData?.hv30 ? Number((idxData.hv30 * 1.1).toFixed(1)) : null), iv_source: ivIdxCboe?.iv != null ? 'cboe_delayed' : 'estimated_from_hv' },
+    index: { symbol: indexSym, name: { SPX: 'S&P 500', NDX: 'Nasdaq 100', DJI: 'Dow Jones', CAC: 'CAC 40', DAX: 'DAX' }[indexSym] || indexSym, iv: ivIdxCboe?.iv ?? (idxData?.hv ? Number((idxData.hv * 1.1).toFixed(1)) : null), iv_source: ivIdxCboe?.iv != null ? 'cboe_delayed' : 'estimated_from_hv' },
     metadata: { duration_days: duration, source: ivSrc === 'cboe_delayed' ? 'cboe+closes' : (ivSrc === 'marketdata' ? 'marketdata+closes' : 'closes_only') },
   });
 };
