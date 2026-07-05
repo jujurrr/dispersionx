@@ -8,6 +8,10 @@ import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
 import { proxyEtf, proxyScale } from '../_lib/proxy-scale.js';
 
 const R = 0.043;
+// Fenêtre de HV réalisée (jours de bourse) — MÊME valeur que api/stocks/auto-score.js
+// pour que la HV de la liste (risk/portfolio) et celle du ScoreModal (auto-score)
+// coïncident. 45 j ≈ convention broker (un earnings isolé ne domine pas).
+const HV_WINDOW = 45;
 
 // Exécute des tâches asynchrones avec un plafond de concurrence, en préservant
 // l'ordre des résultats. Sert à ne pas marteler le CDN Cboe (barres + IV) avec
@@ -54,18 +58,18 @@ async function fetchBarsData(sym) {
     if (!valid || valid.length < 6) return null;
 
     const lastClose = valid[valid.length - 1];
-    const slice = valid.slice(-32);
+    const slice = valid.slice(-(HV_WINDOW + 1));
     const rets  = [];
     for (let i = 1; i < slice.length; i++) {
       if (slice[i] > 0 && slice[i - 1] > 0) rets.push(Math.log(slice[i] / slice[i - 1]));
     }
-    if (rets.length < 5) return { lastClose, hv30: null, rets: [] };
+    if (rets.length < 5) return { lastClose, hv: null, rets: [] };
 
     const m  = rets.reduce((a, b) => a + b, 0) / rets.length;
     const vv = rets.reduce((a, b) => a + (b - m) ** 2, 0) / (rets.length - 1);
-    const hv30 = Number((Math.sqrt(vv * 252) * 100).toFixed(1));
+    const hv = Number((Math.sqrt(vv * 252) * 100).toFixed(1));
 
-    return { lastClose, hv30, rets };
+    return { lastClose, hv, rets };
   } catch { return null; }
 }
 
@@ -130,14 +134,14 @@ export default async (req) => {
 
   const idxRets  = idxData?.rets || null;
   const idxClose = idxData?.lastClose || null;
-  const idxHV    = idxData?.hv30 || null;
+  const idxHV    = idxData?.hv || null;
 
   const perTicker = tickers.map((t, i) => {
     const bars   = tickerResults[i * 2];
     const ivCboe = tickerResults[i * 2 + 1];
     if (!bars) return { ticker: t, price: null, hv: null, iv: null, beta: null, ivSrc: null };
     const price = ivCboe?.spot ?? bars.lastClose;
-    const hv    = bars.hv30;
+    const hv    = bars.hv;
     const iv    = ivCboe?.iv ?? (hv ? Number((hv * 1.15).toFixed(1)) : null);
     const beta  = bars.rets && idxRets ? computeBeta(bars.rets, idxRets) : null;
     return { ticker: t, price, hv, iv, beta, ivSrc: ivCboe?.iv != null ? 'cboe_delayed' : (hv ? 'hv_estimate' : null) };
