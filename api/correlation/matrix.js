@@ -3,6 +3,8 @@
 // Calcule la matrice de corrélation réalisée depuis Yahoo Finance + ρ implicite via VIX
 export const config = { runtime: 'edge' };
 
+import { proxyEtf } from '../_lib/proxy-scale.js';
+
 async function fetchCloses(symbol, days) {
   // Actions à classes US : Yahoo veut un tiret (BRK.B → BRK-B). Les suffixes
   // de place (2 lettres : .PA, .DE) sont conservés tels quels.
@@ -66,8 +68,7 @@ export default async (req) => {
   const days     = Math.min(Number(body.days) || 60, 120);
   if (tickers.length < 2) return Response.json({ error: 'need_2_tickers' }, { status: 400 });
 
-  const ETF = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA', CAC: 'EWQ', DAX: 'EWG' };
-  const idxEtf = ETF[indexSym] || indexSym;
+  const idxEtf = proxyEtf(indexSym);
 
   // Indice de vol implicite (VIX / VXN)
   const VOL_TICKER = { SPX: '^VIX', NDX: '^VXN', DJI: '^VIX' };

@@ -45,8 +45,9 @@
     DAX: { price: 18620.44, etf: 'EWG', etf_price: 32.96, change: +0.55, hv30: 13.9, hv1y: 16.6, iv_est: 15.8, perf5d: +1.1, perf30d: +3.2, ytd: +9.1 },
   };
 
-  // Ratio niveau d'indice / prix ETF proxy (même table que le backend) —
-  // repli quand un snapshot ne fournit pas etf_price.
+  // Ratio niveau d'indice / prix ETF proxy — miroir navigateur de la source
+  // unique serveur api/_lib/proxy-scale.js (garder les deux synchronisés).
+  // Repli quand un snapshot ne fournit pas etf_price.
   const PROXY_SCALE = {
     SPX: { etf: 'SPY', scale: 10 },
     NDX: { etf: 'QQQ', scale: 41 },

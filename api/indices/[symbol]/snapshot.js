@@ -5,17 +5,10 @@
 export const config = { runtime: 'edge' };
 
 import { ivViaApi } from '../../_lib/cboe.js';
+import { PROXY_SCALE as PROXY } from '../../_lib/proxy-scale.js';
 
 const DATA_BASE = 'https://data.alpaca.markets';
 const FEED = process.env.ALPACA_DATA_FEED || 'iex';
-
-const PROXY = {
-  SPX: { etf: 'SPY',  scale: 10  },
-  NDX: { etf: 'QQQ',  scale: 41  },
-  DJI: { etf: 'DIA',  scale: 100 },
-  CAC: { etf: 'EWQ',  scale: 196 },
-  DAX: { etf: 'EWG',  scale: 565 },
-};
 
 function alpacaHeaders() {
   return {

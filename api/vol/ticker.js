@@ -7,8 +7,7 @@
 export const config = { runtime: 'edge' };
 
 import { cboeIvBundle, fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
-
-const ETF = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA', CAC: 'EWQ', DAX: 'EWG' };
+import { proxyEtf } from '../_lib/proxy-scale.js';
 
 function logReturns(closes) {
   const r = [];
@@ -77,7 +76,7 @@ export default async (req) => {
   const origin   = new URL(req.url).origin;
   const mdTok    = process.env.MARKETDATA_API_TOKEN;
   const indexKey = (body.index || 'SPX').toUpperCase();
-  const idxEtf   = ETF[indexKey] || 'SPY';
+  const idxEtf   = proxyEtf(indexKey);
 
   // ── MODE BATCH ────────────────────────────────────────────────────
   if (Array.isArray(body.tickers)) {

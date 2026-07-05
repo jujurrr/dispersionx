@@ -5,6 +5,7 @@
 export const config = { runtime: 'edge' };
 
 import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
+import { proxyEtf } from '../_lib/proxy-scale.js';
 
 const R = 0.043;
 const RHO_IMPL_EST = 0.65;
@@ -106,8 +107,7 @@ export default async (req) => {
   const duration = Math.max(7, Math.min(Number(body.duration_days) || 30, 120));
   if (!sym) return Response.json({ error: 'no_symbol' }, { status: 400 });
 
-  const ETF    = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA', CAC: 'EWQ', DAX: 'EWG' };
-  const idxEtf = ETF[indexSym] || indexSym;
+  const idxEtf = proxyEtf(indexSym);
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 

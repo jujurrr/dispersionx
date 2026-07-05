@@ -5,8 +5,27 @@
 export const config = { runtime: 'edge' };
 
 import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
+import { proxyEtf, proxyScale } from '../_lib/proxy-scale.js';
 
 const R = 0.043;
+
+// Exécute des tâches asynchrones avec un plafond de concurrence, en préservant
+// l'ordre des résultats. Sert à ne pas marteler le CDN Cboe (barres + IV) avec
+// 30+ requêtes simultanées, ce qui déclenche son throttling (l'IV retombe alors
+// silencieusement sur l'estimation HV).
+async function mapLimit(items, limit, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const n = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: n }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
 
 function normPDF(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
 function normCDF(x) {
@@ -83,26 +102,31 @@ export default async (req) => {
   let body = {};
   try { body = await req.json(); } catch {}
 
-  const tickers  = (body.tickers || []).map(s => String(s).toUpperCase().trim()).filter(Boolean).slice(0, 15);
+  // Déduplication : un même ticker deux fois ne doit pas doubler les fetches Cboe.
+  const tickers  = [...new Set((body.tickers || []).map(s => String(s).toUpperCase().trim()).filter(Boolean))].slice(0, 15);
   const indexSym = (body.index || 'SPX').toUpperCase();
   const duration = Math.max(7, Math.min(Number(body.duration) || 30, 120));
   if (tickers.length === 0) return Response.json({ error: 'no_tickers' }, { status: 400 });
 
-  const ETF    = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA', CAC: 'EWQ', DAX: 'EWG' };
-  const idxEtf = ETF[indexSym] || indexSym;
-  // ETF price × multiplier ≈ actual index level for proper index-option vega calculation
-  // SPY×10 ≈ SPX, QQQ×40 ≈ NDX — gives realistic vega-neutral lot counts
-  const ETF_MULT = { SPX: 10, NDX: 40, DJI: 100, CAC: 250, DAX: 600 };
-  const idxScale = ETF_MULT[indexSym] || 1;
+  // Échelles ETF proxy → niveau d'indice : source UNIQUE partagée avec le
+  // snapshot et le miroir navigateur (window.DXProxy) — cf. _lib/proxy-scale.js.
+  const idxEtf   = proxyEtf(indexSym);
+  const idxScale = proxyScale(indexSym);
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
   const origin = new URL(req.url).origin;
-  const [idxData, idxIVr, ...tickerResults] = await Promise.all([
-    fetchBarsData(idxEtf),
-    ivViaApi(origin, indexSym, duration),
-    ...tickers.flatMap(t => [fetchBarsData(t), ivViaApi(origin, t, duration)]),
-  ]);
+  // Un seul lot de fetches Cboe (barres historiques + IV via /api/iv). Sur un
+  // panier de 15 valeurs cela ferait ~32 requêtes simultanées vers le Cboe, ce
+  // qui déclenche son throttling. On plafonne la concurrence pour rester sous
+  // le radar tout en gardant du parallélisme. L'ordre est préservé, donc
+  // l'indexation aval (tickerResults[i*2 / i*2+1]) reste identique.
+  const tasks = [
+    () => fetchBarsData(idxEtf),
+    () => ivViaApi(origin, indexSym, duration),
+    ...tickers.flatMap(t => [() => fetchBarsData(t), () => ivViaApi(origin, t, duration)]),
+  ];
+  const [idxData, idxIVr, ...tickerResults] = await mapLimit(tasks, 6, fn => fn());
 
   const idxRets  = idxData?.rets || null;
   const idxClose = idxData?.lastClose || null;
