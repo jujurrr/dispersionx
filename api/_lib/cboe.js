@@ -14,6 +14,55 @@
 const OPTIONS_URL = 'https://cdn.cboe.com/api/global/delayed_quotes/options/';
 const HISTORY_URL = 'https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/';
 
+// ── Résilience réseau : réessais + backoff, cache mémoire, déduplication ─────
+// Le CDN Cboe est gratuit, throttlé et sans SLA : on réessaie les erreurs
+// transitoires (429, 5xx, timeouts) avec un délai croissant, on coalesce les
+// requêtes identiques « en vol », et on garde un petit cache mémoire par
+// instance. Échecs et replis sont journalisés (JSON, repérables dans les logs).
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Statuts HTTP transitoires qui valent la peine d'être réessayés.
+export function isRetryableStatus(status) {
+  return status === 408 || status === 425 || status === 429 ||
+         status === 500 || status === 502 || status === 503 || status === 504;
+}
+
+// Backoff exponentiel plafonné + jitter (évite que tous les clients réessaient
+// en même temps). attempt = 0, 1, 2… → délai croissant borné par `cap`.
+export function backoffDelay(attempt, base = 300, cap = 4000) {
+  const exp = Math.min(cap, base * 2 ** attempt);
+  return exp / 2 + Math.random() * (exp / 2);
+}
+
+function logEvent(evt, data) {
+  try { console.log(JSON.stringify({ src: 'cboe', evt, ...data })); } catch {}
+}
+
+// Cache mémoire + déduplication des appels « en vol », par clé. TTL en ms ; les
+// valeurs nulles NE sont PAS mises en cache (on retentera au prochain appel).
+export function makeCache({ maxEntries = 256 } = {}) {
+  const store = new Map();      // key -> { at, val }
+  const inflight = new Map();   // key -> Promise
+  return function cached(key, ttlMs, producer) {
+    const hit = store.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) return Promise.resolve(hit.val);
+    if (inflight.has(key)) return inflight.get(key);   // requête identique déjà en cours
+    const p = (async () => {
+      try {
+        const val = await producer();
+        if (val != null) {
+          store.set(key, { at: Date.now(), val });
+          if (store.size > maxEntries) store.delete(store.keys().next().value); // borne mémoire
+        }
+        return val;
+      } finally { inflight.delete(key); }
+    })();
+    inflight.set(key, p);
+    return p;
+  };
+}
+const _cboeCache = makeCache();
+
 export const CBOE_INDEX = {
   SPX: '_SPX', NDX: '_NDX', RUT: '_RUT', VIX: '_VIX',
   DJX: '_DJX', DJI: '_DJX',
@@ -25,28 +74,46 @@ export function cboeSymbol(sym) {
   return CBOE_INDEX[s] || s;
 }
 
-async function fetchJson(url, timeoutMs) {
-  try {
-    const r = await fetch(url, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!r.ok) return null;
-    return await r.json();
-  } catch { return null; }
+export async function fetchJson(url, timeoutMs, { retries = 2, backoff = backoffDelay } = {}) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (r.ok) return await r.json();
+      if (isRetryableStatus(r.status) && attempt < retries) {
+        logEvent('retry', { url, status: r.status, attempt });
+        await sleep(backoff(attempt));
+        continue;
+      }
+      logEvent('http_error', { url, status: r.status });
+      return null;
+    } catch (e) {
+      if (attempt < retries) {
+        logEvent('retry', { url, err: (e && e.name) || 'error', attempt });
+        await sleep(backoff(attempt));
+        continue;
+      }
+      logEvent('fetch_failed', { url, err: (e && e.message) || String(e) });
+      return null;
+    }
+  }
 }
 
 // Chaîne d'options complète. Retourne { spot, iv30, options, asof } ou null.
 export async function fetchCboeChain(symbol, timeoutMs = 15000) {
-  const d = (await fetchJson(OPTIONS_URL + encodeURIComponent(cboeSymbol(symbol)) + '.json', timeoutMs))?.data;
-  const spot = d?.current_price ?? d?.close;
-  if (!spot || !Array.isArray(d.options) || !d.options.length) return null;
-  return {
-    spot,
-    iv30: Number(d.iv30) > 0.1 && Number(d.iv30) < 500 ? Number(Number(d.iv30).toFixed(1)) : null,
-    options: d.options,
-    asof: d.last_trade_time || null,
-  };
+  return _cboeCache(`chain:${cboeSymbol(symbol)}`, 60000, async () => {
+    const d = (await fetchJson(OPTIONS_URL + encodeURIComponent(cboeSymbol(symbol)) + '.json', timeoutMs))?.data;
+    const spot = d?.current_price ?? d?.close;
+    if (!spot || !Array.isArray(d.options) || !d.options.length) return null;
+    return {
+      spot,
+      iv30: Number(d.iv30) > 0.1 && Number(d.iv30) < 500 ? Number(Number(d.iv30).toFixed(1)) : null,
+      options: d.options,
+      asof: d.last_trade_time || null,
+    };
+  });
 }
 
 // IV ATM par échéance : moyenne des IV (calls + puts) des strikes à ±1 % du
@@ -152,10 +219,13 @@ export async function cboeIvBundle(symbol, dte = 30, timeoutMs = 15000) {
 // Clôtures quotidiennes (ajustées des splits) — pour HV/beta/corrélation.
 // Retourne number[] (chronologique) ou null.
 export async function fetchCboeCloses(symbol, maxBars = 300, timeoutMs = 10000) {
-  const j = await fetchJson(HISTORY_URL + encodeURIComponent(cboeSymbol(symbol)) + '.json', timeoutMs);
-  const rows = j?.data;
-  if (!Array.isArray(rows) || rows.length < 10) return null;
-  return rows.slice(-maxBars).map(r => r.close).filter(c => c != null && isFinite(c) && c > 0);
+  // Clé incluant maxBars : deux appels de tailles différentes ne se mélangent pas.
+  return _cboeCache(`closes:${cboeSymbol(symbol)}:${maxBars}`, 1800000, async () => {
+    const j = await fetchJson(HISTORY_URL + encodeURIComponent(cboeSymbol(symbol)) + '.json', timeoutMs);
+    const rows = j?.data;
+    if (!Array.isArray(rows) || rows.length < 10) return null;
+    return rows.slice(-maxBars).map(r => r.close).filter(c => c != null && isFinite(c) && c > 0);
+  });
 }
 
 async function fetchYahooCloses(symbol, range = '1y', timeoutMs = 8000) {
@@ -178,7 +248,9 @@ async function fetchYahooCloses(symbol, range = '1y', timeoutMs = 8000) {
 export async function fetchClosesSmart(symbol, maxBars = 300) {
   const cboe = await fetchCboeCloses(symbol, maxBars);
   if (cboe && cboe.length >= 30) return cboe;
+  logEvent('fallback_yahoo', { symbol, cboe: cboe ? cboe.length : 0 });
   const yahoo = await fetchYahooCloses(symbol, maxBars > 260 ? '2y' : '1y');
+  if (!yahoo) logEvent('closes_unavailable', { symbol });
   return yahoo ? yahoo.slice(-maxBars) : cboe;
 }
 
