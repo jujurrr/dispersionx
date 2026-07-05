@@ -12,12 +12,11 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
       setData(d);
       setLoading(false);
       onScoreLoaded && onScoreLoaded(stockTicker, d?.scoring?.score);
-      // Surcouche : IV ATM + greeks réels (MarketData → Alpaca options)
-      DXApi.getOptionAtm(stockTicker, duration).then(opt => {
-        if (opt && opt.iv) {
-          setData(prev => prev ? { ...prev, stock: { ...prev.stock, iv: opt.iv, greeks: opt.greeks, iv_source: opt.source || 'marketdata' } } : prev);
-        }
-      }).catch(() => {});
+      // On N'ÉCRASE PLUS l'IV avec une 2e source (options ATM). L'IV affichée,
+      // « IV − HV » et le score doivent provenir du MÊME calcul (auto-score),
+      // sinon l'écran montre une IV qui ne colle pas à « IV − HV » — bug
+      // constaté sur ZS (IV 128 / HV 58 mais « IV − HV » incohérent) et écart
+      // local↔Vercel. Les grecs « straddle » viennent aussi d'auto-score.
     }).catch(() => setLoading(false));
   }, [indexSymbol, stockTicker, duration]);
 
