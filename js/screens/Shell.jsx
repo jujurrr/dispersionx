@@ -249,6 +249,106 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
   );
 }
 
+// ── Statut d'ouverture des places boursières ────────────────────────
+// Horaires RÉGULIERS locaux à chaque place (via Intl/timeZone → DST géré),
+// hors jours fériés. Minutes depuis minuit dans le fuseau de la place.
+const EXCHANGES = [
+  { key: 'nyse',     label: 'NYSE',              desc: 'Actions US',   tz: 'America/New_York', sessions: [[570, 960]] },            // 9:30–16:00 ET
+  { key: 'cme',      label: 'CME',               desc: 'Futures US',   tz: 'America/New_York', sessions: 'cme' },                   // dim 18:00 → ven 17:00 ET (pause 17–18h)
+  { key: 'euronext', label: 'Euronext Paris',    desc: 'CAC 40',       tz: 'Europe/Paris',     sessions: [[540, 1050]] },           // 9:00–17:30 CET
+  { key: 'asia',     label: 'Bourse asiatique',  desc: 'Tokyo',        tz: 'Asia/Tokyo',       sessions: [[540, 690], [750, 900]] },// 9:00–11:30 / 12:30–15:00 JST
+];
+
+function exchangeLocal(tz, now) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(now);
+  const get = (t) => parts.find(p => p.type === t)?.value;
+  const wd = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 }[get('weekday')];
+  let hh = parseInt(get('hour'), 10); if (hh === 24) hh = 0;   // minuit = 00, pas 24
+  return { wd, mins: hh * 60 + parseInt(get('minute'), 10) };
+}
+
+function isExchangeOpen(ex, now) {
+  const { wd, mins } = exchangeLocal(ex.tz, now);
+  if (ex.sessions === 'cme') {
+    // Globex (ES) : dimanche 18:00 ET → vendredi 17:00 ET, pause maintenance 17:00–18:00 ET (lun–jeu).
+    if (wd === 6) return false;                       // samedi
+    if (wd === 0) return mins >= 18 * 60;             // dimanche : ouvre 18:00
+    if (wd === 5) return mins < 17 * 60;              // vendredi : ferme 17:00
+    return !(mins >= 17 * 60 && mins < 18 * 60);      // lun–jeu : ouvert sauf pause 17–18h
+  }
+  if (wd === 0 || wd === 6) return false;             // week-end
+  return ex.sessions.some(([a, b]) => mins >= a && mins < b);
+}
+
+function MarketStatus({ apiOn }) {
+  const [now, setNow] = React.useState(() => new Date());
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 30000);   // rafraîchit ~toutes les 30 s
+    return () => clearInterval(id);
+  }, []);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const statuses = EXCHANGES.map(ex => ({ ...ex, isOpen: isExchangeOpen(ex, now) }));
+  // Marché de référence de l'app = actions US (NYSE).
+  const mainOpen = statuses.find(s => s.key === 'nyse')?.isOpen;
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        title="Voir le statut des places boursières"
+        style={{
+          display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+          font: 'var(--type-data-sm)', color: 'var(--text-muted)',
+          background: 'transparent', border: 'none', padding: 0,
+        }}
+      >
+        <span style={{ width: 6, height: 6, borderRadius: '50%', background: mainOpen ? 'var(--pos)' : 'var(--text-dim)' }} />
+        {mainOpen ? 'Marché ouvert' : 'Marché fermé'}
+        {!apiOn && <span style={{ color: 'var(--text-dim)' }}>· démo</span>}
+        <span style={{ fontSize: 8, color: 'var(--text-dim)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-fast) var(--ease)' }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, zIndex: 900, marginTop: 8, minWidth: 236,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+        }}>
+          <div style={{ padding: '9px 14px', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-soft)', borderBottom: '1px solid var(--border-subtle)' }}>
+            Places boursières
+          </div>
+          {statuses.map(s => (
+            <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: s.isOpen ? 'var(--pos)' : 'var(--neg)' }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ font: '600 12px/1.2 var(--font-sans)', color: 'var(--text)' }}>{s.label}</div>
+                <div style={{ font: '10px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 2 }}>{s.desc}</div>
+              </div>
+              <span style={{ font: '600 11px/1 var(--font-mono)', color: s.isOpen ? 'var(--pos-bright)' : 'var(--text-muted)' }}>
+                {s.isOpen ? 'Ouverte' : 'Fermée'}
+              </span>
+            </div>
+          ))}
+          <div style={{ padding: '7px 14px', font: '9px/1.3 var(--font-sans)', color: 'var(--text-dim)', background: 'var(--bg-elevated)' }}>
+            Horaires réguliers · hors jours fériés
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress }) {
   const [apiOn, setApiOn] = React.useState(window.DXApi ? window.DXApi.isConnected() : null);
 
@@ -292,10 +392,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
             {activeList.name} ({activeList.n_items})
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: apiOn ? 'var(--pos)' : 'var(--warn)' }} />
-          {apiOn ? 'Marché ouvert · USD' : 'Mode démo'}
-        </div>
+        <MarketStatus apiOn={apiOn} />
 
         {/* Indicateur de progression des données — discret */}
         {dataProgress && dataProgress.queued > 0 && (() => {
