@@ -256,15 +256,23 @@ export async function fetchClosesSmart(symbol, maxBars = 300) {
 
 // IV via l'endpoint interne /api/iv/{symbol} (mis en cache CDN 15 min) — à
 // préférer dans les endpoints batch pour ne pas re-télécharger les chaînes.
-export async function ivViaApi(origin, symbol, dte = 30, timeoutMs = 20000) {
+export async function ivViaApi(origin, symbol, dte = 30, timeoutMs = 8000) {
   if (!origin) return null;
-  try {
-    const r = await fetch(
-      `${origin}/api/iv/${encodeURIComponent(String(symbol).toUpperCase())}?dte=${dte}`,
-      { signal: AbortSignal.timeout(timeoutMs) }
-    );
-    if (!r.ok) return null;
-    const d = await r.json();
-    return d && d.iv != null ? d : null;
-  } catch { return null; }
+  const url = `${origin}/api/iv/${encodeURIComponent(String(symbol).toUpperCase())}?dte=${dte}`;
+  // Réessais : sous rafale « à froid », /api/iv peut renvoyer 502 (le Cboe
+  // throttle la chaîne) le temps qu'UNE requête réchauffe le cache CDN 15 min.
+  // Les 502 reviennent vite, donc ces retentatives sont rapides ; dès qu'une
+  // requête a réussi, toutes les suivantes sont servies du cache (IV réelle,
+  // plus d'estimation HV×1.15 trompeuse).
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      const r = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) });
+      if (r.ok) {
+        const d = await r.json();
+        if (d && d.iv != null) return d;
+      }
+    } catch { /* timeout/erreur réseau → on retente */ }
+    if (attempt < 3) await sleep(700 + attempt * 700 + Math.random() * 400);
+  }
+  return null;
 }
