@@ -4,7 +4,7 @@
 // + scénarios + beta depuis les clôtures Cboe (repli Yahoo)
 export const config = { runtime: 'edge' };
 
-import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
+import { fetchClosesSmart, cboeIvBundle } from '../_lib/cboe.js';
 import { proxyEtf, proxyScale } from '../_lib/proxy-scale.js';
 
 const R = 0.043;
@@ -119,16 +119,15 @@ export default async (req) => {
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
-  const origin = new URL(req.url).origin;
-  // Un seul lot de fetches Cboe (barres historiques + IV via /api/iv). Sur un
-  // panier de 15 valeurs cela ferait ~32 requêtes simultanées vers le Cboe, ce
-  // qui déclenche son throttling. On plafonne la concurrence pour rester sous
-  // le radar tout en gardant du parallélisme. L'ordre est préservé, donc
-  // l'indexation aval (tickerResults[i*2 / i*2+1]) reste identique.
+  // Un seul lot de fetches Cboe (barres historiques + IV via la chaîne d'options,
+  // appelée EN MÉMOIRE — plus de fetch HTTP interne vers /api/iv qui causait des
+  // 502 sous rafale). Sur un panier de 15 valeurs cela ferait ~32 requêtes Cboe
+  // simultanées → throttling ; on plafonne la concurrence. L'ordre est préservé,
+  // donc l'indexation aval (tickerResults[i*2 / i*2+1]) reste identique.
   const tasks = [
     () => fetchBarsData(idxEtf),
-    () => ivViaApi(origin, indexSym, duration),
-    ...tickers.flatMap(t => [() => fetchBarsData(t), () => ivViaApi(origin, t, duration)]),
+    () => cboeIvBundle(indexSym, duration).catch(() => null),
+    ...tickers.flatMap(t => [() => fetchBarsData(t), () => cboeIvBundle(t, duration).catch(() => null)]),
   ];
   const [idxData, idxIVr, ...tickerResults] = await mapLimit(tasks, 6, fn => fn());
 

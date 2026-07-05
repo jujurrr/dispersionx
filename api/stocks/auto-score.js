@@ -1,10 +1,12 @@
 // POST /api/stocks/auto-score
 // Body: { index_symbol, stock_symbol, duration_days }
-// Score de dispersion : IV réelles Cboe (via /api/iv, cache CDN 15 min),
+// Score de dispersion : IV réelles Cboe (chaîne d'options, en mémoire),
 // clôtures Cboe (repli Yahoo) pour HV/ρ/beta, repli MarketData si token.
 export const config = { runtime: 'edge' };
 
-import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
+// cboeIvBundle est appelé DIRECTEMENT (en mémoire), pas via un fetch HTTP interne
+// vers /api/iv : ce saut edge→edge causait des 502 intermittents sous rafale.
+import { fetchClosesSmart, cboeIvBundle } from '../_lib/cboe.js';
 import { proxyEtf } from '../_lib/proxy-scale.js';
 
 const R = 0.043;
@@ -116,12 +118,11 @@ export default async (req) => {
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
-  const origin = new URL(req.url).origin;
   const [stockData, idxData, ivCboe, ivIdxCboe] = await Promise.all([
     fetchBarsData(sym),
     fetchBarsData(idxEtf),
-    ivViaApi(origin, sym, duration),
-    ivViaApi(origin, indexSym, duration),
+    cboeIvBundle(sym, duration).catch(() => null),
+    cboeIvBundle(indexSym, duration).catch(() => null),
   ]);
 
   if (!stockData) return Response.json({ error: 'no_price_data', symbol: sym }, { status: 502 });
