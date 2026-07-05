@@ -67,3 +67,31 @@ npm run test:all  # les deux
 `.github/workflows/ci.yml` rejoue, à chaque push et pull request, la
 compilation JSX puis les tests unitaires. Un changement qui casse le JSX ou la
 logique financière échoue **avant** le déploiement.
+
+## Build Vite (en parallèle — pas encore en production)
+
+Aujourd'hui la production sert `index.html`, qui transpile le JSX **dans le
+navigateur** via Babel (lent au premier affichage). Un build Vite a été mis en
+place **en parallèle**, sans rien changer à la production, pour préparer le
+passage à un bundle optimisé (minifié, versionné, affichage instantané).
+
+```bash
+npm install            # (une fois) installe React, Vite, etc.
+npm run vite           # serveur de dev → ouvre l'app depuis vite-index.html
+npm run vite:build     # build de production → dist/
+npm run smoke          # vérifie sans navigateur que l'app monte (#root peuplé)
+```
+
+- `vite-index.html` + `src/main.jsx` + `src/globals-setup.js` sont l'entrée Vite.
+  `main.jsx` importe les fichiers **existants** dans le même ordre que
+  `index.html` — aucun écran n'a été réécrit ; Vite se contente de les regrouper.
+- `vite.config.js` conserve le modèle actuel (React en global, JSX « classique »
+  compilé en `React.createElement`).
+
+### Basculer la production sur Vite (quand tu l'auras validé dans un navigateur)
+
+1. `npm run vite` et vérifie que **tout** fonctionne (navigation, données, thème).
+2. Ajoute un build à `vercel.json` : `"buildCommand": "vite build"` et
+   `"outputDirectory": "dist"` (retire `"framework": null`).
+3. Déploie. En cas de souci, l'inverse rétablit l'ancien `index.html` en une
+   étape (rien n'a été supprimé).

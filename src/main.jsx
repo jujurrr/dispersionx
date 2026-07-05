@@ -1,0 +1,45 @@
+// Point d'entrée du bundle Vite. On importe les fichiers existants EN SIDE-EFFECT,
+// dans le MÊME ordre que les <script> de index.html — c'est cet ordre qui garantit
+// que chaque global (window.DXApi, window.DXRisk, window.Topbar…) est prêt avant
+// d'être utilisé. Aucun fichier applicatif n'a été réécrit : Vite se contente de
+// les regrouper, minifier et versionner à la place du Babel navigateur.
+
+// 1) React/ReactDOM en global — AVANT tout le reste.
+import './globals-setup.js';
+
+// 2) Styles du design system.
+import '../project/styles.css';
+
+// 3) Thème (applique data-theme) + bundle du design system.
+import '../project/ui_kits/theme.js';
+import '../project/_ds_bundle.js';
+
+// 4) Données de démo, client API, store/préchargeur, logique pure partagée.
+import '../js/data.js';
+import '../js/api.js';
+import '../js/store.js';
+import '../js/lib/market-hours.js';
+
+// 5) Écrans (ordre identique à index.html — dépendances de globals au top-level).
+import '../js/screens/Shell.jsx';
+import '../js/screens/Home.jsx';
+import '../js/screens/IndexDetail.jsx';
+import '../js/screens/ScoreModal.jsx';
+import '../js/screens/Lists.jsx';
+import '../js/screens/ListDetail.jsx';
+import '../js/screens/Dashboard.jsx';
+import '../js/screens/CorrelationLab.jsx';
+import '../js/screens/VolatilityLab.jsx';
+import '../js/screens/RiskLab.jsx';
+import '../js/screens/Construction.jsx';
+import '../js/screens/Builder.jsx';
+import '../js/screens/StrategyMonitor.jsx';
+import '../js/screens/Checklist.jsx';
+import '../js/screens/MonitorList.jsx';
+import '../js/screens/PositionDetail.jsx';
+import '../js/screens/Docs.jsx';
+import '../js/screens/Landing.jsx';
+import '../js/screens/Auth.jsx';
+
+// 6) Point d'entrée applicatif — monte React (doit être en DERNIER).
+import '../js/app.jsx';

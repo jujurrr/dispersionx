@@ -7,10 +7,21 @@
   "scripts": {
     "test": "node --test \"test/*.test.js\"",
     "test:jsx": "node scripts/check-jsx.mjs",
-    "test:all": "npm run test:jsx && npm test"
+    "test:all": "npm run test:jsx && npm test",
+    "vite": "vite",
+    "vite:build": "vite build",
+    "vite:preview": "vite preview",
+    "smoke": "node scripts/smoke-mount.mjs"
   },
   "devDependencies": {
     "@babel/core": "^7.23.10",
-    "@babel/preset-react": "^7.23.3"
+    "@babel/preset-react": "^7.23.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "jsdom": "^29.1.1",
+    "vite": "^5.4.21"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   }
 }
