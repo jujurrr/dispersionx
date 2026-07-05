@@ -287,7 +287,7 @@ const EXCHANGES = [
   { key: 'nyse',     label: 'NYSE',              desc: 'Actions US',   tz: 'America/New_York', sessions: [[570, 960]],             holidays: US_HOLIDAYS,       earlyCloses: NYSE_EARLY },     // 9:30–16:00 ET
   { key: 'cme',      label: 'CME',               desc: 'Futures US',   tz: 'America/New_York', sessions: 'cme',                    holidays: US_HOLIDAYS },                                     // dim 18:00 → ven 17:00 ET (pause 17–18h)
   { key: 'euronext', label: 'Euronext Paris',    desc: 'CAC 40',       tz: 'Europe/Paris',     sessions: [[540, 1050]],            holidays: EURONEXT_HOLIDAYS, earlyCloses: EURONEXT_EARLY }, // 9:00–17:30 CET
-  { key: 'asia',     label: 'Bourse asiatique',  desc: 'Tokyo',        tz: 'Asia/Tokyo',       sessions: [[540, 690], [750, 900]], holidays: TSE_HOLIDAYS },                                    // 9:00–11:30 / 12:30–15:00 JST
+  { key: 'asia',     label: 'TSE',               desc: 'Tokyo',        tz: 'Asia/Tokyo',       sessions: [[540, 690], [750, 900]], holidays: TSE_HOLIDAYS },                                    // 9:00–11:30 / 12:30–15:00 JST
 ];
 
 function exchangeLocal(tz, now) {
@@ -319,28 +319,28 @@ function isExchangeOpen(ex, now) {
 function MarketStatus({ apiOn }) {
   const [now, setNow] = React.useState(() => new Date());
   const [open, setOpen] = React.useState(false);
-  const ref = React.useRef(null);
+  const closeTimer = React.useRef(null);
 
   React.useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 30000);   // rafraîchit ~toutes les 30 s
     return () => clearInterval(id);
   }, []);
-  React.useEffect(() => {
-    if (!open) return;
-    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener('mousedown', h);
-    return () => document.removeEventListener('mousedown', h);
-  }, [open]);
+  React.useEffect(() => () => clearTimeout(closeTimer.current), []);
+
+  // Ouverture au survol ; petit délai à la sortie pour franchir l'espace
+  // entre la pastille et le menu sans que celui-ci se referme.
+  const show = () => { clearTimeout(closeTimer.current); setOpen(true); };
+  const hide = () => { closeTimer.current = setTimeout(() => setOpen(false), 140); };
 
   const statuses = EXCHANGES.map(ex => ({ ...ex, isOpen: isExchangeOpen(ex, now) }));
   // Marché de référence de l'app = actions US (NYSE).
   const mainOpen = statuses.find(s => s.key === 'nyse')?.isOpen;
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div onMouseEnter={show} onMouseLeave={hide} style={{ position: 'relative' }}>
       <button
         onClick={() => setOpen(o => !o)}
-        title="Voir le statut des places boursières"
+        title="Statut des places boursières"
         style={{
           display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
           font: 'var(--type-data-sm)', color: 'var(--text-muted)',
@@ -383,6 +383,62 @@ function MarketStatus({ apiOn }) {
   );
 }
 
+// Indicateur de progression du chargement des données — popover explicatif au survol.
+function DataProgress({ dataProgress }) {
+  const [hover, setHover] = React.useState(false);
+  if (!dataProgress || dataProgress.queued <= 0) return null;
+  const pct  = Math.min(100, Math.round(dataProgress.done / dataProgress.queued * 100));
+  const done = dataProgress.done >= dataProgress.queued;
+
+  return (
+    <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)} style={{ position: 'relative' }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 5, cursor: 'default',
+        padding: '3px 9px',
+        background: 'var(--bg-elevated)',
+        border: `1px solid ${done ? 'var(--pos)' : 'var(--border)'}`,
+        borderRadius: 'var(--radius-pill)',
+        transition: 'border-color 0.5s ease',
+      }}>
+        {done ? (
+          <span style={{ font: '10px/1', color: 'var(--pos-bright)' }}>✓</span>
+        ) : (
+          <div style={{ width: 36, height: 2, background: 'var(--bg-base)', borderRadius: 1, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: pct + '%', background: 'var(--accent)', borderRadius: 1, transition: 'width 0.35s ease' }} />
+          </div>
+        )}
+        <span style={{
+          font: '600 9px/1 var(--font-mono)', letterSpacing: '0.05em',
+          color: done ? 'var(--pos-bright)' : 'var(--text-dim)',
+          transition: 'color 0.5s ease',
+        }}>
+          {done ? 'CHARGÉ' : `${pct}%`}
+        </span>
+      </div>
+
+      {hover && (
+        <div style={{
+          position: 'absolute', top: '100%', right: 0, zIndex: 900, marginTop: 8, width: 260,
+          background: 'var(--bg-card)', border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px 8px' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: done ? 'var(--pos)' : 'var(--warn)' }} />
+            <span style={{ font: '600 12px/1.2 var(--font-sans)', color: 'var(--text)' }}>
+              {done ? 'Données chargées' : `Chargement des données · ${pct} %`}
+            </span>
+          </div>
+          <div style={{ padding: '0 14px 11px', font: '11px/1.5 var(--font-sans)', color: 'var(--text-soft)' }}>
+            {done
+              ? 'Toutes les cotations et volatilités réelles sont disponibles : les analyses reflètent les données du marché.'
+              : 'Le site récupère encore les cotations et volatilités réelles (Cboe différé). Tant que le chargement n’est pas terminé, certaines valeurs restent des estimations — mieux vaut patienter pour des analyses fiables.'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress }) {
   const [apiOn, setApiOn] = React.useState(window.DXApi ? window.DXApi.isConnected() : null);
 
@@ -393,6 +449,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
   }, []);
 
   return (
+    <React.Fragment>
     <header style={{
       height: 52, borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -428,36 +485,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
         )}
         <MarketStatus apiOn={apiOn} />
 
-        {/* Indicateur de progression des données — discret */}
-        {dataProgress && dataProgress.queued > 0 && (() => {
-          const pct = Math.min(100, Math.round(dataProgress.done / dataProgress.queued * 100));
-          const done = dataProgress.done >= dataProgress.queued;
-          return (
-            <div style={{
-              display: 'flex', alignItems: 'center', gap: 5,
-              padding: '3px 9px',
-              background: 'var(--bg-elevated)',
-              border: `1px solid ${done ? 'var(--pos)' : 'var(--border)'}`,
-              borderRadius: 'var(--radius-pill)',
-              transition: 'border-color 0.5s ease',
-            }}>
-              {done ? (
-                <span style={{ font: '10px/1', color: 'var(--pos-bright)' }}>✓</span>
-              ) : (
-                <div style={{ width: 36, height: 2, background: 'var(--bg-base)', borderRadius: 1, overflow: 'hidden' }}>
-                  <div style={{ height: '100%', width: pct + '%', background: 'var(--accent)', borderRadius: 1, transition: 'width 0.35s ease' }} />
-                </div>
-              )}
-              <span style={{
-                font: '600 9px/1 var(--font-mono)', letterSpacing: '0.05em',
-                color: done ? 'var(--pos-bright)' : 'var(--text-dim)',
-                transition: 'color 0.5s ease',
-              }}>
-                {done ? 'CHARGÉ' : `${pct}%`}
-              </span>
-            </div>
-          );
-        })()}
+        <DataProgress dataProgress={dataProgress} />
         <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
           {['Débutant', 'Avancé'].map((m) => (
             <button key={m} onClick={() => onMode(m)} style={{
@@ -481,6 +509,16 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
         </div>
       </div>
     </header>
+    {/* Bandeau discret — nature des données et cadre pédagogique */}
+    <div style={{
+      flexShrink: 0, padding: '4px 28px', display: 'flex', alignItems: 'center', gap: 7,
+      background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)',
+      font: '10px/1.4 var(--font-sans)', color: 'var(--text-dim)',
+    }}>
+      <span style={{ font: '9px/1', color: 'var(--text-muted)' }}>ⓘ</span>
+      <span>Données différées 15 min — analyse pédagogique, pas un conseil en investissement.</span>
+    </div>
+    </React.Fragment>
   );
 }
 
