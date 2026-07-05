@@ -11,6 +11,9 @@ import { defineConfig } from 'vite';
 // Le basculement se fait ensuite en une étape (voir README).
 export default defineConfig({
   root: '.',
+  // Ouvre automatiquement la BONNE page (vite-index.html) au démarrage du
+  // serveur de dev — sinon « / » servirait l'ancien index.html (production).
+  server: { open: '/vite-index.html' },
   esbuild: {
     jsx: 'transform',
     jsxFactory: 'React.createElement',
