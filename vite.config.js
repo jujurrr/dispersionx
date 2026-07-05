@@ -12,7 +12,7 @@ import { defineConfig } from 'vite';
 // Cible du proxy /api en dev : ton backend EN LIGNE (Vercel), pour voir les
 // VRAIES données en local. Remplace l'URL ci-dessous par celle de ton site,
 // ou définis la variable d'environnement DX_API_TARGET.
-const API_TARGET = process.env.DX_API_TARGET || 'https://REMPLACE-PAR-TON-SITE.vercel.app';
+const API_TARGET = process.env.DX_API_TARGET || 'https://dispersionx.vercel.app';
 
 export default defineConfig({
   root: '.',
@@ -21,8 +21,11 @@ export default defineConfig({
     // servirait l'ancien index.html (production).
     open: '/vite-index.html',
     // Les appels /api du site local sont renvoyés vers le vrai backend en ligne.
+    // secure:false → ne vérifie pas le certificat TLS de la cible : nécessaire
+    // sur ce poste (interception TLS d'entreprise), sans risque car ce proxy
+    // DEV pointe vers ton propre backend. La prod n'est pas concernée.
     proxy: {
-      '/api': { target: API_TARGET, changeOrigin: true, secure: true },
+      '/api': { target: API_TARGET, changeOrigin: true, secure: false },
     },
   },
   esbuild: {
