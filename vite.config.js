@@ -9,11 +9,22 @@ import { defineConfig } from 'vite';
 // La production continue de servir index.html (Babel navigateur) tant que le
 // bundle Vite n'a pas été validé dans un vrai navigateur (`npm run vite`).
 // Le basculement se fait ensuite en une étape (voir README).
+// Cible du proxy /api en dev : ton backend EN LIGNE (Vercel), pour voir les
+// VRAIES données en local. Remplace l'URL ci-dessous par celle de ton site,
+// ou définis la variable d'environnement DX_API_TARGET.
+const API_TARGET = process.env.DX_API_TARGET || 'https://REMPLACE-PAR-TON-SITE.vercel.app';
+
 export default defineConfig({
   root: '.',
-  // Ouvre automatiquement la BONNE page (vite-index.html) au démarrage du
-  // serveur de dev — sinon « / » servirait l'ancien index.html (production).
-  server: { open: '/vite-index.html' },
+  server: {
+    // Ouvre automatiquement la BONNE page (vite-index.html) — sinon « / »
+    // servirait l'ancien index.html (production).
+    open: '/vite-index.html',
+    // Les appels /api du site local sont renvoyés vers le vrai backend en ligne.
+    proxy: {
+      '/api': { target: API_TARGET, changeOrigin: true, secure: true },
+    },
+  },
   esbuild: {
     jsx: 'transform',
     jsxFactory: 'React.createElement',

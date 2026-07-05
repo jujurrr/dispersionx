@@ -253,6 +253,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
                 const beta = vol?.beta ?? comp.beta ?? null;
                 // Score : préférer score_data.score (autoScore réel) > item.score (stocké) > cache modal
                 const displayScore = item.score_data?.score ?? item.score ?? scoreCache?.[item.ticker];
+                const scoreFallback = item.score_data?.is_fallback === true;   // score de secours (données non chargées)
 
                 return (
                   <tr key={item.ticker}
@@ -313,7 +314,10 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
                     {/* Score */}
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                       {displayScore != null && (
-                        <span style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: displayScore >= 75 ? 'var(--pos-soft)' : displayScore >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(displayScore), border: `1px solid ${displayScore >= 75 ? 'var(--pos)' : displayScore >= 55 ? 'var(--warn)' : 'var(--neg)'}` }}>{displayScore}</span>
+                        <span title={scoreFallback ? 'Score estimé — données non chargées (recharge pour le vrai calcul)' : undefined}
+                          style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: displayScore >= 75 ? 'var(--pos-soft)' : displayScore >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(displayScore), border: `1px solid ${displayScore >= 75 ? 'var(--pos)' : displayScore >= 55 ? 'var(--warn)' : 'var(--neg)'}`, opacity: scoreFallback ? 0.55 : 1 }}>
+                          {scoreFallback ? '≈' : ''}{displayScore}
+                        </span>
                       )}
                     </td>
 

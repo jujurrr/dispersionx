@@ -80,8 +80,15 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                 </WarningPanel>
               )}
 
+              {/* Repli : données non chargées → score estimé, marqué comme tel */}
+              {scoring.is_fallback && (
+                <WarningPanel tone="warn">
+                  Score <strong>estimé</strong> — les données de marché de ce composant n'ont pas pu être chargées (backend momentanément indisponible ou surchargé). Ce chiffre est une approximation, <strong>pas le vrai score</strong> : recharge la page pour relancer le calcul.
+                </WarningPanel>
+              )}
+
               {/* Hero score */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '18px 22px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 20, padding: '18px 22px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', border: `1px solid ${scoring.is_fallback ? 'var(--warn)' : 'var(--border)'}` }}>
                 <div style={{ font: '800 52px/1 var(--font-mono)', color: sigColor[scoring.signal_color] || 'var(--text)' }}>
                   {scoring.score}
                 </div>

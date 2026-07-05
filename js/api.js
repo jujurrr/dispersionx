@@ -7,9 +7,11 @@
 (function () {
   'use strict';
 
-  const BASE = (window.location.hostname === '127.0.0.1' || window.location.hostname === 'localhost')
-    ? 'http://localhost:8000/api'
-    : window.location.origin + '/api';
+  // Toujours même origine : en ligne (Vercel) → vraies fonctions serverless ;
+  // en local avec Vite → interceptées par le proxy dev (voir vite.config.js),
+  // qui les renvoie vers le backend en ligne. (L'ancien backend FastAPI local
+  // sur :8000 n'existe plus.)
+  const BASE = window.location.origin + '/api';
 
   // Track connectivity
   let _connected = null;
@@ -27,6 +29,28 @@
     });
     if (!r.ok) throw new Error(r.statusText);
     return r.json();
+  }
+  // POST avec réessais : abandonne (et déclenche le repli) seulement après
+  // plusieurs tentatives. Évite qu'une latence passagère (proxy dev, throttling
+  // Cboe) fasse afficher un score de secours à la place du vrai calcul.
+  // On ne réessaie PAS une erreur 4xx définitive (hors 429).
+  async function _postRetry(path, body, { retries = 2, timeoutMs = 12000 } = {}) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const r = await fetch(BASE + path, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (r.ok) return await r.json();
+        if (r.status < 500 && r.status !== 429) throw new Error('HTTP ' + r.status);
+        if (attempt >= retries) throw new Error('HTTP ' + r.status);
+      } catch (e) {
+        if (attempt >= retries) throw e;
+      }
+      await new Promise(res => setTimeout(res, 500 * (attempt + 1)));   // 0,5 s puis 1 s
+    }
   }
   async function _delete(path) {
     const r = await fetch(BASE + path, { method: 'DELETE' });
@@ -111,9 +135,13 @@
     if (_scoreInflight[key]) return _scoreInflight[key];
     const p = (async () => {
       try {
-        return await _post('/stocks/auto-score', { index_symbol, stock_symbol, duration_days, use_ex_action });
+        return await _postRetry('/stocks/auto-score', { index_symbol, stock_symbol, duration_days, use_ex_action });
       } catch {
-        return window.DXMock.autoScore(stock_symbol);
+        // Repli HONNÊTE : score de démo marqué comme tel, pour ne jamais faire
+        // passer un chiffre inventé pour un vrai calcul. L'UI affiche un badge.
+        const m = window.DXMock.autoScore(stock_symbol);
+        if (m && m.scoring) m.scoring.is_fallback = true;
+        return m;
       }
     })().then(r => { _scoreCache[key] = r; delete _scoreInflight[key]; return r; },
             e => { delete _scoreInflight[key]; throw e; });
