@@ -223,7 +223,8 @@ create policy "shared_items_write" on public.list_items
 drop policy if exists "shared_strategies_select" on public.strategies;
 create policy "shared_strategies_select" on public.strategies
   for select using (
-    exists (select 1 from public.list_shares s where s.list_id = strategies.list_id and s.shared_with = auth.uid())
+    -- strategies.list_id est en TEXT, list_shares.list_id en UUID → cast.
+    exists (select 1 from public.list_shares s where s.list_id::text = strategies.list_id and s.shared_with = auth.uid())
   );
 
 -- Partage par e-mail : résout l'e-mail en utilisateur sans exposer auth.users,
