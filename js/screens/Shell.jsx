@@ -440,16 +440,19 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
         <MarketStatus apiOn={apiOn} />
 
         <DataProgress dataProgress={dataProgress} />
-        <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
-          {['Débutant', 'Avancé'].map((m) => (
-            <button key={m} onClick={() => onMode(m)} style={{
-              font: '600 11px/1 var(--font-sans)', padding: '5px 12px',
-              borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
-              background: mode === m ? 'var(--accent)' : 'transparent',
-              color: mode === m ? '#fff' : 'var(--text-muted)',
-              transition: 'all var(--dur-fast) var(--ease)',
-            }}>{m}</button>
-          ))}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
+            {['Débutant', 'Avancé'].map((m) => (
+              <button key={m} onClick={() => onMode(m)} style={{
+                font: '600 11px/1 var(--font-sans)', padding: '5px 12px',
+                borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
+                background: mode === m ? 'var(--accent)' : 'transparent',
+                color: mode === m ? '#fff' : 'var(--text-muted)',
+                transition: 'all var(--dur-fast) var(--ease)',
+              }}>{m}</button>
+            ))}
+          </div>
+          {window.HintDot && <window.HintDot text="Change uniquement l'aide affichée, pas les calculs ni les données. « Débutant » ajoute des encadrés d'explication sur chaque écran ; « Avancé » les masque pour une interface plus dense." />}
         </div>
         <SectionToggle to="landing" />
         <ThemeToggle />
