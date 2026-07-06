@@ -81,7 +81,18 @@ const lists = {
     const { data: l, error } = await supa.from('lists').select('*').eq('id', id).single();
     if (error) throw error;
     const { data: its } = await supa.from('list_items').select('*').eq('list_id', id).order('added_at', { ascending: true });
-    return shapeList(l, its);
+    const shaped = shapeList(l, its);
+    // Drapeaux de partage : le détail (ListDetail) grise l'édition en lecture seule.
+    if (currentUser && l.user_id !== currentUser.id) {
+      const { data: sh } = await supa.from('list_shares').select('role, owner_email').eq('list_id', id).eq('shared_with', currentUser.id).maybeSingle();
+      shaped.shared = true;
+      shaped.role = sh?.role || 'viewer';
+      shaped.owner_email = sh?.owner_email || null;
+      shaped.can_edit = shaped.role === 'editor';
+    } else {
+      shaped.can_edit = true;
+    }
+    return shaped;
   },
   async create(name, index_symbol, description = '') {
     const { data, error } = await supa.from('lists').insert({ user_id: currentUser.id, name, index_symbol: index_symbol || 'SPX', description }).select().single();

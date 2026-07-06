@@ -8,6 +8,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const [loading, setLoading] = React.useState(true);
   const [rescoring, setRescoring] = React.useState(false);
   const [sort, setSort]       = React.useState({ key: 'added', dir: -1 });
+  const [confirmRemove, setConfirmRemove] = React.useState(null);   // ticker en attente de confirmation
   const autoScoredRef = React.useRef(null);
 
   const load = React.useCallback(() => {
@@ -58,6 +59,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   // Auto-rescore all items once per list load (background, batches de 4)
   React.useEffect(() => {
     if (!list || autoScoredRef.current === listId) return;
+    if (list.shared && list.role !== 'editor') return;   // lecture seule : pas de ré-écriture
     const items = list.items || [];
     if (items.length === 0) return;
     autoScoredRef.current = listId;
@@ -93,13 +95,15 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
     rescoreAll();
   }, [list, listId]);
 
-  async function handleRemove(ticker) {
-    if (!confirm(`Retirer ${ticker} de la liste ?`)) return;
+  const notify = (msg) => addToast && addToast(msg);
+  // Confirmation in-app (voir modale plus bas), plus de popup navigateur.
+  async function doRemove(ticker) {
     try {
       await DXApi.removeListItem(listId, ticker);
       addToast && addToast(`${ticker} retiré.`);
       load();
     } catch { addToast && addToast('Erreur.', 'error'); }
+    finally { setConfirmRemove(null); }
   }
 
   async function handleExport() {
@@ -112,6 +116,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   }
 
   async function handleDelete() {
+    if (list && list.shared) return notify('Seul le propriétaire peut supprimer cette liste.');
     if (!confirm(`Supprimer « ${list?.name} » ? Cette action est irréversible.`)) return;
     try {
       await DXApi.deleteList(listId);
@@ -142,6 +147,11 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
   if (!list) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--neg)', font: 'var(--type-body)' }}>Liste introuvable.</div>;
 
+  // Partage : liste partagée AVEC moi ; lecture seule si le rôle n'est pas 'editor'.
+  const isShared = !!list.shared;
+  const readOnly = isShared && list.role !== 'editor';
+  const ROMSG = 'Liste partagée en lecture seule — modification impossible.';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       {/* Header */}
@@ -159,8 +169,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
           {list.description && <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>{list.description}</p>}
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', flexShrink: 0 }}>
-          <button onClick={() => onNav('index-detail', { symbol: list.index_symbol })}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>+ Ajouter</button>
+          <button onClick={() => readOnly ? notify(ROMSG) : onNav('index-detail', { symbol: list.index_symbol })}
+            title={readOnly ? ROMSG : undefined}
+            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: readOnly ? 'var(--text-dim)' : 'var(--text-soft)', cursor: readOnly ? 'not-allowed' : 'pointer', opacity: readOnly ? 0.5 : 1 }}>+ Ajouter</button>
           <button onClick={() => onNav('corr', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Corrélation</button>
           <button onClick={() => onNav('risk', { listId })}
@@ -172,9 +183,20 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
           <button onClick={handleExport}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↓</button>
           <button onClick={handleDelete}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>Supprimer</button>
+            title={isShared ? 'Seul le propriétaire peut supprimer cette liste.' : undefined}
+            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: `1px solid ${isShared ? 'var(--border)' : 'var(--neg)'}`, background: 'transparent', color: isShared ? 'var(--text-dim)' : 'var(--neg-bright)', cursor: isShared ? 'not-allowed' : 'pointer', opacity: isShared ? 0.5 : 1 }}>Supprimer</button>
         </div>
       </div>
+
+      {/* Bandeau lecture seule (liste partagée sans droit de modification) */}
+      {readOnly && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--info)', borderRadius: 'var(--radius-lg)' }}>
+          <span style={{ color: 'var(--info)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>i</span>
+          <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+            Liste partagée en <strong style={{ color: 'var(--text)' }}>lecture seule</strong>{list.owner_email ? ` par ${list.owner_email}` : ''} — vous pouvez la consulter et l'analyser, mais pas la modifier.
+          </span>
+        </div>
+      )}
 
       {/* Analysis metrics — calculés depuis les vrais items */}
       {analysis && (
@@ -326,8 +348,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
 
                     {/* Supprimer */}
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
-                      <button onClick={e => { e.stopPropagation(); handleRemove(item.ticker); }}
-                        style={{ font: '600 12px/1', padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
+                      <button onClick={e => { e.stopPropagation(); readOnly ? notify(ROMSG) : setConfirmRemove(item.ticker); }}
+                        title={readOnly ? ROMSG : 'Retirer de la liste'}
+                        style={{ font: '600 12px/1', padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: `1px solid ${readOnly ? 'var(--border)' : 'var(--neg)'}`, background: 'transparent', color: readOnly ? 'var(--text-dim)' : 'var(--neg-bright)', cursor: readOnly ? 'not-allowed' : 'pointer', opacity: readOnly ? 0.5 : 1 }}>×</button>
                     </td>
                   </tr>
                 );
@@ -339,6 +362,25 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
           <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border-subtle)', font: 'var(--type-caption)', color: 'var(--text-dim)', display: 'flex', gap: 16 }}>
             <span>Prix : {Object.keys(quotes).length > 0 ? '● live · Finnhub/Alpaca' : '○ chargement…'}</span>
             <span>IV/HV : {Object.keys(volData).length > 0 ? '● MarketData/Yahoo Finance' : '○ chargement…'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation in-app du retrait d'une action (remplace le popup navigateur) */}
+      {confirmRemove && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmRemove(null); }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-lg)', padding: 28, width: '100%', maxWidth: 400, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ font: 'var(--type-h3)', color: 'var(--text)' }}>Retirer une action ?</div>
+            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+              Voulez-vous vraiment retirer <strong style={{ color: 'var(--text)' }}>{confirmRemove}</strong> de la liste « {list.name} » ? Vous pourrez la rajouter plus tard.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setConfirmRemove(null)}
+                style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Annuler</button>
+              <button onClick={() => doRemove(confirmRemove)}
+                style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--neg)', color: '#fff', cursor: 'pointer' }}>Retirer</button>
+            </div>
           </div>
         </div>
       )}
