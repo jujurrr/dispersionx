@@ -1,10 +1,13 @@
 /* ─── ActivityFeed : activité GLOBALE (journal d'audit) en bas de la sidebar ──
    Onglet dépliable (5 lignes visibles + molette pour le reste). Quand quelque
    chose change, l'onglet se soulève légèrement et la dernière modif apparaît
-   DESSOUS de façon discrète, puis se referme. Cloud uniquement. */
+   DESSOUS de façon discrète, puis se referme. À la (re)connexion, un badge +
+   une bannière signalent les modifs faites par d'autres depuis la dernière
+   visite. Expose aussi window.ActivityPanel (liste détaillée, DA ronde) et
+   window.DXActivity (helpers partagés). Cloud uniquement. */
 
 // Phrase lisible + temps relatif (fr) — partagés (window.DXActivity), aussi
-// utilisés par le journal par-liste de ListDetail.
+// utilisés par ListDetail et le Dashboard.
 function dxAuditSentence(e) {
   const d = e.detail || {};
   const role = r => r === 'editor' ? 'modif.' : 'lecture';
@@ -30,11 +33,64 @@ function dxAuditTimeAgo(iso) {
   const j = Math.floor(h / 24); if (j < 30) return `il y a ${j} j`;
   return new Date(iso).toLocaleDateString('fr-FR');
 }
-window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo };
-
+function dxActionTone(action) {
+  switch (action) {
+    case 'item_added': case 'list_created': case 'shared':      return 'var(--pos)';
+    case 'item_removed': case 'list_deleted': case 'unshared':  return 'var(--neg)';
+    case 'list_renamed': case 'role_changed':                   return 'var(--warn)';
+    default:                                                    return 'var(--accent)';
+  }
+}
 const dxWho = (email) => (email || 'Quelqu’un').split('@')[0];
+window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo, tone: dxActionTone, who: dxWho };
+
 const DX_ACT_LIMIT = 200;                    // on récupère jusqu'à 200 entrées…
 const DX_ACT_WINDOW_MS = 30 * 86400000;      // …mais on n'affiche que les 30 derniers jours
+
+/* ─── ActivityPanel : liste détaillée d'activité (DA ronde) — Dashboard ─── */
+function ActivityPanel({ title, subtitle, entries, nameMap }) {
+  const A = window.DXActivity;
+  const rows = entries || [];
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 22, overflow: 'hidden' }}>
+      <div style={{ padding: '15px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{title}</div>
+        {subtitle && <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>{subtitle}</div>}
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-body-sm)' }}>Aucune activité récente.</div>
+      ) : (
+        <div style={{ maxHeight: 340, overflowY: 'auto' }}>
+          {rows.map((e, i) => {
+            const tone = A.tone(e.action);
+            const listName = (e.list_id && nameMap && nameMap[e.list_id]) || (e.detail && e.detail.name) || null;
+            const who = A.who(e.actor_email);
+            return (
+              <div key={e.id ?? i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '13px 20px', borderBottom: i < rows.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                <span style={{ width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)', border: `1.5px solid ${tone}`, color: tone, font: '700 13px/1 var(--font-mono)', textTransform: 'uppercase' }}>
+                  {(who || '?').slice(0, 1)}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ font: 'var(--type-body-sm)', color: 'var(--text)' }}>
+                    <strong>{who}</strong> <span style={{ color: 'var(--text-soft)' }}>{A.sentence(e)}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 4 }}>
+                    {listName && (
+                      <span style={{ padding: '2px 10px', borderRadius: 999, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)', font: '10px/1.5 var(--font-sans)', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listName}</span>
+                    )}
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }} title={new Date(e.created_at).toLocaleString('fr-FR')}>{A.timeAgo(e.created_at)}</span>
+                    {e.actor_email && <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 160 }}>· {e.actor_email}</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+window.ActivityPanel = ActivityPanel;
 
 const ActivityIcon = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -44,11 +100,20 @@ const ActivityIcon = (
 
 function ActivityFeed() {
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
+  const meEmail = (window.DXCloud && window.DXCloud.user && window.DXCloud.user.email) || '';
+  const seenKey = 'dx-activity-seen-' + ((window.DXCloud && window.DXCloud.user && window.DXCloud.user.id) || 'anon');
+
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState([]);
-  const [reveal, setReveal] = React.useState(null);   // dernière modif à révéler
-  const [shown, setShown] = React.useState(false);     // ouverture de la révélation (transition douce)
-  const seenRef = React.useRef(null);                  // plus grand id vu (baseline anti-spam au 1er chargement)
+  const [reveal, setReveal] = React.useState(null);   // dernière modif « live » à révéler
+  const [shown, setShown] = React.useState(false);
+  const [unseen, setUnseen] = React.useState(0);       // modifs par d'autres depuis la dernière visite
+  const [loginNotice, setLoginNotice] = React.useState(0);   // bannière persistante à la (re)connexion
+
+  const seenRef = React.useRef(null);        // baseline session (révélations live)
+  const lastSeenRef = React.useRef(null);    // dernier id vu, PERSISTÉ (badge « depuis la dernière visite »)
+  const latestMaxRef = React.useRef(0);
+  const firstRef = React.useRef(true);
   const revealTimers = React.useRef([]);
   const pokeTimer = React.useRef(null);
   const clearRevealTimers = () => { revealTimers.current.forEach(clearTimeout); revealTimers.current = []; };
@@ -56,37 +121,53 @@ function ActivityFeed() {
   const showReveal = React.useCallback((entry) => {
     clearRevealTimers();
     setReveal(entry);
-    revealTimers.current.push(setTimeout(() => setShown(true), 20));      // se soulève
-    revealTimers.current.push(setTimeout(() => setShown(false), 3800));   // se referme
+    revealTimers.current.push(setTimeout(() => setShown(true), 20));
+    revealTimers.current.push(setTimeout(() => setShown(false), 3800));
     revealTimers.current.push(setTimeout(() => setReveal(null), 4200));
   }, []);
 
+  const markSeen = React.useCallback(() => {
+    lastSeenRef.current = latestMaxRef.current;
+    try { localStorage.setItem(seenKey, String(latestMaxRef.current)); } catch {}
+    setUnseen(0); setLoginNotice(0);
+  }, [seenKey]);
+
   const poll = React.useCallback(() => {
     if (!(window.DXCloud && window.DXCloud.enabled)) { setRows([]); return; }
+    if (lastSeenRef.current == null) {
+      const raw = (() => { try { return localStorage.getItem(seenKey); } catch { return null; } })();
+      lastSeenRef.current = raw != null ? (parseInt(raw, 10) || 0) : 0;
+    }
     DXApi.getGlobalActivity(DX_ACT_LIMIT).then(list => {
       if (!Array.isArray(list)) return;
-      // Affichage : fenêtre glissante (30 j) → « se réinitialise » avec le temps.
       const cutoff = Date.now() - DX_ACT_WINDOW_MS;
-      setRows(list.filter(e => new Date(e.created_at).getTime() >= cutoff));
+      setRows(list.filter(e => new Date(e.created_at).getTime() >= cutoff));   // fenêtre glissante 30 j
       if (!list.length) return;
-      // VRAI maximum d'id (pas list[0] : plusieurs lignes d'une même transaction
-      // partagent le created_at, donc l'ordre entre elles n'est pas garanti).
-      const maxId = list.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 0);
-      if (seenRef.current == null) { seenRef.current = maxId; return; }   // baseline : pas de révélation de l'historique
+      const maxId = list.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 0);  // vrai max (created_at peut être à égalité)
+      latestMaxRef.current = maxId;
+      // Non-vu depuis la dernière visite = modifs par D'AUTRES au-delà de lastSeen.
+      const uc = list.filter(e => Number(e.id) > lastSeenRef.current && e.actor_email && e.actor_email !== meEmail).length;
+      setUnseen(uc);
+      // Révélation « live » : nouvelles entrées depuis le début de session.
+      if (seenRef.current == null) {
+        seenRef.current = maxId;
+        if (firstRef.current && uc > 0) setLoginNotice(uc);   // bannière à la (re)connexion
+        firstRef.current = false;
+        return;
+      }
       const fresh = list.filter(e => Number(e.id) > seenRef.current);
       if (fresh.length) {
         seenRef.current = maxId;
-        const newest = fresh.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a));
-        showReveal(newest);
+        showReveal(fresh.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a)));
       }
     }).catch(() => {});
-  }, [showReveal]);
+  }, [showReveal, meEmail, seenKey]);
 
   React.useEffect(() => {
     if (!cloudOn) return;
     poll();
-    const id = setInterval(poll, 20000);               // filet de sécurité
-    const onPoke = () => { poll(); clearTimeout(pokeTimer.current); pokeTimer.current = setTimeout(poll, 1200); };  // réactif après une mutation
+    const id = setInterval(poll, 20000);
+    const onPoke = () => { poll(); clearTimeout(pokeTimer.current); pokeTimer.current = setTimeout(poll, 1200); };
     window.addEventListener('dx-activity-poke', onPoke);
     window.addEventListener('dx-lists-changed', onPoke);
     window.addEventListener('dx-strategies-changed', onPoke);
@@ -100,14 +181,16 @@ function ActivityFeed() {
     };
   }, [cloudOn, poll]);
 
-  if (!cloudOn) return null;                            // audit = comptes cloud uniquement
+  if (!cloudOn) return null;
 
   const A = window.DXActivity;
-  const lifting = reveal && shown && !open;
+  const toggle = () => setOpen(o => { const n = !o; if (n) markSeen(); return n; });
+  const lifting = ((loginNotice > 0) || (reveal && shown)) && !open;
+
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
-      {/* Onglet Activité — se soulève légèrement quand une modif est révélée */}
-      <button onClick={() => setOpen(o => !o)} title="Activité récente"
+      {/* Onglet Activité — se soulève légèrement quand il y a du neuf */}
+      <button onClick={toggle} title="Activité récente"
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
           background: open ? 'var(--bg-hover)' : 'transparent', border: 'none', cursor: 'pointer',
           color: 'var(--text-soft)', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em',
@@ -115,14 +198,26 @@ function ActivityFeed() {
           transition: 'transform 0.3s var(--ease), background var(--dur-fast) var(--ease)' }}>
         <span style={{ display: 'inline-flex', color: 'var(--accent-hover)' }}>{ActivityIcon}</span>
         <span style={{ flex: 1, textAlign: 'left' }}>Activité</span>
-        {rows.length > 0 && (
+        {unseen > 0 ? (
+          <span className="dx-pulse" style={{ font: '600 10px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 999, background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' }}>{unseen} nouveau{unseen > 1 ? 'x' : ''}</span>
+        ) : rows.length > 0 ? (
           <span style={{ font: '500 10px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>{rows.length}</span>
-        )}
+        ) : null}
         <span style={{ fontSize: 8, color: 'var(--text-dim)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-fast) var(--ease)' }}>▾</span>
       </button>
 
-      {/* Révélation discrète — SOUS l'onglet */}
-      {reveal && !open && (
+      {/* Bannière (re)connexion : modifs par d'autres depuis la dernière visite (persistante) */}
+      {loginNotice > 0 && !open && (
+        <button onClick={toggle} style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer', padding: '9px 14px', background: 'var(--accent-soft)', borderTop: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }} />
+          <span style={{ font: '10px/1.35 var(--font-sans)', color: 'var(--accent-hover)' }}>
+            {loginNotice} modification{loginNotice > 1 ? 's' : ''} depuis votre dernière visite — voir
+          </span>
+        </button>
+      )}
+
+      {/* Révélation « live » — SOUS l'onglet (masquée si la bannière est là) */}
+      {reveal && !open && loginNotice === 0 && (
         <div style={{ overflow: 'hidden', transition: 'max-height 0.35s var(--ease), opacity 0.3s var(--ease)', maxHeight: shown ? 46 : 0, opacity: shown ? 1 : 0 }}>
           <div style={{ padding: '7px 14px', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border-subtle)' }}>
             <div style={{ font: '10px/1.35 var(--font-sans)', color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

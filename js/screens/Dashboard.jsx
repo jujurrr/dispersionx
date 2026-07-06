@@ -5,6 +5,32 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const [oppPrime, setOppPrime] = React.useState({});  // prime ρ par indice (fond)
   const [tick, setTick] = React.useState(0);           // re-render quand le store avance
   const oppFetching = React.useRef({});                // garde : 1 calcul de prime par indice
+  const [activity, setActivity] = React.useState(null); // { account, shared, nameMap } — activité récente
+
+  // Activité récente : global (RLS) partitionné en « compte » (mes listes) et
+  // « partagé » (listes partagées avec moi). Rafraîchi sur les mutations.
+  const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
+  const loadActivity = React.useCallback(() => {
+    if (!(window.DXCloud && window.DXCloud.enabled)) { setActivity(null); return; }
+    Promise.all([DXApi.getGlobalActivity(200), DXApi.getSharedLists().catch(() => [])]).then(([acts, shared]) => {
+      const nameMap = {};
+      (lists || []).forEach(l => { if (l && l.id) nameMap[l.id] = l.name; });
+      (shared || []).forEach(l => { if (l && l.id) nameMap[l.id] = l.name; });
+      const sharedIds = new Set((shared || []).map(l => l.id));
+      const account = [], shr = [];
+      (acts || []).forEach(e => { (sharedIds.has(e.list_id) ? shr : account).push(e); });
+      setActivity({ account, shared: shr, nameMap });
+    }).catch(() => setActivity({ account: [], shared: [], nameMap: {} }));
+  }, [lists]);
+
+  React.useEffect(() => {
+    if (!cloudOn) return;
+    loadActivity();
+    const onChg = () => loadActivity();
+    window.addEventListener('dx-activity-poke', onChg);
+    window.addEventListener('dx-lists-changed', onChg);
+    return () => { window.removeEventListener('dx-activity-poke', onChg); window.removeEventListener('dx-lists-changed', onChg); };
+  }, [cloudOn, loadActivity]);
 
   React.useEffect(() => {
     // Marché : vol SPX réelle + corrélation SPX
@@ -202,6 +228,20 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
           <BeginnerExplanationBox>
             La prime de corrélation est positive : le marché price une synchronisation plus forte que celle observée récemment sur les composants. C'est le contexte favorable à une dispersion classique — à confirmer avec la liquidité, les earnings et le coût d'exécution.
           </BeginnerExplanationBox>
+        </section>
+      )}
+
+      {/* Activité récente — compte vs partagé (cloud uniquement) */}
+      {cloudOn && activity && window.ActivityPanel && (
+        <section>
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Activité récente</h2>
+            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Qui a modifié quoi, et quand — sur vos listes et celles partagées avec vous (30 derniers jours).</p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+            <window.ActivityPanel title="Activité du compte" subtitle="Modifications sur vos listes" entries={activity.account} nameMap={activity.nameMap} />
+            <window.ActivityPanel title="Activité partagée" subtitle="Modifications sur les listes partagées avec vous" entries={activity.shared} nameMap={activity.nameMap} />
+          </div>
         </section>
       )}
     </div>
