@@ -50,6 +50,7 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
   // Retour du lien « mot de passe oublié » → Supabase établit une session de
   // récupération et émet dx-password-recovery : on propose le nouveau mot de passe.
   React.useEffect(() => {
+    if (window.__dxRecovery) setRecovering(true);   // lien de récupération détecté au chargement
     const onRec = () => { setRecovering(true); setError(''); setNotice(''); };
     window.addEventListener('dx-password-recovery', onRec);
     return () => window.removeEventListener('dx-password-recovery', onRec);

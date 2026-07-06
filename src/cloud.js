@@ -11,6 +11,12 @@ const ENV = (typeof import.meta !== 'undefined' && import.meta.env) || {};
 const URL = ENV.VITE_SUPABASE_URL;
 const KEY = ENV.VITE_SUPABASE_ANON_KEY;
 
+// Retour du lien « mot de passe oublié » : on lit le hash (#…type=recovery) AVANT
+// que Supabase (detectSessionInUrl) ne le nettoie → l'app affiche le formulaire.
+if (typeof window !== 'undefined' && /(?:^|[#&])type=recovery/.test(window.location.hash || '')) {
+  window.__dxRecovery = true;
+}
+
 let supa = null;
 try {
   if (URL && KEY) supa = createClient(URL, KEY, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });

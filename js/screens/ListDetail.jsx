@@ -60,6 +60,21 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
 
   React.useEffect(() => { load(); autoScoredRef.current = null; }, [listId]);
 
+  // Rafraîchissement des prix toutes les 60 s (tick global) — on ne recharge que
+  // les cotations, pas toute la liste ni le re-scoring.
+  React.useEffect(() => {
+    const onTick = () => {
+      const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
+      if (!tickers.length) return;
+      DXApi.batchQuotes(tickers).then(results => {
+        const m = {}; (results || []).forEach(r => { if (r?.ticker) m[r.ticker] = r; });
+        setQuotes(m);
+      }).catch(() => {});
+    };
+    window.addEventListener('dx-price-tick', onTick);
+    return () => window.removeEventListener('dx-price-tick', onTick);
+  }, [list]);
+
   // Auto-rescore all items once per list load (background, batches de 4)
   React.useEffect(() => {
     if (!list || autoScoredRef.current === listId) return;

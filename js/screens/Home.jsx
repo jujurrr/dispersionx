@@ -7,16 +7,20 @@ function Home({ onNav, lists, mode }) {
   const recent = lists ? lists.slice(0, 4) : [];
 
   React.useEffect(() => {
+    let idxData = [];
+    const loadSnaps = () => idxData.forEach(idx => {
+      DXApi.getSnapshot(idx.symbol).then(snap => setSnapshots(s => ({ ...s, [idx.symbol]: snap }))).catch(() => {});
+    });
     DXApi.getIndices().then(data => {
+      idxData = data || [];
       setIndices(data);
       setLoading(false);
-      // Load snapshots async
-      data.forEach(idx => {
-        DXApi.getSnapshot(idx.symbol).then(snap => {
-          setSnapshots(s => ({ ...s, [idx.symbol]: snap }));
-        }).catch(() => {});
-      });
+      loadSnaps();
     }).catch(() => setLoading(false));
+    // Refresh des prix toutes les 60 s (tick global).
+    const onTick = () => loadSnaps();
+    window.addEventListener('dx-price-tick', onTick);
+    return () => window.removeEventListener('dx-price-tick', onTick);
   }, []);
 
   const fmt = (v, decimals = 2) => v == null ? '—' : Number(v).toFixed(decimals);

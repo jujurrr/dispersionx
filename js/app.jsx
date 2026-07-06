@@ -3,6 +3,7 @@ const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'c
 
 function App() {
   const [screen, setScreen] = React.useState(() => {
+    if (window.__dxRecovery) return 'login';   // retour d'un lien de réinitialisation de mot de passe
     const hash = window.location.hash.slice(1);
     return HASH_SCREENS.includes(hash) ? hash : 'landing';
   });
@@ -128,6 +129,17 @@ function App() {
     }
   };
   React.useEffect(() => { tryRedeemJoinRef.current(); }, []);
+
+  // Rafraîchissement des prix toutes les 60 s (tick global) — uniquement quand
+  // l'onglet est visible, pour éviter des appels API inutiles en arrière-plan.
+  React.useEffect(() => {
+    const id = setInterval(() => {
+      if (typeof document === 'undefined' || document.visibilityState === 'visible') {
+        window.dispatchEvent(new CustomEvent('dx-price-tick'));
+      }
+    }, 60000);
+    return () => clearInterval(id);
+  }, []);
 
   // Navigate to a screen with the full-screen transition splash.
   function transitionTo(target, label, params) {
