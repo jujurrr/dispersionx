@@ -4,7 +4,10 @@
 // clôtures Cboe (repli Yahoo) pour HV/ρ/beta, repli MarketData si token.
 export const config = { runtime: 'edge' };
 
-import { fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
+// cboeIvBundle appelé DIRECTEMENT (en mémoire) : il lit d'abord le cache Supabase
+// partagé (fiable inter-région) et évite le saut HTTP interne vers /api/iv qui
+// échouait dans certaines régions (→ 502 → estimation 128).
+import { fetchClosesSmart, cboeIvBundle } from '../_lib/cboe.js';
 import { proxyEtf } from '../_lib/proxy-scale.js';
 
 const R = 0.043;
@@ -116,12 +119,11 @@ export default async (req) => {
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
-  const origin = new URL(req.url).origin;
   const [stockData, idxData, ivCboe, ivIdxCboe] = await Promise.all([
     fetchBarsData(sym),
     fetchBarsData(idxEtf),
-    ivViaApi(origin, sym, duration),
-    ivViaApi(origin, indexSym, duration),
+    cboeIvBundle(sym, duration).catch(() => null),
+    cboeIvBundle(indexSym, duration).catch(() => null),
   ]);
 
   if (!stockData) return Response.json({ error: 'no_price_data', symbol: sym }, { status: 502 });

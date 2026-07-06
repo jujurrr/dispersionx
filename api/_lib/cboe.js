@@ -202,7 +202,7 @@ export async function cboeIvBundle(symbol, dte = 30, timeoutMs = 15000) {
   const sym = String(symbol).toUpperCase();
   // 1) Cache PARTAGÉ (Supabase, ~15 min) — fiable quelle que soit la région.
   const cached = await ivCacheGet(sym, dte);
-  if (cached) return cached;
+  if (cached) return { ...cached, source: 'cboe_cached' };   // marqueur : lu du cache partagé
   // 2) Sinon on télécharge la chaîne Cboe.
   const chain = await fetchCboeChain(symbol, timeoutMs);
   if (!chain) return null;
