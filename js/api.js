@@ -213,35 +213,27 @@
     catch { return window.DXMock.getListAnalysis(id); }
   }
   async function exportList(id) {
-    try {
-      const r = await fetch(BASE + '/lists/' + id + '/export');
-      if (!r.ok) throw new Error(r.statusText);
-      return r.blob();
-    } catch {
-      const list = window.DXMock.lists.find(l => l.id === id) || window.DXMock.lists[0];
-      return new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
-    }
+    const c = _cloud();
+    if (c) { try { const l = await c.lists.get(id); return new Blob([JSON.stringify(l, null, 2)], { type: 'application/json' }); } catch (e) { console.warn('cloud exportList', e); } }
+    const list = window.DXMock.lists.find(l => l.id === id) || window.DXMock.lists[0];
+    return new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
   }
   async function exportAllLists() {
-    try {
-      const r = await fetch(BASE + '/lists/export/all');
-      if (!r.ok) throw new Error(r.statusText);
-      return r.blob();
-    } catch {
-      return new Blob([JSON.stringify(window.DXMock.lists, null, 2)], { type: 'application/json' });
-    }
+    const c = _cloud();
+    if (c) { try { const ls = await c.lists.getAll(); return new Blob([JSON.stringify(ls, null, 2)], { type: 'application/json' }); } catch (e) { console.warn('cloud exportAll', e); } }
+    return new Blob([JSON.stringify(window.DXMock.lists, null, 2)], { type: 'application/json' });
   }
   async function importLists(file) {
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      const r = await fetch(BASE + '/lists/import', { method: 'POST', body: fd });
-      if (!r.ok) throw new Error(r.statusText);
-      return await r.json();
-    } catch {
-      const parsed = JSON.parse(await file.text());
-      return window.DXMock.importLists(parsed);
+    const parsed = JSON.parse(await file.text());
+    const c = _cloud();
+    if (c) {
+      try {
+        const res = await c.lists.importLocal(Array.isArray(parsed) ? parsed : [parsed]);
+        window.dispatchEvent(new CustomEvent('dx-lists-changed'));   // rafraîchit l'UI
+        return { imported: res.imported, message: res.imported + ' liste(s) importée(s)' };
+      } catch (e) { console.warn('cloud importLists', e); }
     }
+    return window.DXMock.importLists(parsed);
   }
 
   /* ── Correlation ─────────────────────────────────────────────── */
