@@ -15,9 +15,10 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
     // S'assurer que le store charge/score les 5 indices ; re-render à l'avancement
     const onUpd = () => setTick(t => t + 1);
     window.addEventListener('dx-index-update', onUpd);
+    window.addEventListener('dx-strategies-changed', onUpd);   // hydratation cloud des stratégies
     if (window.DXStore) (window.DXMock?.indices || []).forEach(ix =>
       window.DXStore.loadIndex(ix.symbol).then(() => window.DXStore.scoreIndex(ix.symbol, 30)).catch(() => {}));
-    return () => window.removeEventListener('dx-index-update', onUpd);
+    return () => { window.removeEventListener('dx-index-update', onUpd); window.removeEventListener('dx-strategies-changed', onUpd); };
   }, []);
 
   // Prime de corrélation par indice (calcul de fond sur les top composants du store)

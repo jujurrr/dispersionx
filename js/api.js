@@ -275,8 +275,19 @@
     out.sort((a, b) => String(b.builtAt || '').localeCompare(String(a.builtAt || '')));
     return out;
   }
+  // Sauvegarde d'une stratégie construite (une par liste). localStorage reste la
+  // source SYNCHRONE de la session ; si le cloud est actif, on écrit AUSSI côté
+  // serveur (write-through best-effort) → synchro multi-appareil, sans changer
+  // les lectures synchrones (ré-hydratées à la connexion). Voir src/cloud.js.
+  function saveStrategy(listId, s) {
+    try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
+    const c = _cloud();
+    if (c && c.strategies) c.strategies.save(listId, s).catch(e => console.warn('cloud saveStrategy', e));
+  }
   function deleteLocalStrategy(listId) {
     try { localStorage.removeItem('dx-strategy-' + listId); } catch {}
+    const c = _cloud();
+    if (c && c.strategies) c.strategies.remove(listId).catch(e => console.warn('cloud deleteStrategy', e));
   }
   // Métriques dérivées d'une stratégie sauvegardée (DTE restant, état, alerte).
   function strategyMetrics(s) {
@@ -341,7 +352,10 @@
   function _loadPositions() { try { return JSON.parse(localStorage.getItem(LS_POS) || '[]') || []; } catch { return []; } }
   function _savePositions(arr) { try { localStorage.setItem(LS_POS, JSON.stringify(arr)); } catch {} }
   function _isLocalPos(cid) { return String(cid).indexOf('loc-') === 0; }
-  function _localPositionRow(p) {
+
+  // Ligne de liste (MonitorList) dérivée d'un objet position BRUT — même forme
+  // que la position vienne du store local (dx-positions) ou du cloud (Supabase).
+  function _positionRow(p) {
     const s = p.strategy || {};
     const m = strategyMetrics(s);
     return {
@@ -349,11 +363,13 @@
       index_symbol: (s.indexEtf && s.indexEtf !== s.index) ? s.indexEtf + ' (' + s.index + ')' : (s.index || 'SPX'),
       strategy_type: 'dispersion', status: p.status,
       committed_at: p.committed_at, n_snapshots: (p.snapshots || []).length,
-      pnl: null, dte: m.dte, local: true,
+      pnl: null, dte: m.dte,
     };
   }
-  function _localPositionDetail(cid) {
-    const p = _loadPositions().find(x => x.id === cid);
+  // Détail (PositionDetail) dérivé d'un objet position BRUT. Suivi THÉORIQUE :
+  // grecs recalculés au DTE restant (lois √T du straddle ATM) ; le P&L de marché
+  // n'est pas inventé (il faudrait de vraies données d'options).
+  function _positionDetail(p) {
     if (!p) return null;
     const s = p.strategy || {}; const port = s.portfolio || {};
     const m = strategyMetrics(s);
@@ -363,7 +379,7 @@
       ...(s.components || []).map(c => ({ symbol: c.ticker, side: 'long', quantity: c.nContracts, current_iv: c.iv, role: 'component', pnl: null })),
     ];
     return {
-      local: true,
+      theoretical: true,
       position: { id: p.id, name: p.name || m.name, index_symbol: s.index || 'SPX', strategy_type: 'dispersion', status: p.status, committed_at: p.committed_at, list_id: p.list_id },
       monitoring: {
         total_pnl: null, exit_cost_estimate: null, net_pnl_after_exit: null,
@@ -378,11 +394,21 @@
     };
   }
 
+  // Positions committées. Cloud (Supabase) si connecté & configuré → partagées
+  // entre appareils ; sinon store local 'dx-positions' (comportement historique).
+  // Les positions créées hors-ligne (id « loc-… ») restent gérées en local même
+  // une fois le cloud actif. La forme renvoyée est identique dans les deux cas.
   async function commitPosition(list_id, name) {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem('dx-strategy-' + list_id) || 'null'); } catch {}
+    const c = _cloud();
+    if (c && c.positions) {
+      if (!s || !s.components) throw new Error("aucune stratégie construite pour cette liste — construisez-la d'abord (Builder ou Construction)");
+      try { return await c.positions.commit(list_id, name || null, s); }
+      catch (e) { console.warn('cloud commitPosition', e); }
+    }
     try { return await _post('/monitor/commit', { list_id, name }); }
     catch {
-      let s = null;
-      try { s = JSON.parse(localStorage.getItem('dx-strategy-' + list_id) || 'null'); } catch {}
       if (!s || !s.components) throw new Error("aucune stratégie construite pour cette liste — construisez-la d'abord (Builder ou Construction)");
       const id = 'loc-' + Date.now();
       const arr = _loadPositions();
@@ -392,16 +418,26 @@
     }
   }
   async function getPositions(list_id) {
+    const c = _cloud();
+    if (c && c.positions) {
+      try { const arr = await c.positions.list(list_id); return { positions: arr.map(_positionRow), cloud: true }; }
+      catch (e) { console.warn('cloud getPositions', e); }
+    }
     try { return await _get('/monitor/positions' + (list_id ? '?list_id=' + list_id : '')); }
     catch {
-      const rows = _loadPositions().filter(p => !list_id || String(p.list_id) === String(list_id)).map(_localPositionRow);
+      const rows = _loadPositions().filter(p => !list_id || String(p.list_id) === String(list_id)).map(_positionRow);
       return { positions: rows, local: true };
     }
   }
   async function getPosition(cid) {
-    if (_isLocalPos(cid)) return _localPositionDetail(cid);
+    if (_isLocalPos(cid)) return _positionDetail(_loadPositions().find(x => x.id === cid));
+    const c = _cloud();
+    if (c && c.positions) {
+      try { return _positionDetail(await c.positions.get(cid)); }
+      catch (e) { console.warn('cloud getPosition', e); }
+    }
     try { return await _get('/monitor/position/' + cid); }
-    catch { return _localPositionDetail(cid); }
+    catch { return _positionDetail(_loadPositions().find(x => x.id === cid)); }
   }
   async function snapshotPosition(cid) {
     if (_isLocalPos(cid)) {
@@ -412,6 +448,14 @@
       _savePositions(arr);
       return { success: true, local: true };
     }
+    const c = _cloud();
+    if (c && c.positions) {
+      try {
+        const p = await c.positions.get(cid);
+        const m = strategyMetrics(p.strategy || {});
+        return await c.positions.addSnapshot(cid, { taken_at: new Date().toISOString(), total_pnl: null, daily_pnl: null, dte: m.dte, netVega: m.netVega, netTheta: m.netTheta });
+      } catch (e) { console.warn('cloud snapshotPosition', e); }
+    }
     try { return await _post('/monitor/position/' + cid + '/snapshot', {}); }
     catch { return { success: true }; }
   }
@@ -421,6 +465,8 @@
       if (p) { p.status = 'closed'; _savePositions(arr); }
       return { success: true, local: true };
     }
+    const c = _cloud();
+    if (c && c.positions) { try { return await c.positions.setStatus(cid, 'closed'); } catch (e) { console.warn('cloud closePosition', e); } }
     try { return await _post('/monitor/position/' + cid + '/close', {}); }
     catch { return { success: true }; }
   }
@@ -429,6 +475,8 @@
       _savePositions(_loadPositions().filter(x => x.id !== cid));
       return { success: true, local: true };
     }
+    const c = _cloud();
+    if (c && c.positions) { try { return await c.positions.remove(cid); } catch (e) { console.warn('cloud deletePosition', e); } }
     try { return await _delete('/monitor/position/' + cid); }
     catch { return { success: true }; }
   }
@@ -445,7 +493,7 @@
     getCorrelation,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
-    localStrategies, deleteLocalStrategy, strategyMetrics,
+    localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
     getRisk,
     getChecklist, commitPosition,
     getPositions, getPosition, snapshotPosition, closePosition, deletePosition,

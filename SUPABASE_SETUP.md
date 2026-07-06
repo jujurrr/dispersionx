@@ -111,6 +111,51 @@ alter table public.iv_cache enable row level security;
 
 Sans `SUPABASE_SERVICE_KEY`, le cache est simplement désactivé (rien ne casse).
 
+## 8. Stratégies + positions synchronisées (recommandé)
+Même principe que les listes : une fois connecté, tes **stratégies construites**
+(Builder / Construction) et tes **positions suivies** (checklist → suivi) sont
+sauvegardées côté serveur et partagées entre tes appareils. Sans ces tables (ou
+sans connexion), tout continue de marcher en **local** (localStorage), à
+l'identique.
+
+Dans **SQL Editor → New query → Run** :
+
+```sql
+-- Stratégies construites : une par liste (clé (user_id, list_id)).
+create table if not exists public.strategies (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  list_id text not null,
+  data jsonb not null,
+  built_at timestamptz,
+  updated_at timestamptz not null default now(),
+  primary key (user_id, list_id)
+);
+alter table public.strategies enable row level security;
+create policy "own_strategies" on public.strategies
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Positions committées + historique des snapshots (jsonb).
+create table if not exists public.positions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  list_id text,
+  name text,
+  strategy jsonb not null,
+  status text not null default 'open',
+  snapshots jsonb not null default '[]'::jsonb,
+  committed_at timestamptz not null default now()
+);
+create index if not exists positions_user_idx on public.positions(user_id);
+alter table public.positions enable row level security;
+create policy "own_positions" on public.positions
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+
+À ta première connexion après avoir créé ces tables, tes stratégies présentes en
+local sont **remontées automatiquement** vers ton compte (une seule fois), puis
+l'app lit/écrit côté serveur. Les positions créées hors-ligne restent gérées en
+local et n'interfèrent pas.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

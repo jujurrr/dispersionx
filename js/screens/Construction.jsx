@@ -6,6 +6,13 @@
    Les grecs sont calculés localement (mêmes formules que le Risk Lab via
    window.DXRisk) → fonctionne hors-ligne, sur de vrais prix/IV, sans aléatoire.
    ───────────────────────────────────────────────────────────────────────── */
+// Persiste la stratégie de la liste : via DXApi (write-through cloud si connecté,
+// voir js/api.js + src/cloud.js), avec repli localStorage direct si l'API n'est
+// pas encore chargée.
+function persistStrategy(listId, s) {
+  if (window.DXApi && DXApi.saveStrategy) return DXApi.saveStrategy(listId, s);
+  try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
+}
 function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, indexOverride, durationOverride, onSaved }) {
   const { MetricCard, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const CONTRACT  = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
@@ -254,7 +261,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   function save(goRisk) {
     const s = buildStrategy();
     if (!s || !listId) return;
-    try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
+    persistStrategy(listId, s);
     setSavedTick(t => t + 1);
     if (onSaved) onSaved(s);
     if (goRisk && onNav) onNav('risk', { listId });
@@ -285,7 +292,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         return;
       }
       s.listId = listId;   // la stratégie importée s'applique à la liste courante
-      try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
+      persistStrategy(listId, s);
       setNIndex(s.nIndex || 1);
       setSizing(s.sizingMethod || 'vega_neutral');
       if (s.weightBasis) setWeightBasis(s.weightBasis);
@@ -307,7 +314,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     if (!embedded || !sized || !listId) return;
     const s = buildStrategy();
     if (!s) return;
-    try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
+    persistStrategy(listId, s);
     if (onSaved) onSaved(s);
   }, [embedded, sized, listId, deltaHedge, expiry]);
 

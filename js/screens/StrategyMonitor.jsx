@@ -10,7 +10,13 @@ function StrategyMonitor({ mode, lists, onNav }) {
   const reload = React.useCallback(() => {
     setStrats((window.DXApi && DXApi.localStrategies) ? DXApi.localStrategies(lists) : []);
   }, [lists]);
-  React.useEffect(() => { reload(); }, [reload]);
+  React.useEffect(() => {
+    reload();
+    // Ré-hydratation cloud des stratégies (connexion) → recharger la liste.
+    const onChg = () => reload();
+    window.addEventListener('dx-strategies-changed', onChg);
+    return () => window.removeEventListener('dx-strategies-changed', onChg);
+  }, [reload]);
 
   const fmtS  = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR');
   // Seuils partagés avec le Risk Lab / la Construction (mêmes couleurs partout)

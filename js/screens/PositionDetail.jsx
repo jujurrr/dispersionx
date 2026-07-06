@@ -104,12 +104,12 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         </div>
       </div>
 
-      {/* Bannière position locale : suivi théorique, pas de P&L de marché */}
-      {data.local && (
+      {/* Bannière suivi théorique : grecs au DTE restant, pas de P&L de marché */}
+      {data.theoretical && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--info)', borderRadius: 'var(--radius-lg)' }}>
           <span style={{ color: 'var(--info)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>i</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Position locale — suivie depuis la stratégie construite. Les grecs sont recalculés au DTE restant ; le P&L de marché nécessite de vraies données d'options (non disponibles).
+            Suivi théorique — depuis la stratégie construite. Les grecs sont recalculés au DTE restant ; le P&L de marché nécessite de vraies données d'options (non disponibles).
           </span>
         </div>
       )}
