@@ -40,9 +40,11 @@ create index if not exists list_items_list_id_idx on public.list_items(list_id);
 alter table public.lists enable row level security;
 alter table public.list_items enable row level security;
 
+drop policy if exists "own_lists" on public.lists;
 create policy "own_lists" on public.lists
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
+drop policy if exists "own_list_items" on public.list_items;
 create policy "own_list_items" on public.list_items
   for all
   using (exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid()))
@@ -131,6 +133,7 @@ create table if not exists public.strategies (
   primary key (user_id, list_id)
 );
 alter table public.strategies enable row level security;
+drop policy if exists "own_strategies" on public.strategies;
 create policy "own_strategies" on public.strategies
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
@@ -147,6 +150,7 @@ create table if not exists public.positions (
 );
 create index if not exists positions_user_idx on public.positions(user_id);
 alter table public.positions enable row level security;
+drop policy if exists "own_positions" on public.positions;
 create policy "own_positions" on public.positions
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
@@ -186,22 +190,27 @@ create index if not exists list_shares_list_id_idx on public.list_shares(list_id
 
 alter table public.list_shares enable row level security;
 -- Le propriétaire gère les partages de SES listes ; le destinataire lit les siens.
+drop policy if exists "owner_manages_shares" on public.list_shares;
 create policy "owner_manages_shares" on public.list_shares
   for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+drop policy if exists "recipient_reads_shares" on public.list_shares;
 create policy "recipient_reads_shares" on public.list_shares
   for select using (auth.uid() = shared_with);
 
 -- Une liste partagée devient LISIBLE par le destinataire.
+drop policy if exists "shared_lists_select" on public.lists;
 create policy "shared_lists_select" on public.lists
   for select using (
     exists (select 1 from public.list_shares s where s.list_id = lists.id and s.shared_with = auth.uid())
   );
 -- Ses items sont lisibles (viewer + editor)…
+drop policy if exists "shared_items_select" on public.list_items;
 create policy "shared_items_select" on public.list_items
   for select using (
     exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid())
   );
 -- …et modifiables uniquement par le rôle 'editor'.
+drop policy if exists "shared_items_write" on public.list_items;
 create policy "shared_items_write" on public.list_items
   for all using (
     exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid() and s.role = 'editor')
@@ -269,6 +278,7 @@ create index if not exists audit_log_list_id_idx on public.audit_log(list_id, cr
 alter table public.audit_log enable row level security;
 -- Lecture : propriétaire de la liste, personnes avec qui elle est partagée, ou
 -- l'auteur de l'action. Aucune policy d'écriture → seuls les triggers écrivent.
+drop policy if exists "audit_read" on public.audit_log;
 create policy "audit_read" on public.audit_log
   for select using (
     auth.uid() = actor_id
