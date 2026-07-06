@@ -5,8 +5,7 @@
 // La réponse est mise en cache par le CDN 15 min (s-maxage) : un symbole
 // n'est re-téléchargé du Cboe qu'une fois par quart d'heure, quel que soit
 // le nombre de visiteurs — les endpoints batch s'appuient dessus.
-// Épinglé sur une région US (iad1) : récupération Cboe fiable (cf. auto-score).
-export const config = { runtime: 'edge', regions: ['iad1'] };
+export const config = { runtime: 'edge' };
 
 import { cboeIvBundle } from '../_lib/cboe.js';
 

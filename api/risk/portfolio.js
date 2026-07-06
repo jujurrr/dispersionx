@@ -2,8 +2,7 @@
 // Body: { tickers: string[], index: string, duration?: number }
 // Greeks ATM straddle (IV réelles Cboe via /api/iv, cache CDN 15 min)
 // + scénarios + beta depuis les clôtures Cboe (repli Yahoo)
-// Épinglé sur une région US (iad1) : récupération Cboe fiable (cf. auto-score).
-export const config = { runtime: 'edge', regions: ['iad1'] };
+export const config = { runtime: 'edge' };
 
 import { fetchClosesSmart, cboeIvBundle } from '../_lib/cboe.js';
 import { proxyEtf, proxyScale } from '../_lib/proxy-scale.js';
