@@ -94,6 +94,31 @@ function oppScoreOf(o) {
   return Math.max(0, Math.min(100, Math.round(50 + o.prime * 2.2 + (o.avgScore - 62) * 0.6)));
 }
 
+// Cache module des backtests (à la demande, lourd) : clé = panier+indice+horizon.
+const _btCache = {};
+function btKey(members, index, dur) { return index + '|' + dur + '|' + members.slice().sort().join(','); }
+
+// Mini courbe d'équité (prime cumulée capturée) en SVG, largeur fluide.
+function BtChart({ pts }) {
+  if (!pts || pts.length < 2) return null;
+  const W = 560, H = 92, P = 6;
+  const min = Math.min(0, ...pts), max = Math.max(0, ...pts);
+  const range = (max - min) || 1;
+  const x = i => P + (i / (pts.length - 1)) * (W - 2 * P);
+  const y = v => P + (1 - (v - min) / range) * (H - 2 * P);
+  const d = pts.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const up = pts[pts.length - 1] >= 0;
+  const col = up ? 'var(--pos-bright)' : 'var(--neg-bright)';
+  const area = `${d} L${x(pts.length - 1).toFixed(1)},${y(0).toFixed(1)} L${x(0).toFixed(1)},${y(0).toFixed(1)} Z`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: 92, display: 'block' }}>
+      <path d={area} fill={col} opacity="0.08" />
+      <line x1={P} y1={y(0).toFixed(1)} x2={W - P} y2={y(0).toFixed(1)} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" />
+      <path d={d} fill="none" stroke={col} strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 async function oppGather(index, dur) {
   await window.DXStore.loadIndex(index);
   await window.DXStore.scoreIndex(index, dur);
@@ -163,14 +188,15 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
   const [results, setResults] = React.useState(null);
   const [ctx, setCtx] = React.useState(null);
   const [error, setError] = React.useState('');
+  const [bt, setBt] = React.useState({});   // i -> { open, loading, data, error }
 
   // Changer d'indice ou d'horizon efface les anciens résultats (pas de confusion).
-  function clearResults() { setResults(null); setError(''); setCtx(null); }
+  function clearResults() { setResults(null); setError(''); setCtx(null); setBt({}); }
   function pickIndex(s) { if (s !== index) { setIndex(s); clearResults(); } }
   function pickDur(d) { if (d !== duration) { setDuration(d); clearResults(); } }
 
   async function run(force) {
-    setError(''); setRunning(true); setResults(null);
+    setError(''); setRunning(true); setResults(null); setBt({});
     try {
       const key = index + '|' + duration;
       if (!force && _oppCache[key] && Date.now() - _oppCache[key].at < 10 * 60 * 1000) {
@@ -195,7 +221,29 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
     } catch (e) { addToast && addToast('Création impossible : ' + (e && e.message ? e.message : ''), 'error'); }
   }
 
+  // Backtest historique approché d'une opportunité (à la demande).
+  async function toggleBacktest(i, o) {
+    const cur = bt[i];
+    if (cur && cur.open) { setBt(p => ({ ...p, [i]: { ...p[i], open: false } })); return; }
+    if (cur && (cur.data || cur.error)) { setBt(p => ({ ...p, [i]: { ...p[i], open: true } })); return; }
+    const k = btKey(o.members, index, duration);
+    if (_btCache[k]) { setBt(p => ({ ...p, [i]: { open: true, loading: false, data: _btCache[k] } })); return; }
+    setBt(p => ({ ...p, [i]: { open: true, loading: true } }));
+    try {
+      const data = await DXApi.backtestDispersion(o.members, index, duration);
+      if (!data || data.error || !data.cumulative) throw new Error(data && data.error ? 'Historique insuffisant pour ce panier.' : 'Backtest indisponible.');
+      _btCache[k] = data;
+      setBt(p => ({ ...p, [i]: { open: true, loading: false, data } }));
+    } catch (e) {
+      const msg = e && /HTTP (4|5)\d\d/.test(e.message || '')
+        ? 'Historique insuffisant ou indisponible pour ce panier (certaines valeurs manquent de données sur ~2 ans).'
+        : (e && e.message ? e.message : 'Backtest impossible.');
+      setBt(p => ({ ...p, [i]: { open: true, loading: false, error: msg } }));
+    }
+  }
+
   const fmtS = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR');
+  const fmtP = n => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(1);
 
   // ── Écran verrouillé (non Pro) ──
   if (!pro) {
@@ -332,6 +380,61 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                   </div>
                 </div>
               )}
+
+              {/* ── Backtest historique (approché, à la demande) ── */}
+              <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                <button onClick={() => toggleBacktest(i, o)}
+                  style={{ width: '100%', textAlign: 'left', padding: '10px 20px', background: 'transparent', border: 'none', cursor: 'pointer', font: '600 12px/1 var(--font-sans)', color: 'var(--text-soft)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>{bt[i] && bt[i].open ? '▾' : '▸'}</span>
+                  Backtest historique <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· prime de corrélation capturée sur ~2 ans (approché)</span>
+                </button>
+                {bt[i] && bt[i].open && (
+                  <div style={{ padding: '4px 20px 18px' }}>
+                    {bt[i].loading && (
+                      <div style={{ padding: '18px 0', textAlign: 'center', font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Calcul sur l'historique…</div>
+                    )}
+                    {bt[i].error && (
+                      <div style={{ font: 'var(--type-body-sm)', color: 'var(--warn)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 14px' }}>{bt[i].error}</div>
+                    )}
+                    {bt[i].data && (() => {
+                      const D = bt[i].data, st = D.stats;
+                      return (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                          <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 14px 6px' }}>
+                            <BtChart pts={D.cumulative.map(c => c.cum)} />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 4 }}>
+                              <span>{D.cumulative[0] && D.cumulative[0].date}</span>
+                              <span>prime cumulée capturée (pts) · {D.n_windows} fenêtres de {D.horizon}j</span>
+                              <span>{D.cumulative[D.cumulative.length - 1] && D.cumulative[D.cumulative.length - 1].date}</span>
+                            </div>
+                          </div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8 }}>
+                            {[
+                              { l: 'Réussite', v: st.hit_rate + '%', c: st.hit_rate >= 55 ? 'var(--pos-bright)' : st.hit_rate >= 45 ? 'var(--text)' : 'var(--neg-bright)', t: '% de fenêtres où la dispersion aurait payé (ρ implicite > ρ réalisée)' },
+                              { l: 'Prime moy.', v: fmtP(st.avg_edge) + ' pts', c: st.avg_edge >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', t: 'prime de corrélation moyenne capturée par fenêtre' },
+                              { l: 'Cumul', v: fmtP(st.cum_edge) + ' pts', c: st.cum_edge >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', t: 'somme des primes capturées sur toute la période' },
+                              { l: 'Meilleure', v: fmtP(st.best) + ' pts', c: 'var(--text-soft)', t: 'meilleure fenêtre' },
+                              { l: 'Pire', v: fmtP(st.worst) + ' pts', c: 'var(--text-soft)', t: 'pire fenêtre' },
+                            ].map(m => (
+                              <div key={m.l} title={m.t} style={{ padding: '8px 10px', borderRadius: 'var(--radius)', background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+                                <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{m.l}</div>
+                                <div style={{ font: 'var(--type-data-sm)', color: m.c, marginTop: 2 }}>{m.v}</div>
+                              </div>
+                            ))}
+                          </div>
+                          {D.skipped && D.skipped.length > 0 && (
+                            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Sans historique exploitable : {D.skipped.join(', ')}</div>
+                          )}
+                          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                            <strong style={{ color: 'var(--text-muted)' }}>Approximation.</strong> Prime capturée = ρ implicite à l'entrée (VIX/HV) − ρ réalisée sur la période, sur prix historiques uniquement.
+                            Ce n'est <strong>pas</strong> un P&L d'options réel (hors primes exactes, coûts d'exécution, theta) — un indicateur de l'edge structurel de la dispersion, à titre indicatif.
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </div>
