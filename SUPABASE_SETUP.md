@@ -397,6 +397,59 @@ grant execute on function public.delete_list(uuid) to authenticated;
 
 Ensuite, dans le détail d'une liste : bouton **« Activité »** qui déroule le journal.
 
+## 11. Partage par lien (invitation)
+En plus du partage par e-mail, le propriétaire peut générer un **lien** (avec un
+rôle lecture/modification). Quiconque ouvre le lien **en étant connecté** rejoint
+la liste. Le lien est **révocable** à tout moment. Sans ces objets, le bouton
+« Générer un lien » n'a simplement aucun effet.
+
+Dans **SQL Editor → New query → Run** :
+
+```sql
+create table if not exists public.share_links (
+  id uuid primary key default gen_random_uuid(),
+  list_id uuid not null references public.lists(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  token uuid not null unique default gen_random_uuid(),
+  role text not null default 'viewer' check (role in ('viewer','editor')),
+  created_at timestamptz not null default now()
+);
+create index if not exists share_links_list_id_idx on public.share_links(list_id);
+alter table public.share_links enable row level security;
+-- Le propriétaire gère les liens de SES listes.
+drop policy if exists "owner_manages_links" on public.share_links;
+create policy "owner_manages_links" on public.share_links
+  for all using (auth.uid() = owner_id)
+  with check (auth.uid() = owner_id
+    and exists (select 1 from public.lists l where l.id = list_id and l.user_id = auth.uid()));
+
+-- Réclamer un lien : ajoute l'utilisateur connecté aux partages de la liste.
+-- SECURITY DEFINER : il peut lire le lien par son token sans l'exposer au client.
+create or replace function public.redeem_share_link(p_token uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_link public.share_links;
+  v_me uuid := auth.uid();
+  v_owner_email text; v_me_email text;
+begin
+  if v_me is null then raise exception 'not_authenticated'; end if;
+  select * into v_link from public.share_links where token = p_token;
+  if v_link.id is null then raise exception 'invalid_link'; end if;
+  if v_link.owner_id = v_me then return v_link.list_id; end if;   -- c'est déjà ta liste
+  select email into v_owner_email from auth.users where id = v_link.owner_id;
+  select email into v_me_email from auth.users where id = v_me;
+  insert into public.list_shares (list_id, owner_id, owner_email, shared_with, shared_with_email, role)
+  values (v_link.list_id, v_link.owner_id, v_owner_email, v_me, v_me_email, v_link.role)
+  on conflict (list_id, shared_with) do update set role = excluded.role;
+  return v_link.list_id;
+end; $$;
+revoke all on function public.redeem_share_link(uuid) from public, anon;
+grant execute on function public.redeem_share_link(uuid) to authenticated;
+```
+
+Le lien a la forme `https://ton-domaine/#join=<token>`. En l'ouvrant, l'app le
+réclame (après connexion si besoin) et t'ajoute à « Partagées avec moi ».
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

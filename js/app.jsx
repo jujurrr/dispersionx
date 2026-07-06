@@ -78,7 +78,7 @@ function App() {
   // ou migrer les listes recharge la liste des listes (source = cloud ou local).
   React.useEffect(() => {
     const reload = () => DXApi.getLists().then(d => setLists(d || [])).catch(() => {});
-    const onAuthChange = (e) => { handleAuth(e.detail); reload(); };
+    const onAuthChange = (e) => { handleAuth(e.detail); reload(); if (e.detail) tryRedeemJoinRef.current(); };
     window.addEventListener('dx-auth-change', onAuthChange);
     window.addEventListener('dx-lists-changed', reload);
     return () => { window.removeEventListener('dx-auth-change', onAuthChange); window.removeEventListener('dx-lists-changed', reload); };
@@ -102,6 +102,30 @@ function App() {
 
   // Expose navigation so the marketing Landing page CTAs (in _ds_bundle.js) can route into the app
   window.__dxNav = onNav;
+
+  // Partage par lien : une URL #join=<token> réclame le partage (après connexion
+  // si besoin) et ajoute la liste à « Partagées avec moi ».
+  const pendingJoinRef = React.useRef(null);
+  const tryRedeemJoinRef = React.useRef(() => {});
+  tryRedeemJoinRef.current = async () => {
+    const m = (window.location.hash || '').match(/join=([0-9a-fA-F-]{36})/);
+    const token = pendingJoinRef.current || (m ? m[1] : null);
+    if (!token) return;
+    pendingJoinRef.current = token;
+    if (!(window.DXCloud && window.DXCloud.enabled)) { onNav('login'); return; }   // se connecter d'abord
+    try {
+      const listId = await DXApi.redeemShareLink(token);
+      pendingJoinRef.current = null;
+      try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch {}
+      window.dispatchEvent(new CustomEvent('dx-lists-changed'));
+      addToast && addToast('Liste ajoutée à « Partagées avec moi ».', 'ok');
+      if (listId) onNav('list-detail', { listId });
+    } catch {
+      pendingJoinRef.current = null;
+      addToast && addToast('Lien de partage invalide ou expiré.', 'error');
+    }
+  };
+  React.useEffect(() => { tryRedeemJoinRef.current(); }, []);
 
   // Navigate to a screen with the full-screen transition splash.
   function transitionTo(target, label, params) {

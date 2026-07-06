@@ -300,6 +300,34 @@ const shares = {
     if (error) throw error;
     return { success: true };
   },
+  // ── Partage par LIEN (invitation) ──────────────────────────────────────────
+  // Le propriétaire crée un lien (token) avec un rôle ; quiconque l'ouvre en
+  // étant connecté le « réclame » (RPC redeem_share_link) → il est ajouté aux
+  // partages de la liste. Révocable (suppression du lien).
+  async createLink(listId, role) {
+    const { data, error } = await supa.from('share_links')
+      .insert({ list_id: listId, owner_id: currentUser.id, role: role || 'viewer' })
+      .select('id, token, role, created_at').single();
+    if (error) throw error;
+    return { id: data.id, token: data.token, role: data.role, created_at: data.created_at };
+  },
+  async links(listId) {
+    const { data, error } = await supa.from('share_links')
+      .select('id, token, role, created_at').eq('list_id', listId).eq('owner_id', currentUser.id)
+      .order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+  async revokeLink(linkId) {
+    const { error } = await supa.from('share_links').delete().eq('id', linkId);
+    if (error) throw error;
+    return { success: true };
+  },
+  async redeem(token) {
+    const { data, error } = await supa.rpc('redeem_share_link', { p_token: token });
+    if (error) throw error;
+    return data;   // list_id
+  },
 };
 
 // ── Journal d'audit (lecture seule côté client ; écrit par des triggers SQL) ──

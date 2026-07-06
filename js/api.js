@@ -266,6 +266,27 @@
     if (!(c && c.shares)) throw new Error('connexion requise');
     const r = await c.shares.revoke(shareId); _poke(); return r;
   }
+  // ── Partage par lien ──────────────────────────────────────────
+  async function createShareLink(listId, role) {
+    const c = _cloud();
+    if (!(c && c.shares)) throw new Error('connexion requise');
+    return c.shares.createLink(listId, role);
+  }
+  async function getShareLinks(listId) {
+    const c = _cloud();
+    if (c && c.shares) { try { return await c.shares.links(listId); } catch (e) { console.warn('cloud getShareLinks', e); } }
+    return [];
+  }
+  async function revokeShareLink(linkId) {
+    const c = _cloud();
+    if (!(c && c.shares)) throw new Error('connexion requise');
+    return c.shares.revokeLink(linkId);
+  }
+  async function redeemShareLink(token) {
+    const c = _cloud();
+    if (!(c && c.shares)) throw new Error('connexion requise');
+    const r = await c.shares.redeem(token); _poke(); return r;
+  }
   // Journal d'audit d'une liste (cloud uniquement ; [] sinon).
   async function getListAudit(listId) {
     const c = _cloud();
@@ -534,6 +555,7 @@
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
     getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity,
+    createShareLink, getShareLinks, revokeShareLink, redeemShareLink,
     getCorrelation,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
