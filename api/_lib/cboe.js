@@ -11,6 +11,8 @@
 // d'options US : on passe par la chaîne de leur ETF proxy (EWQ/EWG) — IV réelle
 // du véhicule effectivement tradé.
 
+import { ivCacheGet, ivCacheSet } from './iv-cache.js';
+
 const OPTIONS_URL = 'https://cdn.cboe.com/api/global/delayed_quotes/options/';
 const HISTORY_URL = 'https://cdn.cboe.com/api/global/delayed_quotes/charts/historical/';
 
@@ -197,14 +199,19 @@ export function atmGreeks(spot, options, targetDte) {
 // `iv` = IV ATM interpolée au DTE demandé ; à 30 j (±3), l'iv30 officielle du
 // Cboe prime quand elle existe (c'est la valeur affichée par IBKR & co).
 export async function cboeIvBundle(symbol, dte = 30, timeoutMs = 15000) {
+  const sym = String(symbol).toUpperCase();
+  // 1) Cache PARTAGÉ (Supabase, ~15 min) — fiable quelle que soit la région.
+  const cached = await ivCacheGet(sym, dte);
+  if (cached) return cached;
+  // 2) Sinon on télécharge la chaîne Cboe.
   const chain = await fetchCboeChain(symbol, timeoutMs);
   if (!chain) return null;
   const term = atmTermStructure(chain.spot, chain.options);
   const interp = ivAtDte(term, dte);
   const iv = (Math.abs(dte - 30) <= 3 && chain.iv30 != null) ? chain.iv30 : interp;
   if (iv == null) return null;
-  return {
-    symbol: String(symbol).toUpperCase(),
+  const bundle = {
+    symbol: sym,
     spot: chain.spot,
     dte,
     iv,
@@ -214,6 +221,9 @@ export async function cboeIvBundle(symbol, dte = 30, timeoutMs = 15000) {
     asof: chain.asof,
     source: 'cboe_delayed',
   };
+  // 3) Partage vers toutes les régions (best-effort).
+  await ivCacheSet(sym, dte, bundle);
+  return bundle;
 }
 
 // Clôtures quotidiennes (ajustées des splits) — pour HV/beta/corrélation.

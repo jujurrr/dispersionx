@@ -82,6 +82,35 @@ tu peux désactiver ça : **Authentication → Providers → Email → décoche 
 > Tu peux commencer avec **e-mail/mot de passe seulement** et ajouter Google plus
 > tard — le bouton Google n'apparaît que si Supabase est configuré.
 
+## 7. (Fiabilité IV) Cache partagé d'IV — recommandé pour la prod
+Sans ça, certaines régions Vercel (ex. Paris) peuvent ne pas joindre le Cboe de
+façon fiable → l'IV retombe parfois sur une estimation (ex. ZS affiché 128 au
+lieu de ~58). Un cache PARTAGÉ dans Supabase règle ça : dès qu'une région a
+récupéré un symbole, toutes les régions le lisent depuis Supabase.
+
+**a) Créer la table** (SQL Editor → Run) :
+```sql
+create table if not exists public.iv_cache (
+  symbol text not null,
+  dte int not null,
+  payload jsonb not null,
+  fetched_at timestamptz not null default now(),
+  primary key (symbol, dte)
+);
+alter table public.iv_cache enable row level security;
+-- Aucune policy publique : seule la clé "service_role" (serveur) y accède.
+```
+
+**b) Ajouter la clé service dans Vercel** :
+- Supabase → **Project Settings → API → `service_role` `secret`** (⚠️ SECRÈTE — ne
+  jamais la mettre côté client / dans un fichier `.env` avec préfixe `VITE_`).
+- Vercel → **Settings → Environment Variables** → ajoute :
+  - `SUPABASE_SERVICE_KEY` = (la clé service_role)
+  - (et vérifie que `VITE_SUPABASE_URL` y est aussi — le serveur en a besoin.)
+- **Redéploie.**
+
+Sans `SUPABASE_SERVICE_KEY`, le cache est simplement désactivé (rien ne casse).
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).
