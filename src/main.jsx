@@ -16,6 +16,7 @@ import '../project/styles.css';
 
 // 3) Thème (applique data-theme) + bundle du design system.
 import '../project/ui_kits/theme.js';
+import '../js/screens/HintDot.jsx';         // window.HintDot (infobulles « ? » dans la DA, utilisé par MetricCard)
 import '../project/_ds_bundle.js';
 
 // 4) Données de démo, client API, store/préchargeur, logique pure partagée.

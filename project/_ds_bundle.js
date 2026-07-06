@@ -297,19 +297,21 @@ function MetricCard({
       alignItems: 'center',
       gap: 6
     }
-  }, label, hint && /*#__PURE__*/React.createElement("span", {
-    title: hint,
-    style: {
-      width: 13,
-      height: 13,
-      borderRadius: '50%',
-      border: '1px solid var(--border-strong)',
-      color: 'var(--text-dim)',
-      font: '600 9px/12px var(--font-sans)',
-      textAlign: 'center',
-      cursor: 'help'
-    }
-  }, "?")), /*#__PURE__*/React.createElement("div", {
+  }, label, hint && (window.HintDot
+    ? /*#__PURE__*/React.createElement(window.HintDot, { text: hint })
+    : /*#__PURE__*/React.createElement("span", {
+        title: hint,
+        style: {
+          width: 13,
+          height: 13,
+          borderRadius: '50%',
+          border: '1px solid var(--border-strong)',
+          color: 'var(--text-dim)',
+          font: '600 9px/12px var(--font-sans)',
+          textAlign: 'center',
+          cursor: 'help'
+        }
+      }, "?"))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'baseline',

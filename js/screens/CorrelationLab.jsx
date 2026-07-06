@@ -498,11 +498,15 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
 
       {/* Métriques */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <MetricCard label="ρ implicite"         value={rhoImpl.toFixed(2)} hint="Pricé via les options d'indice" accent="var(--accent)" />
-        <MetricCard label="ρ̂ réalisée"          value={rhoReal.toFixed(2)} hint="Observée sur les composants" accent="var(--info)" />
-        <MetricCard label="Prime de corrélation" value={(prime >= 0 ? '+' : '') + prime} unit="pts" delta={C.delta || ''} accent="var(--pos)" />
+        <MetricCard label="ρ implicite"         value={rhoImpl.toFixed(2)} accent="var(--accent)"
+          hint="Corrélation « attendue » par le marché, déduite du prix des options de l'indice. Plus elle est élevée, plus le marché parie que les actions bougeront ensemble." />
+        <MetricCard label="ρ̂ réalisée"          value={rhoReal.toFixed(2)} accent="var(--info)"
+          hint="Corrélation réellement observée entre les composants sur la période récente (mesurée sur les cours). C'est le comportement passé." />
+        <MetricCard label="Prime de corrélation" value={(prime >= 0 ? '+' : '') + prime} unit="pts" delta={C.delta || ''} accent="var(--pos)"
+          hint="Écart entre corrélation implicite et réalisée (en points). Positif = le marché « sur-price » la corrélation → contexte favorable à une dispersion (on parie que les actions se décorrèlent)." />
         <MetricCard label="Lecture" value={parseFloat(prime) > 3 ? 'Favorable' : parseFloat(prime) > 0 ? 'Neutre' : 'Défavorable'}
-          accent={parseFloat(prime) > 3 ? 'var(--pos)' : parseFloat(prime) > 0 ? 'var(--warn)' : 'var(--neg)'} />
+          accent={parseFloat(prime) > 3 ? 'var(--pos)' : parseFloat(prime) > 0 ? 'var(--warn)' : 'var(--neg)'}
+          hint="Synthèse du signal : Favorable si la prime dépasse ~3 pts, Neutre si elle est légèrement positive, Défavorable si négative." />
       </div>
 
       {mode === 'Débutant' && (

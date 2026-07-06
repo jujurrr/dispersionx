@@ -786,12 +786,18 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           </div>
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
-          <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 $ ✓' : fmtS(model.netDelta) + ' $/1%'} hint={deltaHedge === 'index' ? 'Couvert · ETF indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(model.netDelta) < 50 ? 'Résidu faible' : 'Résidu directionnel')} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
-          <MetricCard label="Vega net"  value={fmtS(model.netVega) + ' $/1%'} hint={Math.abs(model.netVega) < 60 ? 'Quasi-neutre ✓' : 'Vega résiduel'} accent={Math.abs(model.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'} />
-          <MetricCard label="Θ /jour"   value={fmtS(model.netTheta) + ' $'} hint={model.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
-          <MetricCard label="Vega idx"  value={fmtS(model.idxVega) + ' $/1%'} hint={'Short · ' + model.nIndex + ' contrat(s)'} accent="var(--neg)" />
-          <MetricCard label="Vega comp" value={fmtS(model.compVega) + ' $/1%'} hint="Panier long" accent="var(--pos)" />
-          <MetricCard label="Prime nette" value={fmtMoney(model.netPremium)} hint={model.netPremium >= 0 ? 'Crédit net' : 'Débit net'} accent="var(--accent)" />
+          <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 $ ✓' : fmtS(model.netDelta) + ' $/1%'} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}
+            hint={'Sensibilité au sens du marché ($ pour +1% de l\'indice). Proche de 0 = neutre directionnellement. ' + (deltaHedge === 'index' ? 'Ici : couvert par l\'ETF indice.' : deltaHedge === 'legs' ? 'Ici : couvert par les jambes.' : (Math.abs(model.netDelta) < 50 ? 'Ici : résidu faible.' : 'Ici : résidu directionnel à surveiller.'))} />
+          <MetricCard label="Vega net"  value={fmtS(model.netVega) + ' $/1%'} accent={Math.abs(model.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'}
+            hint="Sensibilité à la volatilité ($ pour +1 pt d'IV). Le cœur d'une dispersion : idéalement proche de 0 (on parie sur l'écart de corrélation, pas sur le niveau de vol)." />
+          <MetricCard label="Θ /jour"   value={fmtS(model.netTheta) + ' $'} accent="var(--warn)"
+            hint="Valeur temps perdue (négatif) ou gagnée chaque jour. Un débit de dispersion « brûle » du theta : si la dispersion attendue ne se réalise pas, le portage coûte." />
+          <MetricCard label="Vega idx"  value={fmtS(model.idxVega) + ' $/1%'} accent="var(--neg)"
+            hint="Vega de la jambe indice (short straddle). Négatif car on est vendeur de volatilité sur l'indice." />
+          <MetricCard label="Vega comp" value={fmtS(model.compVega) + ' $/1%'} accent="var(--pos)"
+            hint="Vega du panier de composants (long straddles). Positif car on est acheteur de volatilité sur les actions." />
+          <MetricCard label="Prime nette" value={fmtMoney(model.netPremium)} accent="var(--accent)"
+            hint={'Prime encaissée sur l\'indice moins prime payée sur les composants. ' + (model.netPremium >= 0 ? 'Ici : crédit net.' : 'Ici : débit net (coût d\'entrée de la dispersion).')} />
         </div>
       </section>
 
