@@ -97,7 +97,8 @@ const lists = {
     return { success: true };
   },
   async addItem(id, ticker, score_data) {
-    const row = { list_id: id, ticker, score: scoreOf(score_data), score_data: score_data || null, weight: score_data?.stock?.weight ?? null };
+    const sc = scoreOf(score_data);
+    const row = { list_id: id, ticker: String(ticker).toUpperCase().trim(), score: sc != null ? Math.round(Number(sc)) : null, score_data: score_data || null, weight: score_data?.stock?.weight ?? null };
     const { error } = await supa.from('list_items').upsert(row, { onConflict: 'list_id,ticker' });
     if (error) throw error;
     await supa.from('lists').update({ updated_at: new Date().toISOString() }).eq('id', id);
@@ -108,7 +109,11 @@ const lists = {
     if (error) throw error;
     return { success: true };
   },
-  // Migration : copie les listes localStorage vers le cloud (une seule fois).
+  // Migration / import : copie des listes (localStorage ou fichier) vers le cloud.
+  // Robuste : on DÉDOUBLONNE les tickers (sinon la contrainte unique(list_id,
+  // ticker) fait échouer TOUT le lot), on ARRONDIT le score (colonne integer) et
+  // on fait REMONTER les erreurs (une insertion d'items échouée ne doit pas
+  // laisser une liste vide en silence → on supprime la liste orpheline et on lève).
   async importLocal(localLists) {
     let n = 0;
     for (const raw of (localLists || [])) {
@@ -116,11 +121,25 @@ const lists = {
       const { data: l, error } = await supa.from('lists')
         .insert({ user_id: currentUser.id, name: raw.name, index_symbol: raw.index_symbol || 'SPX', description: raw.description || '' })
         .select().single();
-      if (error || !l) continue;
-      const items = (raw.items || []).filter(i => i && i.ticker).map(i => ({
-        list_id: l.id, ticker: i.ticker, weight: i.weight ?? null, score: i.score ?? null, score_data: i.score_data || null,
-      }));
-      if (items.length) await supa.from('list_items').insert(items);
+      if (error) throw error;
+      if (!l) continue;
+      const seen = new Set();
+      const items = [];
+      for (const i of (raw.items || [])) {
+        const ticker = i && i.ticker != null ? String(i.ticker).toUpperCase().trim() : '';
+        if (!ticker || seen.has(ticker)) continue;
+        seen.add(ticker);
+        items.push({
+          list_id: l.id, ticker,
+          weight: i.weight != null ? Number(i.weight) : null,
+          score: i.score != null ? Math.round(Number(i.score)) : null,
+          score_data: i.score_data || null,
+        });
+      }
+      if (items.length) {
+        const { error: e2 } = await supa.from('list_items').insert(items);
+        if (e2) { await supa.from('lists').delete().eq('id', l.id); throw e2; }   // pas de liste vide orpheline
+      }
       n++;
     }
     return { imported: n };

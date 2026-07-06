@@ -227,11 +227,11 @@
     const parsed = JSON.parse(await file.text());
     const c = _cloud();
     if (c) {
-      try {
-        const res = await c.lists.importLocal(Array.isArray(parsed) ? parsed : [parsed]);
-        window.dispatchEvent(new CustomEvent('dx-lists-changed'));   // rafraîchit l'UI
-        return { imported: res.imported, message: res.imported + ' liste(s) importée(s)' };
-      } catch (e) { console.warn('cloud importLists', e); }
+      // Connecté : l'import va dans le cloud. En cas d'échec, on LÈVE (l'UI lit
+      // le cloud, un repli local silencieux serait invisible et trompeur).
+      const res = await c.lists.importLocal(Array.isArray(parsed) ? parsed : [parsed]);
+      window.dispatchEvent(new CustomEvent('dx-lists-changed'));   // rafraîchit l'UI
+      return { imported: res.imported, message: res.imported + ' liste(s) importée(s)' };
     }
     return window.DXMock.importLists(parsed);
   }

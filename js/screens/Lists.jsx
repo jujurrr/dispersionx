@@ -75,7 +75,7 @@ function Lists({ onNav, onListsChange, addToast }) {
       const res = await DXApi.importLists(file);
       addToast && addToast(`${res.message || res.imported + ' liste(s) importée(s)'}.`);
       load();
-    } catch { addToast && addToast('Erreur lors de l\'import.', 'error'); }
+    } catch (err) { addToast && addToast('Erreur lors de l\'import : ' + (err?.message || 'inconnue'), 'error'); }
     e.target.value = '';
   }
 
