@@ -648,6 +648,18 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   const hedgeEtf = model.indexEtf || model.indexSym;
   const hedgeShares = model.indexPrice ? model.netDelta / (model.indexPrice * 0.01) : 0;
   const hedgeN = Math.round(Math.abs(hedgeShares));
+
+  // Hedge « par sous-jacent » : chaque jambe (indice + composants) est neutralisée
+  // par des parts de SON action. parts = delta_$/1% de la jambe / (prix × 1%).
+  // On ne liste que les jambes qui demandent ≥ 1 part (le reste est négligeable).
+  const legHedges = [];
+  if (model.indexPrice && Math.round(Math.abs(model.idxDelta / (model.indexPrice * 0.01))) >= 1) {
+    legHedges.push({ sym: hedgeEtf, shares: model.idxDelta / (model.indexPrice * 0.01) });
+  }
+  model.perTicker.forEach(t => {
+    const sh = t.price ? ((t.greeks.delta1pct || 0) * t.nContracts) / (t.price * 0.01) : 0;
+    if (Math.round(Math.abs(sh)) >= 1) legHedges.push({ sym: t.ticker, shares: sh });
+  });
   const scenarioDefs = [
     { name: 'Sell-off corrélé',    risk: 'critique', params: { spot: -6, dIVidx: 18, dIVcomp: 8, rho: 0.92 } },
     { name: 'Dispersion réalisée', risk: 'faible',   params: { spot: 1.5, dIVidx: -3, dIVcomp: 4, rho: 0.25 } },
@@ -822,8 +834,16 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
             </div>
           )}
           {deltaHedge === 'legs' && (
-            <div style={{ flexBasis: '100%', font: 'var(--type-caption)', color: 'var(--text-dim)', borderTop: '1px solid var(--border-subtle)', paddingTop: 10, marginTop: 2 }}>
-              Couverture par sous-jacent : chaque jambe est neutralisée par son action (un nombre de parts propre à chaque titre, non détaillé ici).
+            <div style={{ flexBasis: '100%', font: 'var(--type-caption)', color: 'var(--text-soft)', borderTop: '1px solid var(--border-subtle)', paddingTop: 10, marginTop: 2 }}>
+              <strong style={{ color: 'var(--text)' }}>Taille du hedge par sous-jacent :</strong>{' '}
+              {legHedges.length ? (
+                <>chaque jambe couverte par des parts de son action —{' '}
+                  {legHedges.map((h, i) => (
+                    <span key={h.sym}>{i > 0 ? ' · ' : ' '}{h.shares >= 0 ? 'vendre' : 'acheter'} <strong style={{ color: 'var(--accent-hover)' }}>~{Math.round(Math.abs(h.shares))} {h.sym}</strong></span>
+                  ))}.</>
+              ) : (
+                <span style={{ color: 'var(--text-dim)' }}>tous les deltas de jambe sont négligeables (&lt; 1 part) — rien à couvrir.</span>
+              )}
             </div>
           )}
         </div>
