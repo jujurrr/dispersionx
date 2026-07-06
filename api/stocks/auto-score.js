@@ -2,7 +2,9 @@
 // Body: { index_symbol, stock_symbol, duration_days }
 // Score de dispersion : IV réelles Cboe (via /api/iv, cache CDN 15 min),
 // clôtures Cboe (repli Yahoo) pour HV/ρ/beta, repli MarketData si token.
-export const config = { runtime: 'edge' };
+// Épinglé sur une région US (iad1) : la récupération de la chaîne Cboe y est
+// fiable, contrairement à certaines régions edge (ex. Paris) qui throttlent.
+export const config = { runtime: 'edge', regions: ['iad1'] };
 
 // cboeIvBundle appelé DIRECTEMENT (en mémoire) : il lit d'abord le cache Supabase
 // partagé (fiable inter-région) et évite le saut HTTP interne vers /api/iv qui
