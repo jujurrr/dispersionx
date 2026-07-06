@@ -158,6 +158,16 @@ export default async (req) => {
     event_risk:         { score: 72, reason: 'Risque événement non disponible (calendrier earnings non intégré)' },
   };
 
+  // Coût d'exécution ESTIMÉ, spécifique à chaque action (pas de vraie chaîne
+  // bid/ask ici) : spread aller-retour plus large pour les noms chers en vol et
+  // peu liquides (proxy de liquidité = prix), + un tampon événement/slippage qui
+  // croît avec l'IV. Remplace l'ancienne valeur figée (-3.8 pour tout le monde).
+  const spreadPctEst = Math.max(0.03, Math.min(1.2,
+    0.05 + (iv / 100) * 0.30 + Math.max(0, (60 - Math.min(60, price)) / 60) * 0.35));
+  const costSpread   = Number((spreadPctEst * 12).toFixed(1));
+  const costEarnings = Number((0.6 + (iv / 100) * 1.2).toFixed(1));
+  const compCcosts   = Number((-(costSpread + costEarnings)).toFixed(1));
+
   const g = bsAtm(price, iv / 100, T);
   const expiryDate = new Date(Date.now() + duration * 86400000).toISOString().slice(0, 10);
 
@@ -169,9 +179,9 @@ export default async (req) => {
   return Response.json({
     scoring: {
       score, signal, signal_color,
-      comp_a_edge: Number(edgeRho.toFixed(1)), comp_b_vol_premium: Number(volPrem.toFixed(1)), comp_c_costs: -3.8,
+      comp_a_edge: Number(edgeRho.toFixed(1)), comp_b_vol_premium: Number(volPrem.toFixed(1)), comp_c_costs: compCcosts,
       rho_implicit_final: RHO_IMPL_EST, rho_real_expected: rho,
-      cost_source: 'estimated', spread_pct_real: 0.20, cost_spread: 2.4, cost_earnings: 1.4,
+      cost_source: 'estimated', spread_pct_real: Number(spreadPctEst.toFixed(2)), cost_spread: costSpread, cost_earnings: costEarnings,
       subscores, composite_score: { score },
       pipeline: { rho_per_window: { 20: Number((rho + 0.02).toFixed(3)), 60: rho, 120: Number((rho - 0.01).toFixed(3)) }, weights_normalized: { 20: 0.25, 60: 0.50, 120: 0.25 }, blend: rho, regime_factor: 1.0, rho_hat_final: rho },
       recommendation: rec,

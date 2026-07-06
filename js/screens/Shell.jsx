@@ -64,7 +64,7 @@ function ThemeToggle() {
 
   return (
     <button onClick={toggle} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      title={isDark ? 'Thème Café' : 'Thème sombre'} aria-label="Changer de thème"
+      title={isDark ? 'Thème sombre' : 'Thème Café'} aria-label="Changer de thème"
       style={{
         width: 30, height: 30, borderRadius: 'var(--radius)', cursor: 'pointer',
         background: hover ? 'var(--bg-hover)' : 'var(--bg-elevated)',
