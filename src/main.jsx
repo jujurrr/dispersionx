@@ -42,6 +42,7 @@ import '../js/screens/RiskLab.jsx';
 import '../js/screens/Construction.jsx';
 import '../js/screens/Builder.jsx';
 import '../js/screens/StrategyMonitor.jsx';
+import '../js/screens/OpportunityFinder.jsx';   // window.OpportunityFinder (module Pro)
 import '../js/screens/Checklist.jsx';
 import '../js/screens/MonitorList.jsx';
 import '../js/screens/PositionDetail.jsx';

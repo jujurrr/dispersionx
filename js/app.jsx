@@ -23,6 +23,12 @@ function App() {
     try { return JSON.parse(localStorage.getItem('dx-user') || 'null'); } catch { return null; }
   });
   const [toasts, addToast] = window.useToasts();
+  const [pro, setPro] = React.useState(() => !!(window.DXCloud && window.DXCloud.pro));
+  React.useEffect(() => {
+    const onPro = (e) => setPro(!!e.detail);
+    window.addEventListener('dx-pro-change', onPro);
+    return () => window.removeEventListener('dx-pro-change', onPro);
+  }, []);
 
   // Progression GLOBALE du chargement des données (tous les indices).
   // Alimentée par DXStore, qui précharge l'ensemble du site au démarrage.
@@ -176,6 +182,7 @@ function App() {
     risk: ['Risk Lab'],
     builder: ['Strategy Builder'],
     monitor: ['Strategy Monitor'],
+    opportunities: ['Opportunités Pro'],
     checklist: ['Mes listes', '…', 'Checklist'],
     'monitor-list': ['Mes listes', '…', 'Positions'],
     position: ['Mes listes', '…', 'Position'],
@@ -217,6 +224,9 @@ function App() {
       break;
     case 'monitor':
       screenEl = <window.StrategyMonitor mode={mode} lists={lists} onNav={onNav} addToast={addToast} />;
+      break;
+    case 'opportunities':
+      screenEl = <window.OpportunityFinder onNav={onNav} lists={lists} addToast={addToast} pro={pro} />;
       break;
     case 'checklist':
       screenEl = <window.Checklist listId={params.listId} onNav={onNav} addToast={addToast} mode={mode} />;
@@ -271,7 +281,7 @@ function App() {
   return (
     <React.Fragment>
     <div style={{ display: 'grid', gridTemplateColumns: 'var(--sidebar-w, 220px) 1fr', height: '100vh', overflow: 'hidden' }}>
-      <window.Sidebar active={screen} onNav={onNav} lists={lists} user={user} />
+      <window.Sidebar active={screen} onNav={onNav} lists={lists} user={user} pro={pro} />
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
         <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} dataProgress={dataProgress} />
         <main style={{

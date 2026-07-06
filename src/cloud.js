@@ -23,6 +23,17 @@ try {
 } catch (e) { console.warn('[cloud] init Supabase échouée :', e?.message); supa = null; }
 
 let currentUser = null;
+let proAccess = false;   // accès au module « Opportunités Pro » (table pro_access)
+
+// Vérifie l'accès Pro de l'utilisateur courant (RLS : il ne lit que sa ligne).
+async function checkPro() {
+  if (!supa || !currentUser) return false;
+  try {
+    const { data, error } = await supa.from('pro_access').select('user_id').eq('user_id', currentUser.id).maybeSingle();
+    if (error) return false;
+    return !!data;
+  } catch { return false; }
+}
 
 function userFromSession(session) {
   const u = session?.user;
@@ -375,6 +386,8 @@ window.DXCloud = {
   get enabled() { return !!(supa && currentUser); },
   get user() { return currentUser; },
   auth: supa ? auth : null,
+  get pro() { return proAccess; },
+  isPro: () => checkPro(),
   lists: supa ? lists : null,
   strategies: supa ? strategies : null,
   positions: supa ? positions : null,
@@ -432,6 +445,8 @@ async function syncStrategies() {
 async function onSignedIn() {
   await maybeMigrateLocalLists();
   await syncStrategies();
+  proAccess = await checkPro();
+  window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: proAccess }));
 }
 
 if (supa) {
@@ -446,6 +461,7 @@ if (supa) {
     window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
     if (evt === 'PASSWORD_RECOVERY') window.dispatchEvent(new CustomEvent('dx-password-recovery'));
     if (currentUser && currentUser.id !== prev) onSignedIn();
+    else if (!currentUser) { proAccess = false; window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: false })); }
   });
   // Les partages changent (ex. après avoir réclamé un lien) → ré-hydrate les
   // constructions : getAll() renvoie AUSSI celles partagées (RLS §9), donc les

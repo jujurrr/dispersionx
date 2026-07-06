@@ -10,6 +10,7 @@ const ICONS = {
   risk:     'M12 2 2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7L12 2Z',
   monitor:  'M3 3h18v14H3zM8 21h8M12 17v4',
   journal:  'M4 4h13l3 3v13H4zM8 4v16M8 9h12',
+  opp:      'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zM12 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z',
   docs:     'M12 2 L2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7L12 2ZM9 12l2 2 4-4',
   settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm8-3a8 8 0 0 0-.2-1.8l2-1.5-2-3.4-2.3 1a8 8 0 0 0-3-1.7L14 1h-4l-.5 2.3a8 8 0 0 0-3 1.7l-2.3-1-2 3.4 2 1.5A8 8 0 0 0 4 12a8 8 0 0 0 .2 1.8l-2 1.5 2 3.4 2.3-1a8 8 0 0 0 3 1.7L10 23h4l.5-2.3a8 8 0 0 0 3-1.7l2.3 1 2-3.4-2-1.5A8 8 0 0 0 20 12Z',
 };
@@ -149,9 +150,13 @@ const NAV = [
   ]},
 ];
 
-function Sidebar({ active, onNav, lists, user }) {
+function Sidebar({ active, onNav, lists, user, pro }) {
   const listCount = lists ? lists.length : 0;
   const recent = lists ? lists.slice(0, 5) : [];
+  // Entrée « Opportunités Pro » ajoutée uniquement pour les comptes Pro.
+  const navGroups = pro
+    ? [...NAV, { group: 'Pro', items: [{ id: 'opportunities', label: 'Opportunités', icon: 'opp' }] }]
+    : NAV;
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const cloudUser = window.DXCloud && window.DXCloud.user;
   const who = (user && (user.name || user.email)) || (cloudUser && (cloudUser.name || cloudUser.email)) || 'Mon compte';
@@ -176,7 +181,7 @@ function Sidebar({ active, onNav, lists, user }) {
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: 'auto', padding: '14px 12px', display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {NAV.map((sec) => (
+        {navGroups.map((sec) => (
           <div key={sec.group} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div style={{ padding: '0 10px 6px', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
               {sec.group}

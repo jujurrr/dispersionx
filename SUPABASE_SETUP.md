@@ -459,6 +459,34 @@ grant execute on function public.redeem_share_link(uuid) to authenticated;
 Le lien a la forme `https://ton-domaine/#join=<token>`. En l'ouvrant, l'app le
 réclame (après connexion si besoin) et t'ajoute à « Partagées avec moi ».
 
+## 12. Accès « Pro » (module Auto-chercheur d'opportunités)
+Le module **Opportunités Pro** (auto-chercheur des meilleurs paniers d'un indice)
+n'apparaît que pour les comptes autorisés. Simple table + RLS : chacun lit sa
+propre ligne, personne ne peut s'auto-attribuer le Pro (les octrois se font en SQL).
+
+Dans **SQL Editor → New query → Run** :
+
+```sql
+create table if not exists public.pro_access (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  since timestamptz not null default now()
+);
+alter table public.pro_access enable row level security;
+drop policy if exists "read_own_pro" on public.pro_access;
+create policy "read_own_pro" on public.pro_access
+  for select using (auth.uid() = user_id);
+```
+
+**T'activer en Pro** (par e-mail — remplace l'adresse) :
+```sql
+insert into public.pro_access (user_id)
+select id from auth.users where lower(email) = lower('ton-email@exemple.com')
+on conflict (user_id) do nothing;
+```
+Recharge la page après : l'entrée **« Opportunités »** apparaît dans la barre
+latérale. Pour retirer l'accès : `delete from public.pro_access where user_id =
+(select id from auth.users where lower(email) = lower('ton-email@exemple.com'));`.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).
