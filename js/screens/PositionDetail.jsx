@@ -4,6 +4,14 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
   const [snapLoading, setSnapLoading] = React.useState(false);
+  // Confirmation in-app (ConfirmDialog) — plus de popup navigateur.
+  const [dialog, setDialog] = React.useState(null);
+  const [dialogBusy, setDialogBusy] = React.useState(false);
+  async function runDialog() {
+    if (!dialog?.onConfirm) return;
+    setDialogBusy(true);
+    try { await dialog.onConfirm(); } finally { setDialogBusy(false); setDialog(null); }
+  }
 
   function load() {
     setLoading(true);
@@ -29,30 +37,32 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
     }
   }
 
-  async function handleClose() {
-    if (!confirm('Clôturer cette position ?')) return;
-    try {
-      await DXApi.closePosition(positionId);
-      addToast && addToast('Position clôturée.', 'ok');
-      load();
-    } catch (err) {
-      addToast && addToast(`Erreur : ${err.message}`, 'error');
-    }
+  function handleClose() {
+    setDialog({
+      title: 'Clôturer la position ?',
+      message: 'La position sera marquée comme fermée. Vous pourrez toujours la consulter.',
+      confirmLabel: 'Clôturer', tone: 'default',
+      onConfirm: async () => {
+        try { await DXApi.closePosition(positionId); addToast && addToast('Position clôturée.', 'ok'); load(); }
+        catch (err) { addToast && addToast(`Erreur : ${err.message}`, 'error'); }
+      },
+    });
   }
 
-  async function handleDelete() {
-    if (!confirm('Supprimer définitivement cette position et ses snapshots ?')) return;
-    try {
-      await DXApi.deletePosition(positionId);
-      addToast && addToast('Position supprimée.', 'ok');
-      if (data?.position?.list_id) {
-        onNav('monitor-list', { listId: data.position.list_id });
-      } else {
-        onNav('monitor');
-      }
-    } catch (err) {
-      addToast && addToast(`Erreur : ${err.message}`, 'error');
-    }
+  function handleDelete() {
+    setDialog({
+      title: 'Supprimer la position ?',
+      message: 'Cette action supprime définitivement la position et ses snapshots.',
+      confirmLabel: 'Supprimer', tone: 'danger',
+      onConfirm: async () => {
+        try {
+          await DXApi.deletePosition(positionId);
+          addToast && addToast('Position supprimée.', 'ok');
+          if (data?.position?.list_id) onNav('monitor-list', { listId: data.position.list_id });
+          else onNav('monitor');
+        } catch (err) { addToast && addToast(`Erreur : ${err.message}`, 'error'); }
+      },
+    });
   }
 
   if (loading) return (
@@ -249,6 +259,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
       <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', padding: '10px 14px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
         Suivi live : prix et IV re-récupérés en direct à chaque visite (feed indicatif, approximations). Le P&L est théorique au mid, hors frais réels.
       </div>
+
+      <window.ConfirmDialog open={!!dialog} title={dialog?.title} message={dialog?.message} confirmLabel={dialog?.confirmLabel} tone={dialog?.tone} busy={dialogBusy}
+        onCancel={() => !dialogBusy && setDialog(null)} onConfirm={runDialog} />
     </div>
   );
 }

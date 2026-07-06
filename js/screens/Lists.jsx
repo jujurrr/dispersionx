@@ -17,6 +17,14 @@ function Lists({ onNav, onListsChange, addToast }) {
   const [shareRole, setShareRole] = React.useState('viewer');
   const [shareRows, setShareRows] = React.useState([]);    // accès actuels de shareFor
   const [sharing, setSharing] = React.useState(false);
+  // Confirmation in-app générique (ConfirmDialog).
+  const [dialog, setDialog] = React.useState(null);
+  const [dialogBusy, setDialogBusy] = React.useState(false);
+  async function runDialog() {
+    if (!dialog?.onConfirm) return;
+    setDialogBusy(true);
+    try { await dialog.onConfirm(); } finally { setDialogBusy(false); setDialog(null); }
+  }
 
   const load = React.useCallback(() => {
     DXApi.getLists().then(data => {
@@ -49,13 +57,16 @@ function Lists({ onNav, onListsChange, addToast }) {
     finally { setCreating(false); }
   }
 
-  async function handleDelete(list) {
-    if (!confirm(`Supprimer « ${list.name} » ? Cette action est irréversible.`)) return;
-    try {
-      await DXApi.deleteList(list.id);
-      addToast && addToast(`Liste « ${list.name} » supprimée.`);
-      load();
-    } catch { addToast && addToast('Erreur lors de la suppression.', 'error'); }
+  function handleDelete(list) {
+    setDialog({
+      title: 'Supprimer la liste ?',
+      message: <>Voulez-vous vraiment supprimer « <strong style={{ color: 'var(--text)' }}>{list.name}</strong> » ? Cette action est irréversible.</>,
+      confirmLabel: 'Supprimer',
+      onConfirm: async () => {
+        try { await DXApi.deleteList(list.id); addToast && addToast(`Liste « ${list.name} » supprimée.`); load(); }
+        catch { addToast && addToast('Erreur lors de la suppression.', 'error'); }
+      },
+    });
   }
 
   async function handleExport(list, e) {
@@ -290,6 +301,9 @@ function Lists({ onNav, onListsChange, addToast }) {
           ))}
         </div>
       )}
+
+      <window.ConfirmDialog open={!!dialog} title={dialog?.title} message={dialog?.message} confirmLabel={dialog?.confirmLabel} tone={dialog?.tone} busy={dialogBusy}
+        onCancel={() => !dialogBusy && setDialog(null)} onConfirm={runDialog} />
     </div>
   );
 }
