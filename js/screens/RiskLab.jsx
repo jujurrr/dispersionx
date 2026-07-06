@@ -442,12 +442,24 @@ function AttribRow({ label, pnl, max, logo }) {
 }
 
 /* ─── Main component ─────────────────────────────────────────────── */
+// Cache SESSION du modèle de risque, par liste : évite de tout recalculer en
+// re-entrant dans le module tant que la stratégie n'a pas changé. Recalcul si la
+// signature (contenu de la stratégie) change OU après 15 min (fraîcheur marché).
+const _riskCache = {};
+const RISK_TTL = 15 * 60 * 1000;
+
 function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded }) {
   const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [model,    setModel]    = React.useState(null);
   const [loading,  setLoading]  = React.useState(true);
   const [scenario, setScenario] = React.useState(0);
-  const [strategy, setStrategy] = React.useState(null);
+  const [strategy, setStrategy] = React.useState(() => {
+    // Charge la stratégie dès le 1er rendu → la signature du cache est correcte
+    // immédiatement (pas de calcul intermédiaire « sans stratégie »).
+    const lid = listIdParam || (moduleCtx && moduleCtx.listId) || null;
+    if (!lid) return null;
+    try { const raw = localStorage.getItem('dx-strategy-' + lid); return raw ? JSON.parse(raw) : null; } catch { return null; }
+  });
   // Couverture delta : suit ce qui a été choisi à la Construction, modifiable ici
   const [deltaHedge, setDeltaHedge] = React.useState('none');
   // En mode embarqué (dans le Builder) on n'affiche pas la garde : on est déjà
@@ -474,6 +486,14 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
 
   React.useEffect(() => {
     if (!hasCtx) return;
+    // Cache : réutilise le modèle si la stratégie (signature) n'a pas changé et
+    // que le cache est frais → pas de recalcul en re-entrant dans le module.
+    const sig = listId + '|' + (ctx.listIndex || '') + '|' + (strategy ? JSON.stringify(strategy) : 'none');
+    const cached = _riskCache[listId];
+    if (cached && cached.sig === sig && Date.now() - cached.at < RISK_TTL) {
+      setModel(cached.model); setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     const indexSym = strategy?.index || ctx.listIndex || 'SPX';
@@ -544,7 +564,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
       m.indexLabel = indexEtf !== indexSym ? indexEtf + ' (' + indexSym + ')' : indexSym;
       m.daysSince = daysSince;
       m.dteTotal = dteTotal;
-      if (!cancelled) { setModel(m); setLoading(false); }
+      if (!cancelled) { _riskCache[listId] = { sig, model: m, at: Date.now() }; setModel(m); setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [listId, strategy, ctx.listIndex]);
