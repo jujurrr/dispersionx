@@ -242,6 +242,108 @@ grant execute on function public.share_list(uuid, text, text) to authenticated;
 Ensuite, dans **Mes listes** : bouton **Partager** sur tes listes (e-mail +
 rôle, gestion/retrait des accès) et section **Partagées avec moi**.
 
+## 10. Journal d'audit (tranche 3 — suite)
+Enregistre automatiquement « qui a fait quoi, quand » sur les listes : création /
+renommage / suppression, ajout / retrait d'une action, partage / retrait / rôle.
+C'est la **base de données** qui journalise (via des *triggers*) : impossible à
+contourner depuis le navigateur, et le vrai auteur est toujours capturé. L'app se
+contente de **lire** le journal (bouton « Activité » dans le détail d'une liste).
+
+Sans ces objets, rien ne change : le bouton Activité affiche simplement un journal
+vide.
+
+Dans **SQL Editor → New query → Run** :
+
+```sql
+create table if not exists public.audit_log (
+  id bigint generated always as identity primary key,
+  list_id uuid,                 -- pas de FK : le journal survit à la suppression de la liste
+  actor_id uuid,
+  actor_email text,
+  action text not null,         -- item_added | item_removed | list_created | list_renamed | list_deleted | shared | role_changed | unshared
+  detail jsonb,
+  created_at timestamptz not null default now()
+);
+create index if not exists audit_log_list_id_idx on public.audit_log(list_id, created_at desc);
+
+alter table public.audit_log enable row level security;
+-- Lecture : propriétaire de la liste, personnes avec qui elle est partagée, ou
+-- l'auteur de l'action. Aucune policy d'écriture → seuls les triggers écrivent.
+create policy "audit_read" on public.audit_log
+  for select using (
+    auth.uid() = actor_id
+    or exists (select 1 from public.lists l where l.id = audit_log.list_id and l.user_id = auth.uid())
+    or exists (select 1 from public.list_shares s where s.list_id = audit_log.list_id and s.shared_with = auth.uid())
+  );
+
+-- Triggers (SECURITY DEFINER) : enregistrent l'action + l'auteur (auth.uid()).
+create or replace function public.audit_list_items() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_email text;
+begin
+  select email into v_email from auth.users where id = auth.uid();
+  if (tg_op = 'INSERT') then
+    insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+    values (new.list_id, auth.uid(), v_email, 'item_added', jsonb_build_object('ticker', new.ticker));
+  elsif (tg_op = 'DELETE') then
+    insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+    values (old.list_id, auth.uid(), v_email, 'item_removed', jsonb_build_object('ticker', old.ticker));
+  end if;
+  return null;
+end; $$;
+drop trigger if exists trg_audit_list_items on public.list_items;
+create trigger trg_audit_list_items after insert or delete on public.list_items
+  for each row execute function public.audit_list_items();
+
+create or replace function public.audit_lists() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_email text;
+begin
+  select email into v_email from auth.users where id = auth.uid();
+  if (tg_op = 'INSERT') then
+    insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+    values (new.id, auth.uid(), v_email, 'list_created', jsonb_build_object('name', new.name));
+  elsif (tg_op = 'UPDATE') then
+    if new.name is distinct from old.name then
+      insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+      values (new.id, auth.uid(), v_email, 'list_renamed', jsonb_build_object('from', old.name, 'to', new.name));
+    end if;
+  elsif (tg_op = 'DELETE') then
+    insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+    values (old.id, auth.uid(), v_email, 'list_deleted', jsonb_build_object('name', old.name));
+  end if;
+  return null;
+end; $$;
+drop trigger if exists trg_audit_lists on public.lists;
+create trigger trg_audit_lists after insert or update or delete on public.lists
+  for each row execute function public.audit_lists();
+
+create or replace function public.audit_list_shares() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_email text;
+begin
+  select email into v_email from auth.users where id = auth.uid();
+  if (tg_op = 'INSERT') then
+    insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+    values (new.list_id, auth.uid(), v_email, 'shared', jsonb_build_object('with', new.shared_with_email, 'role', new.role));
+  elsif (tg_op = 'UPDATE') then
+    if new.role is distinct from old.role then
+      insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+      values (new.list_id, auth.uid(), v_email, 'role_changed', jsonb_build_object('with', new.shared_with_email, 'role', new.role));
+    end if;
+  elsif (tg_op = 'DELETE') then
+    insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
+    values (old.list_id, auth.uid(), v_email, 'unshared', jsonb_build_object('with', old.shared_with_email));
+  end if;
+  return null;
+end; $$;
+drop trigger if exists trg_audit_list_shares on public.list_shares;
+create trigger trg_audit_list_shares after insert or update or delete on public.list_shares
+  for each row execute function public.audit_list_shares();
+```
+
+Ensuite, dans le détail d'une liste : bouton **« Activité »** qui déroule le journal.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

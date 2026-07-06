@@ -277,6 +277,16 @@ const shares = {
   },
 };
 
+// ── Journal d'audit (lecture seule côté client ; écrit par des triggers SQL) ──
+const audit = {
+  async forList(listId, limit = 100) {
+    const { data, error } = await supa.from('audit_log').select('*')
+      .eq('list_id', listId).order('created_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    return (data || []).map(r => ({ id: r.id, actor_email: r.actor_email, action: r.action, detail: r.detail || {}, created_at: r.created_at }));
+  },
+};
+
 // ── API publique exposée au reste de l'app (js/api.js, Auth.jsx, app.jsx) ────
 window.DXCloud = {
   configured: !!supa,
@@ -287,6 +297,7 @@ window.DXCloud = {
   strategies: supa ? strategies : null,
   positions: supa ? positions : null,
   shares: supa ? shares : null,
+  audit: supa ? audit : null,
 };
 
 // ── Suivi de session : maintient currentUser + prévient l'app ───────────────

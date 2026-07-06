@@ -1,4 +1,31 @@
 /* ─── List Detail: basket analysis + sortable items + score modal ─ */
+// Journal d'audit : phrase lisible + temps relatif (fr).
+function auditSentence(e) {
+  const d = e.detail || {};
+  const role = r => r === 'editor' ? 'modif.' : 'lecture';
+  switch (e.action) {
+    case 'item_added':   return `a ajouté ${d.ticker}`;
+    case 'item_removed': return `a retiré ${d.ticker}`;
+    case 'list_created': return 'a créé la liste';
+    case 'list_renamed': return `a renommé la liste en « ${d.to} »`;
+    case 'list_deleted': return 'a supprimé la liste';
+    case 'shared':       return `a partagé avec ${d.with}${d.role ? ` (${role(d.role)})` : ''}`;
+    case 'role_changed': return `a changé le rôle de ${d.with} en ${role(d.role)}`;
+    case 'unshared':     return `a retiré l'accès de ${d.with}`;
+    default:             return e.action;
+  }
+}
+function auditTimeAgo(iso) {
+  const t = new Date(iso).getTime();
+  if (isNaN(t)) return '';
+  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return "à l'instant";
+  const m = Math.floor(s / 60); if (m < 60) return `il y a ${m} min`;
+  const h = Math.floor(m / 60); if (h < 24) return `il y a ${h} h`;
+  const j = Math.floor(h / 24); if (j < 30) return `il y a ${j} j`;
+  return new Date(iso).toLocaleDateString('fr-FR');
+}
+
 function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [list, setList]       = React.useState(null);
@@ -10,6 +37,8 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const [sort, setSort]       = React.useState({ key: 'added', dir: -1 });
   const [dialog, setDialog] = React.useState(null);          // confirmation in-app (ConfirmDialog)
   const [dialogBusy, setDialogBusy] = React.useState(false);
+  const [showAudit, setShowAudit] = React.useState(false);   // journal d'activité (déroulé)
+  const [auditRows, setAuditRows] = React.useState(null);
   const autoScoredRef = React.useRef(null);
 
   const load = React.useCallback(() => {
@@ -108,6 +137,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
       await DXApi.removeListItem(listId, ticker);
       addToast && addToast(`${ticker} retiré.`);
       load();
+      if (showAudit) refreshAudit();
     } catch { addToast && addToast('Erreur.', 'error'); }
   }
   function askRemove(ticker) {
@@ -118,6 +148,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
       onConfirm: () => doRemove(ticker),
     });
   }
+  // Journal d'audit (déroulé à la demande).
+  function refreshAudit() { DXApi.getListAudit(listId).then(setAuditRows).catch(() => setAuditRows([])); }
+  function toggleAudit() { const next = !showAudit; setShowAudit(next); if (next) refreshAudit(); }
 
   async function handleExport() {
     const blob = await DXApi.exportList(listId);
@@ -167,6 +200,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const isShared = !!list.shared;
   const readOnly = isShared && list.role !== 'editor';
   const ROMSG = 'Liste partagée en lecture seule — modification impossible.';
+  const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);   // audit = cloud uniquement
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -196,6 +230,10 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Construction</button>
           <button onClick={() => onNav('monitor-list', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Positions →</button>
+          {cloudOn && (
+            <button onClick={toggleAudit}
+              style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: showAudit ? 'var(--bg-hover)' : 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Activité</button>
+          )}
           <button onClick={handleExport}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↓</button>
           <button onClick={handleDelete}
@@ -211,6 +249,32 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
             Liste partagée en <strong style={{ color: 'var(--text)' }}>lecture seule</strong>{list.owner_email ? ` par ${list.owner_email}` : ''} — vous pouvez la consulter et l'analyser, mais pas la modifier.
           </span>
+        </div>
+      )}
+
+      {/* Journal d'activité (audit) */}
+      {showAudit && (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+          <div style={{ padding: '11px 16px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Activité de la liste</span>
+            <button onClick={refreshAudit} style={{ font: 'var(--type-caption)', background: 'none', border: 'none', color: 'var(--accent-hover)', cursor: 'pointer' }}>↻ Rafraîchir</button>
+          </div>
+          {auditRows == null ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Chargement…</div>
+          ) : auditRows.length === 0 ? (
+            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-body-sm)' }}>Aucune activité enregistrée pour l'instant.</div>
+          ) : (
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {auditRows.map((e, i) => (
+                <div key={e.id ?? i} style={{ display: 'flex', gap: 12, alignItems: 'baseline', padding: '9px 16px', borderBottom: i < auditRows.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                  <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', flex: 1, minWidth: 0 }}>
+                    <strong style={{ color: 'var(--text)' }}>{e.actor_email || 'Quelqu’un'}</strong> {auditSentence(e)}
+                  </span>
+                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', whiteSpace: 'nowrap', flexShrink: 0 }}>{auditTimeAgo(e.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

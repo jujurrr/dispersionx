@@ -264,6 +264,12 @@
     if (!(c && c.shares)) throw new Error('connexion requise');
     return c.shares.revoke(shareId);
   }
+  // Journal d'audit d'une liste (cloud uniquement ; [] sinon).
+  async function getListAudit(listId) {
+    const c = _cloud();
+    if (c && c.audit) { try { return await c.audit.forList(listId); } catch (e) { console.warn('cloud getListAudit', e); } }
+    return [];
+  }
 
   /* ── Correlation ─────────────────────────────────────────────── */
   async function getCorrelation(list_id, tickers, index_symbol) {
@@ -519,7 +525,7 @@
     getLists, createList, getList, updateList, deleteList,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
-    getSharedLists, getListShares, shareList, setShareRole, revokeShare,
+    getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit,
     getCorrelation,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
