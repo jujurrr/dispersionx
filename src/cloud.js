@@ -105,8 +105,17 @@ const lists = {
     return shapeList(data, []);
   },
   async remove(id) {
-    const { error } = await supa.from('lists').delete().eq('id', id);
-    if (error) throw error;
+    // RPC delete_list : supprime en UNE transaction avec app.skip_item_audit →
+    // une seule entrée d'audit « list_deleted » (pas de bruit par-action).
+    // Repli non-cassant (suppression directe) si la RPC n'existe pas encore.
+    const { error } = await supa.rpc('delete_list', { p_list_id: id });
+    if (error) {
+      const em = `${error.message || ''} ${error.code || ''}`;
+      if (/PGRST202|delete_list|does not exist|schema cache/i.test(em)) {
+        const { error: e2 } = await supa.from('lists').delete().eq('id', id);
+        if (e2) throw e2;
+      } else throw error;
+    }
     return { success: true };
   },
   async addItem(id, ticker, score_data) {
@@ -296,18 +305,20 @@ const shares = {
 // ── Journal d'audit (lecture seule côté client ; écrit par des triggers SQL) ──
 const audit = {
   async forList(listId, limit = 100) {
+    // Tri secondaire par id : plusieurs lignes d'une même transaction ont le MÊME
+    // created_at ; sans ce tri, l'ordre serait arbitraire. id numérique (bigint).
     const { data, error } = await supa.from('audit_log').select('*')
-      .eq('list_id', listId).order('created_at', { ascending: false }).limit(limit);
+      .eq('list_id', listId).order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit);
     if (error) throw error;
-    return (data || []).map(r => ({ id: r.id, actor_email: r.actor_email, action: r.action, detail: r.detail || {}, created_at: r.created_at }));
+    return (data || []).map(r => ({ id: Number(r.id), actor_email: r.actor_email, action: r.action, detail: r.detail || {}, created_at: r.created_at }));
   },
   // Activité GLOBALE visible par l'utilisateur (toutes ses listes + partagées) —
   // la RLS ne renvoie que les lignes qu'il a le droit de voir.
-  async recent(limit = 50) {
+  async recent(limit = 200) {
     const { data, error } = await supa.from('audit_log').select('*')
-      .order('created_at', { ascending: false }).limit(limit);
+      .order('created_at', { ascending: false }).order('id', { ascending: false }).limit(limit);
     if (error) throw error;
-    return (data || []).map(r => ({ id: r.id, list_id: r.list_id, actor_email: r.actor_email, action: r.action, detail: r.detail || {}, created_at: r.created_at }));
+    return (data || []).map(r => ({ id: Number(r.id), list_id: r.list_id, actor_email: r.actor_email, action: r.action, detail: r.detail || {}, created_at: r.created_at }));
   },
 };
 

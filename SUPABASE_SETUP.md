@@ -380,6 +380,19 @@ begin
 end; $$;
 revoke all on function public.import_list(text, text, text, jsonb) from public, anon;
 grant execute on function public.import_list(text, text, text, jsonb) to authenticated;
+
+-- Suppression d'une liste en UNE transaction : journalise « list_deleted » une
+-- fois, et pose app.skip_item_audit pour ne PAS journaliser chaque action retirée
+-- (la cascade supprime les items). Seul le propriétaire peut supprimer.
+create or replace function public.delete_list(p_list_id uuid)
+returns void language plpgsql security invoker set search_path = public as $$
+begin
+  if auth.uid() is null then raise exception 'not_authenticated'; end if;
+  perform set_config('app.skip_item_audit', 'on', true);   -- true = local à la transaction
+  delete from public.lists where id = p_list_id and user_id = auth.uid();
+end; $$;
+revoke all on function public.delete_list(uuid) from public, anon;
+grant execute on function public.delete_list(uuid) to authenticated;
 ```
 
 Ensuite, dans le détail d'une liste : bouton **« Activité »** qui déroule le journal.

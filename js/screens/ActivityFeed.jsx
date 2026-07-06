@@ -1,7 +1,7 @@
 /* ─── ActivityFeed : activité GLOBALE (journal d'audit) en bas de la sidebar ──
    Onglet dépliable (5 lignes visibles + molette pour le reste). Quand quelque
-   chose change, l'onglet « se soulève » un instant pour révéler la dernière
-   modif de façon discrète, puis se referme. Cloud uniquement. */
+   chose change, l'onglet se soulève légèrement et la dernière modif apparaît
+   DESSOUS de façon discrète, puis se referme. Cloud uniquement. */
 
 // Phrase lisible + temps relatif (fr) — partagés (window.DXActivity), aussi
 // utilisés par le journal par-liste de ListDetail.
@@ -13,7 +13,7 @@ function dxAuditSentence(e) {
     case 'item_removed': return `a retiré ${d.ticker}`;
     case 'list_created': return 'a créé la liste';
     case 'list_renamed': return `a renommé la liste en « ${d.to} »`;
-    case 'list_deleted': return 'a supprimé la liste';
+    case 'list_deleted': return `a supprimé la liste${d.name ? ` « ${d.name} »` : ''}`;
     case 'shared':       return `a partagé avec ${d.with}${d.role ? ` (${role(d.role)})` : ''}`;
     case 'role_changed': return `a changé le rôle de ${d.with} en ${role(d.role)}`;
     case 'unshared':     return `a retiré l'accès de ${d.with}`;
@@ -33,6 +33,8 @@ function dxAuditTimeAgo(iso) {
 window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo };
 
 const dxWho = (email) => (email || 'Quelqu’un').split('@')[0];
+const DX_ACT_LIMIT = 200;                    // on récupère jusqu'à 200 entrées…
+const DX_ACT_WINDOW_MS = 30 * 86400000;      // …mais on n'affiche que les 30 derniers jours
 
 const ActivityIcon = (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -47,26 +49,36 @@ function ActivityFeed() {
   const [reveal, setReveal] = React.useState(null);   // dernière modif à révéler
   const [shown, setShown] = React.useState(false);     // ouverture de la révélation (transition douce)
   const seenRef = React.useRef(null);                  // plus grand id vu (baseline anti-spam au 1er chargement)
-  const timers = React.useRef([]);
-  const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
+  const revealTimers = React.useRef([]);
+  const pokeTimer = React.useRef(null);
+  const clearRevealTimers = () => { revealTimers.current.forEach(clearTimeout); revealTimers.current = []; };
 
   const showReveal = React.useCallback((entry) => {
-    clearTimers();
+    clearRevealTimers();
     setReveal(entry);
-    timers.current.push(setTimeout(() => setShown(true), 20));     // se soulève
-    timers.current.push(setTimeout(() => setShown(false), 3800));  // se referme
-    timers.current.push(setTimeout(() => setReveal(null), 4200));
+    revealTimers.current.push(setTimeout(() => setShown(true), 20));      // se soulève
+    revealTimers.current.push(setTimeout(() => setShown(false), 3800));   // se referme
+    revealTimers.current.push(setTimeout(() => setReveal(null), 4200));
   }, []);
 
   const poll = React.useCallback(() => {
     if (!(window.DXCloud && window.DXCloud.enabled)) { setRows([]); return; }
-    DXApi.getGlobalActivity(50).then(list => {
-      setRows(list);
+    DXApi.getGlobalActivity(DX_ACT_LIMIT).then(list => {
+      if (!Array.isArray(list)) return;
+      // Affichage : fenêtre glissante (30 j) → « se réinitialise » avec le temps.
+      const cutoff = Date.now() - DX_ACT_WINDOW_MS;
+      setRows(list.filter(e => new Date(e.created_at).getTime() >= cutoff));
       if (!list.length) return;
-      const maxId = list[0].id;                        // liste triée du plus récent au plus ancien
+      // VRAI maximum d'id (pas list[0] : plusieurs lignes d'une même transaction
+      // partagent le created_at, donc l'ordre entre elles n'est pas garanti).
+      const maxId = list.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 0);
       if (seenRef.current == null) { seenRef.current = maxId; return; }   // baseline : pas de révélation de l'historique
-      const fresh = list.filter(e => e.id > seenRef.current);
-      if (fresh.length) { seenRef.current = maxId; showReveal(fresh[0]); }
+      const fresh = list.filter(e => Number(e.id) > seenRef.current);
+      if (fresh.length) {
+        seenRef.current = maxId;
+        const newest = fresh.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a));
+        showReveal(newest);
+      }
     }).catch(() => {});
   }, [showReveal]);
 
@@ -74,7 +86,7 @@ function ActivityFeed() {
     if (!cloudOn) return;
     poll();
     const id = setInterval(poll, 20000);               // filet de sécurité
-    const onPoke = () => { poll(); timers.current.push(setTimeout(poll, 1200)); };   // réactif après une mutation
+    const onPoke = () => { poll(); clearTimeout(pokeTimer.current); pokeTimer.current = setTimeout(poll, 1200); };  // réactif après une mutation
     window.addEventListener('dx-activity-poke', onPoke);
     window.addEventListener('dx-lists-changed', onPoke);
     window.addEventListener('dx-strategies-changed', onPoke);
@@ -83,31 +95,24 @@ function ActivityFeed() {
       window.removeEventListener('dx-activity-poke', onPoke);
       window.removeEventListener('dx-lists-changed', onPoke);
       window.removeEventListener('dx-strategies-changed', onPoke);
-      clearTimers();
+      clearRevealTimers();
+      clearTimeout(pokeTimer.current);
     };
   }, [cloudOn, poll]);
 
   if (!cloudOn) return null;                            // audit = comptes cloud uniquement
 
   const A = window.DXActivity;
+  const lifting = reveal && shown && !open;
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
-      {/* Révélation discrète : l'onglet se soulève pour montrer la dernière modif, puis se referme */}
-      {reveal && !open && (
-        <div style={{ overflow: 'hidden', transition: 'max-height 0.35s var(--ease), opacity 0.3s var(--ease)', maxHeight: shown ? 46 : 0, opacity: shown ? 1 : 0 }}>
-          <div style={{ padding: '7px 14px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-subtle)' }}>
-            <div style={{ font: '10px/1.35 var(--font-sans)', color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              <strong style={{ color: 'var(--text)' }}>{dxWho(reveal.actor_email)}</strong> {A.sentence(reveal)}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Onglet Activité */}
+      {/* Onglet Activité — se soulève légèrement quand une modif est révélée */}
       <button onClick={() => setOpen(o => !o)} title="Activité récente"
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
           background: open ? 'var(--bg-hover)' : 'transparent', border: 'none', cursor: 'pointer',
-          color: 'var(--text-soft)', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          color: 'var(--text-soft)', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em',
+          transform: lifting ? 'translateY(-2px)' : 'none',
+          transition: 'transform 0.3s var(--ease), background var(--dur-fast) var(--ease)' }}>
         <span style={{ display: 'inline-flex', color: 'var(--accent-hover)' }}>{ActivityIcon}</span>
         <span style={{ flex: 1, textAlign: 'left' }}>Activité</span>
         {rows.length > 0 && (
@@ -116,11 +121,22 @@ function ActivityFeed() {
         <span style={{ fontSize: 8, color: 'var(--text-dim)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-fast) var(--ease)' }}>▾</span>
       </button>
 
+      {/* Révélation discrète — SOUS l'onglet */}
+      {reveal && !open && (
+        <div style={{ overflow: 'hidden', transition: 'max-height 0.35s var(--ease), opacity 0.3s var(--ease)', maxHeight: shown ? 46 : 0, opacity: shown ? 1 : 0 }}>
+          <div style={{ padding: '7px 14px', background: 'var(--bg-elevated)', borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ font: '10px/1.35 var(--font-sans)', color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <strong style={{ color: 'var(--text)' }}>{dxWho(reveal.actor_email)}</strong> {A.sentence(reveal)}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Liste déroulante — 5 lignes visibles, molette pour le reste */}
       {open && (
         <div style={{ maxHeight: 190, overflowY: 'auto', borderTop: '1px solid var(--border-subtle)' }}>
           {rows.length === 0 ? (
-            <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Aucune activité pour l'instant.</div>
+            <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Aucune activité récente.</div>
           ) : rows.map(e => (
             <div key={e.id} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
               <div style={{ font: '11px/1.4 var(--font-sans)', color: 'var(--text-soft)' }}>
