@@ -123,19 +123,13 @@ const lists = {
     return { success: true };
   },
   // Migration / import : copie des listes (localStorage ou fichier) vers le cloud.
-  // Robuste : on DÉDOUBLONNE les tickers (sinon la contrainte unique(list_id,
-  // ticker) fait échouer TOUT le lot), on ARRONDIT le score (colonne integer) et
-  // on fait REMONTER les erreurs (une insertion d'items échouée ne doit pas
-  // laisser une liste vide en silence → on supprime la liste orpheline et on lève).
+  // Chemin préféré : RPC import_list → UNE entrée d'audit « list_created » (pas de
+  // bruit par-action). Repli non-cassant (insertion directe) si la RPC n'existe
+  // pas encore. On DÉDOUBLONNE les tickers et on ARRONDIT le score (colonne int).
   async importLocal(localLists) {
     let n = 0;
     for (const raw of (localLists || [])) {
       if (!raw || !raw.name) continue;
-      const { data: l, error } = await supa.from('lists')
-        .insert({ user_id: currentUser.id, name: raw.name, index_symbol: raw.index_symbol || 'SPX', description: raw.description || '' })
-        .select().single();
-      if (error) throw error;
-      if (!l) continue;
       const seen = new Set();
       const items = [];
       for (const i of (raw.items || [])) {
@@ -143,21 +137,43 @@ const lists = {
         if (!ticker || seen.has(ticker)) continue;
         seen.add(ticker);
         items.push({
-          list_id: l.id, ticker,
+          ticker,
           weight: i.weight != null ? Number(i.weight) : null,
           score: i.score != null ? Math.round(Number(i.score)) : null,
           score_data: i.score_data || null,
         });
       }
-      if (items.length) {
-        const { error: e2 } = await supa.from('list_items').insert(items);
-        if (e2) { await supa.from('lists').delete().eq('id', l.id); throw e2; }   // pas de liste vide orpheline
+      const { error } = await supa.rpc('import_list', {
+        p_name: raw.name, p_index: raw.index_symbol || 'SPX', p_description: raw.description || '', p_items: items,
+      });
+      if (error) {
+        const em = `${error.message || ''} ${error.code || ''}`;
+        if (/PGRST202|import_list|does not exist|schema cache/i.test(em)) {
+          await importListDirect(raw, items);   // DB pas encore à jour → insertion directe
+        } else {
+          throw error;
+        }
       }
       n++;
     }
     return { imported: n };
   },
 };
+
+// Repli d'import (RPC import_list absente) : insertion directe list + items.
+// Surface les erreurs et supprime la liste orpheline si les items échouent.
+async function importListDirect(raw, items) {
+  const { data: l, error } = await supa.from('lists')
+    .insert({ user_id: currentUser.id, name: raw.name, index_symbol: raw.index_symbol || 'SPX', description: raw.description || '' })
+    .select().single();
+  if (error) throw error;
+  if (!l) return;
+  if (items.length) {
+    const rows = items.map(i => ({ list_id: l.id, ticker: i.ticker, weight: i.weight, score: i.score, score_data: i.score_data }));
+    const { error: e2 } = await supa.from('list_items').insert(rows);
+    if (e2) { await supa.from('lists').delete().eq('id', l.id); throw e2; }
+  }
+}
 
 // ── Stratégies construites (une par liste, clé dx-strategy-<listId>) ─────────
 // Stockées telles quelles (jsonb). Le cloud est la source de vérité ; l'app

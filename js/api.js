@@ -172,6 +172,8 @@
      Sinon → localStorage (DXMock), comportement historique. Le format renvoyé
      est identique dans les deux cas, donc l'UI ne change pas. */
   const _cloud = () => (window.DXCloud && window.DXCloud.enabled ? window.DXCloud : null);
+  // Réveille l'activité (ActivityFeed) juste après une mutation → plus de latence.
+  const _poke = () => { try { window.dispatchEvent(new CustomEvent('dx-activity-poke')); } catch {} };
 
   async function getLists() {
     const c = _cloud();
@@ -180,7 +182,7 @@
   }
   async function createList(name, index_symbol, description = '') {
     const c = _cloud();
-    if (c) { try { return await c.lists.create(name, index_symbol, description); } catch (e) { console.warn('cloud createList', e); } }
+    if (c) { try { const r = await c.lists.create(name, index_symbol, description); _poke(); return r; } catch (e) { console.warn('cloud createList', e); } }
     return window.DXMock.createList(name, index_symbol, description);
   }
   async function getList(id) {
@@ -190,22 +192,22 @@
   }
   async function updateList(id, name, description) {
     const c = _cloud();
-    if (c) { try { return await c.lists.update(id, name, description); } catch (e) { console.warn('cloud updateList', e); } }
+    if (c) { try { const r = await c.lists.update(id, name, description); _poke(); return r; } catch (e) { console.warn('cloud updateList', e); } }
     return { id, name, description };
   }
   async function deleteList(id) {
     const c = _cloud();
-    if (c) { try { return await c.lists.remove(id); } catch (e) { console.warn('cloud deleteList', e); } }
+    if (c) { try { const r = await c.lists.remove(id); _poke(); return r; } catch (e) { console.warn('cloud deleteList', e); } }
     return window.DXMock.deleteList(id);
   }
   async function addListItem(id, ticker, score_data, notes = '') {
     const c = _cloud();
-    if (c) { try { return await c.lists.addItem(id, ticker, score_data); } catch (e) { console.warn('cloud addListItem', e); } }
+    if (c) { try { const r = await c.lists.addItem(id, ticker, score_data); _poke(); return r; } catch (e) { console.warn('cloud addListItem', e); } }
     return window.DXMock.addListItem(id, ticker, score_data);
   }
   async function removeListItem(id, ticker) {
     const c = _cloud();
-    if (c) { try { return await c.lists.removeItem(id, ticker); } catch (e) { console.warn('cloud removeListItem', e); } }
+    if (c) { try { const r = await c.lists.removeItem(id, ticker); _poke(); return r; } catch (e) { console.warn('cloud removeListItem', e); } }
     return window.DXMock.removeListItem(id, ticker);
   }
   async function getListAnalysis(id) {
@@ -252,17 +254,17 @@
   async function shareList(listId, email, role) {
     const c = _cloud();
     if (!(c && c.shares)) throw new Error('connexion requise pour partager');
-    return c.shares.share(listId, email, role);
+    const r = await c.shares.share(listId, email, role); _poke(); return r;
   }
   async function setShareRole(shareId, role) {
     const c = _cloud();
     if (!(c && c.shares)) throw new Error('connexion requise');
-    return c.shares.setRole(shareId, role);
+    const r = await c.shares.setRole(shareId, role); _poke(); return r;
   }
   async function revokeShare(shareId) {
     const c = _cloud();
     if (!(c && c.shares)) throw new Error('connexion requise');
-    return c.shares.revoke(shareId);
+    const r = await c.shares.revoke(shareId); _poke(); return r;
   }
   // Journal d'audit d'une liste (cloud uniquement ; [] sinon).
   async function getListAudit(listId) {

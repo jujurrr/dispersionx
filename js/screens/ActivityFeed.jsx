@@ -1,6 +1,7 @@
 /* ─── ActivityFeed : activité GLOBALE (journal d'audit) en bas de la sidebar ──
-   Onglet dépliable (5 lignes visibles + molette pour le reste) + popup discret
-   en bas à gauche quand quelque chose change (auto-effacé). Cloud uniquement. */
+   Onglet dépliable (5 lignes visibles + molette pour le reste). Quand quelque
+   chose change, l'onglet « se soulève » un instant pour révéler la dernière
+   modif de façon discrète, puis se referme. Cloud uniquement. */
 
 // Phrase lisible + temps relatif (fr) — partagés (window.DXActivity), aussi
 // utilisés par le journal par-liste de ListDetail.
@@ -43,47 +44,65 @@ function ActivityFeed() {
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState([]);
-  const [popup, setPopup] = React.useState(null);
-  const seenRef = React.useRef(null);        // plus grand id vu (baseline anti-spam au 1er chargement)
-  const popupTimer = React.useRef(null);
+  const [reveal, setReveal] = React.useState(null);   // dernière modif à révéler
+  const [shown, setShown] = React.useState(false);     // ouverture de la révélation (transition douce)
+  const seenRef = React.useRef(null);                  // plus grand id vu (baseline anti-spam au 1er chargement)
+  const timers = React.useRef([]);
+  const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
+
+  const showReveal = React.useCallback((entry) => {
+    clearTimers();
+    setReveal(entry);
+    timers.current.push(setTimeout(() => setShown(true), 20));     // se soulève
+    timers.current.push(setTimeout(() => setShown(false), 3800));  // se referme
+    timers.current.push(setTimeout(() => setReveal(null), 4200));
+  }, []);
 
   const poll = React.useCallback(() => {
     if (!(window.DXCloud && window.DXCloud.enabled)) { setRows([]); return; }
     DXApi.getGlobalActivity(50).then(list => {
       setRows(list);
       if (!list.length) return;
-      const maxId = list[0].id;              // liste triée du plus récent au plus ancien
-      if (seenRef.current == null) { seenRef.current = maxId; return; }   // baseline : pas de popup pour l'historique
+      const maxId = list[0].id;                        // liste triée du plus récent au plus ancien
+      if (seenRef.current == null) { seenRef.current = maxId; return; }   // baseline : pas de révélation de l'historique
       const fresh = list.filter(e => e.id > seenRef.current);
-      if (fresh.length) {
-        seenRef.current = maxId;
-        setPopup(fresh[0]);
-        clearTimeout(popupTimer.current);
-        popupTimer.current = setTimeout(() => setPopup(null), 5000);
-      }
+      if (fresh.length) { seenRef.current = maxId; showReveal(fresh[0]); }
     }).catch(() => {});
-  }, []);
+  }, [showReveal]);
 
   React.useEffect(() => {
     if (!cloudOn) return;
     poll();
-    const id = setInterval(poll, 20000);                         // sondage doux toutes les 20 s
-    const onChg = () => poll();                                  // + réaction immédiate à mes propres actions
-    window.addEventListener('dx-lists-changed', onChg);
-    window.addEventListener('dx-strategies-changed', onChg);
+    const id = setInterval(poll, 20000);               // filet de sécurité
+    const onPoke = () => { poll(); timers.current.push(setTimeout(poll, 1200)); };   // réactif après une mutation
+    window.addEventListener('dx-activity-poke', onPoke);
+    window.addEventListener('dx-lists-changed', onPoke);
+    window.addEventListener('dx-strategies-changed', onPoke);
     return () => {
       clearInterval(id);
-      window.removeEventListener('dx-lists-changed', onChg);
-      window.removeEventListener('dx-strategies-changed', onChg);
-      clearTimeout(popupTimer.current);
+      window.removeEventListener('dx-activity-poke', onPoke);
+      window.removeEventListener('dx-lists-changed', onPoke);
+      window.removeEventListener('dx-strategies-changed', onPoke);
+      clearTimers();
     };
   }, [cloudOn, poll]);
 
-  if (!cloudOn) return null;                 // audit = comptes cloud uniquement
+  if (!cloudOn) return null;                            // audit = comptes cloud uniquement
 
   const A = window.DXActivity;
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
+      {/* Révélation discrète : l'onglet se soulève pour montrer la dernière modif, puis se referme */}
+      {reveal && !open && (
+        <div style={{ overflow: 'hidden', transition: 'max-height 0.35s var(--ease), opacity 0.3s var(--ease)', maxHeight: shown ? 46 : 0, opacity: shown ? 1 : 0 }}>
+          <div style={{ padding: '7px 14px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border-subtle)' }}>
+            <div style={{ font: '10px/1.35 var(--font-sans)', color: 'var(--text-soft)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <strong style={{ color: 'var(--text)' }}>{dxWho(reveal.actor_email)}</strong> {A.sentence(reveal)}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Onglet Activité */}
       <button onClick={() => setOpen(o => !o)} title="Activité récente"
         style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px',
@@ -110,19 +129,6 @@ function ActivityFeed() {
               <div style={{ font: '9px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 2 }}>{A.timeAgo(e.created_at)}</div>
             </div>
           ))}
-        </div>
-      )}
-
-      {/* Popup discret en bas à gauche (auto-effacé après ~5 s) */}
-      {popup && (
-        <div style={{ position: 'fixed', left: 14, bottom: 96, zIndex: 1200, maxWidth: 236,
-          background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', borderLeft: '3px solid var(--accent)',
-          borderRadius: 'var(--radius-lg)', padding: '9px 12px', boxShadow: 'var(--shadow-lg)',
-          animation: 'dx-rise var(--dur) var(--ease) both' }}>
-          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text)' }}>
-            <strong>{dxWho(popup.actor_email)}</strong> <span style={{ color: 'var(--text-soft)' }}>{A.sentence(popup)}</span>
-          </div>
-          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 2 }}>{A.timeAgo(popup.created_at)}</div>
         </div>
       )}
     </div>

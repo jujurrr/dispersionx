@@ -281,6 +281,9 @@ create or replace function public.audit_list_items() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_email text;
 begin
+  -- Import en masse : on NE journalise PAS chaque action (une seule entrée
+  -- « list_created » suffit). Le drapeau est posé par la fonction import_list.
+  if current_setting('app.skip_item_audit', true) = 'on' then return null; end if;
   select email into v_email from auth.users where id = auth.uid();
   if (tg_op = 'INSERT') then
     insert into public.audit_log(list_id, actor_id, actor_email, action, detail)
@@ -340,6 +343,33 @@ end; $$;
 drop trigger if exists trg_audit_list_shares on public.list_shares;
 create trigger trg_audit_list_shares after insert or update or delete on public.list_shares
   for each row execute function public.audit_list_shares();
+
+-- Import d'une liste en UNE transaction : journalise « list_created » une fois,
+-- puis pose le drapeau app.skip_item_audit pour ne PAS journaliser chaque action.
+create or replace function public.import_list(p_name text, p_index text, p_description text, p_items jsonb)
+returns uuid language plpgsql security invoker set search_path = public as $$
+declare v_id uuid; v_item jsonb;
+begin
+  if auth.uid() is null then raise exception 'not_authenticated'; end if;
+  insert into public.lists (user_id, name, index_symbol, description)
+  values (auth.uid(), p_name, coalesce(nullif(p_index, ''), 'SPX'), coalesce(p_description, ''))
+  returning id into v_id;                                   -- déclenche 'list_created' (une fois)
+  perform set_config('app.skip_item_audit', 'on', true);    -- true = local à la transaction
+  for v_item in select * from jsonb_array_elements(coalesce(p_items, '[]'::jsonb)) loop
+    insert into public.list_items (list_id, ticker, weight, score, score_data)
+    values (
+      v_id,
+      upper(trim(v_item->>'ticker')),
+      nullif(v_item->>'weight', '')::numeric,
+      nullif(v_item->>'score', '')::int,
+      case when v_item ? 'score_data' then v_item->'score_data' else null end
+    )
+    on conflict (list_id, ticker) do nothing;
+  end loop;
+  return v_id;
+end; $$;
+revoke all on function public.import_list(text, text, text, jsonb) from public, anon;
+grant execute on function public.import_list(text, text, text, jsonb) to authenticated;
 ```
 
 Ensuite, dans le détail d'une liste : bouton **« Activité »** qui déroule le journal.
