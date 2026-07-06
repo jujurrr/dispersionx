@@ -1,31 +1,5 @@
 /* ─── List Detail: basket analysis + sortable items + score modal ─ */
-// Journal d'audit : phrase lisible + temps relatif (fr).
-function auditSentence(e) {
-  const d = e.detail || {};
-  const role = r => r === 'editor' ? 'modif.' : 'lecture';
-  switch (e.action) {
-    case 'item_added':   return `a ajouté ${d.ticker}`;
-    case 'item_removed': return `a retiré ${d.ticker}`;
-    case 'list_created': return 'a créé la liste';
-    case 'list_renamed': return `a renommé la liste en « ${d.to} »`;
-    case 'list_deleted': return 'a supprimé la liste';
-    case 'shared':       return `a partagé avec ${d.with}${d.role ? ` (${role(d.role)})` : ''}`;
-    case 'role_changed': return `a changé le rôle de ${d.with} en ${role(d.role)}`;
-    case 'unshared':     return `a retiré l'accès de ${d.with}`;
-    default:             return e.action;
-  }
-}
-function auditTimeAgo(iso) {
-  const t = new Date(iso).getTime();
-  if (isNaN(t)) return '';
-  const s = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (s < 60) return "à l'instant";
-  const m = Math.floor(s / 60); if (m < 60) return `il y a ${m} min`;
-  const h = Math.floor(m / 60); if (h < 24) return `il y a ${h} h`;
-  const j = Math.floor(h / 24); if (j < 30) return `il y a ${j} j`;
-  return new Date(iso).toLocaleDateString('fr-FR');
-}
-
+// Journal d'audit : phrases/temps partagés via window.DXActivity (ActivityFeed.jsx).
 function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [list, setList]       = React.useState(null);
@@ -268,9 +242,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
               {auditRows.map((e, i) => (
                 <div key={e.id ?? i} style={{ display: 'flex', gap: 12, alignItems: 'baseline', padding: '9px 16px', borderBottom: i < auditRows.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
                   <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', flex: 1, minWidth: 0 }}>
-                    <strong style={{ color: 'var(--text)' }}>{e.actor_email || 'Quelqu’un'}</strong> {auditSentence(e)}
+                    <strong style={{ color: 'var(--text)' }}>{e.actor_email || 'Quelqu’un'}</strong> {window.DXActivity.sentence(e)}
                   </span>
-                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', whiteSpace: 'nowrap', flexShrink: 0 }}>{auditTimeAgo(e.created_at)}</span>
+                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', whiteSpace: 'nowrap', flexShrink: 0 }}>{window.DXActivity.timeAgo(e.created_at)}</span>
                 </div>
               ))}
             </div>

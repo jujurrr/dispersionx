@@ -149,9 +149,13 @@ const NAV = [
   ]},
 ];
 
-function Sidebar({ active, onNav, lists, apiConnected }) {
+function Sidebar({ active, onNav, lists, user }) {
   const listCount = lists ? lists.length : 0;
   const recent = lists ? lists.slice(0, 5) : [];
+  const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
+  const cloudUser = window.DXCloud && window.DXCloud.user;
+  const who = (user && (user.name || user.email)) || (cloudUser && (cloudUser.name || cloudUser.email)) || 'Mon compte';
+  const srcLink = { color: 'var(--text-muted)', textDecoration: 'none', borderBottom: '1px dotted var(--border-strong)' };
 
   return (
     <aside style={{
@@ -227,22 +231,31 @@ function Sidebar({ active, onNav, lists, apiConnected }) {
         )}
       </nav>
 
-      {/* Status footer */}
-      <div style={{ padding: 14, borderTop: '1px solid var(--border-subtle)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-soft)' }}>
-          <span style={{ width: 7, height: 7, borderRadius: '50%', background: apiConnected ? 'var(--pos)' : 'var(--warn)', boxShadow: apiConnected ? '0 0 0 3px var(--pos-soft)' : 'none' }} />
-          {apiConnected === null ? 'Vérification…' : apiConnected ? 'Connecté' : 'Mode démo'}
-        </div>
-        <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>
-          {['yfinance', 'FMP', 'IBKR'].map((s, i) => (
-            <span key={s} style={{
-              font: '9px/1 var(--font-mono)', padding: '3px 6px', borderRadius: 3,
-              textTransform: 'uppercase', letterSpacing: '0.04em',
-              background: (i < 2 && apiConnected) ? 'var(--pos-soft)' : 'var(--bg-elevated)',
-              border: `1px solid ${(i < 2 && apiConnected) ? 'var(--pos)' : 'var(--border)'}`,
-              color: (i < 2 && apiConnected) ? 'var(--pos-bright)' : 'var(--text-muted)',
-            }}>{s}</span>
-          ))}
+      {/* Footer : activité globale + statut + sources + note données */}
+      <div>
+        {window.ActivityFeed ? <window.ActivityFeed /> : null}
+        <div style={{ padding: '11px 14px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 7 }}>
+          {/* Statut : mode réel (connecté) ou démo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-soft)' }}>
+            <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: cloudOn ? 'var(--pos)' : 'var(--warn)', boxShadow: cloudOn ? '0 0 0 3px var(--pos-soft)' : 'none' }} />
+            {cloudOn ? (
+              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                Mode réel · <span style={{ textTransform: 'none', color: 'var(--text)', fontWeight: 600 }}>{who}</span>
+              </span>
+            ) : 'Mode démo'}
+          </div>
+          {/* Sources de données réelles — liens à jour */}
+          <div style={{ font: '10px/1.5 var(--font-sans)', color: 'var(--text-dim)' }}>
+            Sources :{' '}
+            <a href="https://www.cboe.com/delayed_quotes/" target="_blank" rel="noreferrer" style={srcLink}>Cboe</a>{' · '}
+            <a href="https://finance.yahoo.com" target="_blank" rel="noreferrer" style={srcLink}>Yahoo Finance</a>{' · '}
+            <a href="https://finnhub.io" target="_blank" rel="noreferrer" style={srcLink}>Finnhub</a>
+          </div>
+          {/* Note (déplacée du haut du site) */}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', font: '10px/1.4 var(--font-sans)', color: 'var(--text-dim)' }}>
+            <span style={{ font: '9px/1', color: 'var(--text-muted)', flexShrink: 0 }}>ⓘ</span>
+            <span>Données différées 15 min — analyse pédagogique, pas un conseil en investissement.</span>
+          </div>
         </div>
       </div>
     </aside>
@@ -386,7 +399,6 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
   }, []);
 
   return (
-    <React.Fragment>
     <header style={{
       height: 52, borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -446,16 +458,6 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
         </div>
       </div>
     </header>
-    {/* Bandeau discret — nature des données et cadre pédagogique */}
-    <div style={{
-      flexShrink: 0, padding: '4px 28px', display: 'flex', alignItems: 'center', gap: 7,
-      background: 'var(--bg-surface)', borderBottom: '1px solid var(--border-subtle)',
-      font: '10px/1.4 var(--font-sans)', color: 'var(--text-dim)',
-    }}>
-      <span style={{ font: '9px/1', color: 'var(--text-muted)' }}>ⓘ</span>
-      <span>Données différées 15 min — analyse pédagogique, pas un conseil en investissement.</span>
-    </div>
-    </React.Fragment>
   );
 }
 

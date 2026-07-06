@@ -285,6 +285,14 @@ const audit = {
     if (error) throw error;
     return (data || []).map(r => ({ id: r.id, actor_email: r.actor_email, action: r.action, detail: r.detail || {}, created_at: r.created_at }));
   },
+  // Activité GLOBALE visible par l'utilisateur (toutes ses listes + partagées) —
+  // la RLS ne renvoie que les lignes qu'il a le droit de voir.
+  async recent(limit = 50) {
+    const { data, error } = await supa.from('audit_log').select('*')
+      .order('created_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    return (data || []).map(r => ({ id: r.id, list_id: r.list_id, actor_email: r.actor_email, action: r.action, detail: r.detail || {}, created_at: r.created_at }));
+  },
 };
 
 // ── API publique exposée au reste de l'app (js/api.js, Auth.jsx, app.jsx) ────

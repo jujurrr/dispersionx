@@ -89,7 +89,11 @@ function App() {
     localStorage.setItem('dx-mode', mode);
   }, [mode]);
 
+  // Écran d'où l'on vient avant d'ouvrir la connexion → la flèche « retour »
+  // de la page de connexion y ramène (au lieu de toujours la présentation).
+  const loginReturnRef = React.useRef('home');
   function onNav(s, p = {}) {
+    if (s === 'login' && screen !== 'login') loginReturnRef.current = screen;
     setScreen(s);
     setParams(p);
     if (HASH_SCREENS.includes(s)) window.location.hash = s;
@@ -207,7 +211,7 @@ function App() {
     return (
       <React.Fragment>
         <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
-          {window.Auth ? <window.Auth onNav={onNav} user={user} onAuth={handleAuth} /> : null}
+          {window.Auth ? <window.Auth onNav={onNav} user={user} onAuth={handleAuth} loginReturn={loginReturnRef.current} /> : null}
         </div>
         {splashEl}
       </React.Fragment>
@@ -229,7 +233,7 @@ function App() {
   return (
     <React.Fragment>
     <div style={{ display: 'grid', gridTemplateColumns: 'var(--sidebar-w, 220px) 1fr', height: '100vh', overflow: 'hidden' }}>
-      <window.Sidebar active={screen} onNav={onNav} lists={lists} />
+      <window.Sidebar active={screen} onNav={onNav} lists={lists} user={user} />
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
         <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} dataProgress={dataProgress} />
         <main style={{

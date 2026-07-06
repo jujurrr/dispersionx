@@ -270,6 +270,12 @@
     if (c && c.audit) { try { return await c.audit.forList(listId); } catch (e) { console.warn('cloud getListAudit', e); } }
     return [];
   }
+  // Activité globale de l'utilisateur (toutes listes + partagées).
+  async function getGlobalActivity(limit = 50) {
+    const c = _cloud();
+    if (c && c.audit) { try { return await c.audit.recent(limit); } catch (e) { console.warn('cloud getGlobalActivity', e); } }
+    return [];
+  }
 
   /* ── Correlation ─────────────────────────────────────────────── */
   async function getCorrelation(list_id, tickers, index_symbol) {
@@ -525,7 +531,7 @@
     getLists, createList, getList, updateList, deleteList,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
-    getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit,
+    getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity,
     getCorrelation,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,

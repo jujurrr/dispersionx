@@ -33,7 +33,7 @@ function initialsOf(name) {
   return (parts[0][0] + (parts[1] ? parts[1][0] : (parts[0][1] || ''))).toUpperCase();
 }
 
-function Auth({ onNav, user, onAuth }) {
+function Auth({ onNav, user, onAuth, loginReturn }) {
   const DS = window.DispersionXDesignSystem_cb86be;
   const { Button } = DS;
   const [mode, setMode] = React.useState('login'); // 'login' | 'signup'
@@ -107,7 +107,10 @@ function Auth({ onNav, user, onAuth }) {
         <span style={{ font: '800 15px/1 var(--font-sans)', color: 'var(--text)' }}>Dispersion<span style={{ color: 'var(--accent-hover)' }}>X</span></span>
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <a onClick={() => onNav('landing')} style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', cursor: 'pointer' }}>← Présentation</a>
+        <button onClick={() => onNav(loginReturn || 'home')} title="Retour" aria-label="Retour"
+          style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)', cursor: 'pointer' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5M12 19l-7-7 7-7" /></svg>
+        </button>
         {window.ThemeToggle ? <window.ThemeToggle /> : null}
       </div>
     </div>
