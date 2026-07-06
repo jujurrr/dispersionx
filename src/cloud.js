@@ -42,8 +42,8 @@ const auth = {
     const { error } = await supa.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
     if (error) throw error;   // redirection ; la session revient via onAuthStateChange
   },
-  async signInGoogle() { return this.signInOAuth('google'); },
-  async signInApple()  { return this.signInOAuth('apple'); },
+  async signInGoogle()  { return this.signInOAuth('google'); },
+  async signInDiscord() { return this.signInOAuth('discord'); },
   async signOut() { if (supa) await supa.auth.signOut(); },
 };
 

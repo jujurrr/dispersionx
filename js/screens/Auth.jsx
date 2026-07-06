@@ -94,10 +94,10 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
     catch (err) { setError(err && err.message ? err.message : 'Connexion Google indisponible.'); }
   }
 
-  async function apple() {
+  async function discord() {
     setError('');
-    try { await window.DXCloud.auth.signInApple(); }    // redirige vers Apple
-    catch (err) { setError(err && err.message ? err.message : 'Connexion Apple indisponible.'); }
+    try { await window.DXCloud.auth.signInDiscord(); }  // redirige vers Discord
+    catch (err) { setError(err && err.message ? err.message : 'Connexion Discord indisponible.'); }
   }
 
   function demo() {
@@ -206,7 +206,7 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
       {window.DXCloud && window.DXCloud.configured && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Button variant="outline" size="md" full onClick={google} type="button">Continuer avec Google</Button>
-          <Button variant="outline" size="md" full onClick={apple} type="button">Continuer avec Apple</Button>
+          <Button variant="outline" size="md" full onClick={discord} type="button">Continuer avec Discord</Button>
         </div>
       )}
 
