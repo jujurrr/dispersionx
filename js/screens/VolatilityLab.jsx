@@ -182,7 +182,13 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
   const hvHist = D.hv_history || [];
   const term   = D.term || null;
   const isMock = D.source === 'reference';
-  const src    = D.source === 'marketdata+yahoo' ? 'MarketData · IV réelle' : isMock ? 'Données de référence (indices)' : 'Yahoo Finance · IV estimée (×1.12)';
+  const ivReal = D.source === 'cboe_delayed' || D.source === 'marketdata';
+  const src    = isMock
+    ? 'Données de référence (indices)'
+    : (D.source === 'cboe_delayed' ? 'IV réelle Cboe (différée 15 min)'
+       : D.source === 'marketdata' ? 'IV réelle MarketData'
+       : 'IV estimée (HV×1.12)')
+      + ' · HV sur clôtures Cboe (repli Yahoo)';
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -196,7 +202,7 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
           </h1>
           <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>vs {index} · {src}</div>
         </div>
-        <Badge tone="neutral" size="sm">{D.source === 'marketdata+yahoo' ? 'IV réelle' : isMock ? 'Référence' : 'IV estimée'}</Badge>
+        <Badge tone="neutral" size="sm">{isMock ? 'Référence' : ivReal ? 'IV réelle' : 'IV estimée'}</Badge>
       </div>
 
       {/* Métriques */}
@@ -224,7 +230,7 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
             <Badge tone="neutral" size="sm">90 jours</Badge>
           </div>
           <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 12px' }}>
-            Ligne orange pointillée = IV actuelle{ivAtm ? ' (MarketData)' : ' (estimée)'}. Zone bleue = prime de vol.
+            Ligne orange pointillée = IV actuelle{ivAtm ? ' (réelle)' : ' (estimée)'}. Zone bleue = prime de vol.
           </p>
           {hvHist.length >= 5
             ? <VLine points={hvHist} color="var(--info)" refLine={ivEst} h={150} />
@@ -240,7 +246,7 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Structure par terme</h3>
-            <Badge tone="neutral" size="sm">{term ? 'MarketData' : 'Estimé'}</Badge>
+            <Badge tone="neutral" size="sm">{term ? 'Cboe' : 'Estimé'}</Badge>
           </div>
           <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 12px' }}>IV ATM selon l'échéance.</p>
           {term
@@ -258,7 +264,7 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
                       <span style={{ width: 40, font: 'var(--type-data-sm)', color: 'var(--pos-bright)', textAlign: 'right' }}>{p.v.toFixed(1)}%</span>
                     </div>
                   ))}
-                <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '4px 0 0' }}>Structure estimée (MarketData non configuré)</p>
+                <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '4px 0 0' }}>Structure estimée (chaîne d'options réelle indisponible)</p>
               </div>
             )
           }
@@ -381,8 +387,8 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
           </h1>
           <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
             {rows.some(r => r.source === 'reference')
-              ? 'Données de référence (indices) · Cliquez sur un ticker pour l\'analyser en détail.'
-              : 'HV calculée sur Yahoo Finance · IV estimée = HV×1.12 · Cliquez sur un ticker pour l\'analyser en détail.'}
+              ? 'Certaines valeurs sont des données de référence · Cliquez sur un ticker pour l\'analyser en détail.'
+              : 'IV réelle du Cboe (cotations différées 15 min) · HV calculée sur les clôtures Cboe (repli Yahoo Finance) · Cliquez sur un ticker pour l\'analyser en détail.'}
           </p>
         </div>
         {rows.some(r => r.source === 'reference') && (
@@ -397,7 +403,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10 }}>
           <MetricCard label="Tickers analysés" value={rows.length} accent="var(--accent)" />
           <MetricCard label="HV 30j moy." value={avgHV?.toFixed(1) ?? '···'} unit="%" accent="var(--info)" hint="Volatilité réalisée" />
-          <MetricCard label="IV moy. (est.)" value={avgIV?.toFixed(1) ?? '···'} unit="%" accent="var(--warn)" hint="Volatilité implicite" />
+          <MetricCard label="IV moy." value={avgIV?.toFixed(1) ?? '···'} unit="%" accent="var(--warn)" hint="Volatilité implicite moyenne du panier — IV réelle Cboe (estimée HV×1.12 si l'IV réelle est indisponible)." />
           <MetricCard label="Prime IV moy." value={avgSprd != null ? (avgSprd >= 0 ? '+' : '') + avgSprd.toFixed(1) : '···'} unit="pts" accent={avgSprd == null ? 'var(--text-muted)' : avgSprd > 0 ? 'var(--pos)' : 'var(--neg)'} hint="IV − HV" />
           <MetricCard label="Ratio IV/HV moy." value={avgRatio?.toFixed(2) ?? '···'} accent={avgRatio == null ? 'var(--text-muted)' : avgRatio > 1 ? 'var(--pos)' : 'var(--neg)'} hint="> 1 = vol chère" />
           <MetricCard label="% vol chère" value={pctRich != null ? pctRich : '···'} unit="%" accent={pctRich == null ? 'var(--text-muted)' : pctRich >= 50 ? 'var(--pos)' : 'var(--warn)'} hint="noms IV > HV" />
