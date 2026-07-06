@@ -3,7 +3,8 @@
 // src/main.jsx, donc les globals existent avant que le moindre écran ne s'exécute.
 import React from 'react';
 import { createRoot, hydrateRoot } from 'react-dom/client';
+import { createPortal } from 'react-dom';
 
 window.React = React;
-// app.jsx n'utilise que ReactDOM.createRoot ; on expose l'équivalent React 18.
-window.ReactDOM = { createRoot, hydrateRoot };
+// createRoot/hydrateRoot (montage) + createPortal (infobulles HintDot hors flux).
+window.ReactDOM = { createRoot, hydrateRoot, createPortal };
