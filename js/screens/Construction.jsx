@@ -13,6 +13,12 @@ function persistStrategy(listId, s) {
   if (window.DXApi && DXApi.saveStrategy) return DXApi.saveStrategy(listId, s);
   try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
 }
+// Cache SESSION des données marché/grecs de base, par liste : évite de tout
+// refetcher en re-entrant tant que (liste, indice, durée, composants) n'ont pas
+// changé. Recalcul si la signature change ou après 15 min (fraîcheur marché).
+const _constrCache = {};
+const CONSTR_TTL = 15 * 60 * 1000;
+
 function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, indexOverride, durationOverride, onSaved, addToast }) {
   const { MetricCard, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const CONTRACT  = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
@@ -88,6 +94,16 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       } catch {}
       if (!tickers.length) tickers = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
 
+      // Cache : signature basée sur la liste RÉELLE (composants + poids) + indice
+      // + durée. Si identique et fraîche (< 15 min), on réutilise → on saute le
+      // fetch COÛTEUX (prix, market caps, vol). La liste (léger) est déjà chargée.
+      const _sig = listId + '|' + indexSym + '|' + duration + '|' + tickers.map(t => t + ':' + (weightMap[t] ?? '')).join(',');
+      const _cached = _constrCache[listId];
+      if (_cached && _cached.sig === _sig && Date.now() - _cached.at < CONSTR_TTL) {
+        if (!cancelled) { setBase(_cached.base); setLoading(false); }
+        return;
+      }
+
       // Prix négociable de l'indice = ETF proxy (QQQ, SPY…), pas le niveau
       // d'indice synthétique : primes, notionnels et hedge collent au broker.
       let indexPrice = 600, indexIV = 18, indexEtf = indexSym;
@@ -131,7 +147,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         const weight = (weightMap[t] != null ? weightMap[t] : (idxWeights[t] != null ? idxWeights[t] : null));
         return { ticker: t, price, iv, hv, beta, mcap, sector: v.sector || 'Autre', weight, g: sg(price, iv, duration) };
       });
-      if (!cancelled) { setBase({ indexSym, indexEtf, indexPrice, indexIV, idxG, perTicker }); setLoading(false); }
+      if (!cancelled) { const _b = { indexSym, indexEtf, indexPrice, indexIV, idxG, perTicker }; _constrCache[listId] = { sig: _sig, base: _b, at: Date.now() }; setBase(_b); setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [listId, indexSym, duration]);
