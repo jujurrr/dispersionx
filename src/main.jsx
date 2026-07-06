@@ -26,6 +26,7 @@ import '../js/lib/market-hours.js';
 
 // 5) Écrans (ordre identique à index.html — dépendances de globals au top-level).
 import '../js/screens/ConfirmDialog.jsx';   // window.ConfirmDialog, utilisé par plusieurs écrans
+import '../js/screens/ShareDialog.jsx';     // window.ShareDialog (partage liste/construction)
 import '../js/screens/ActivityFeed.jsx';    // window.ActivityFeed + window.DXActivity (helpers audit)
 import '../js/screens/Shell.jsx';
 import '../js/screens/Home.jsx';

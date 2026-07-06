@@ -9,18 +9,10 @@ function Lists({ onNav, onListsChange, addToast }) {
   const [newDesc, setNewDesc] = React.useState('');
   const [creating, setCreating] = React.useState(false);
   const importRef = React.useRef();
-  // Partage (tranche 3) — cloud uniquement.
+  // Partage (tranche 3) — cloud uniquement. Modale = window.ShareDialog.
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const [shared, setShared] = React.useState([]);          // listes partagées AVEC moi
   const [shareFor, setShareFor] = React.useState(null);    // liste en cours de partage (modal)
-  const [shareEmail, setShareEmail] = React.useState('');
-  const [shareRole, setShareRole] = React.useState('viewer');
-  const [shareRows, setShareRows] = React.useState([]);    // accès actuels de shareFor
-  const [sharing, setSharing] = React.useState(false);
-  const [shareLinks, setShareLinks] = React.useState([]);  // liens de partage de shareFor
-  const [linkRole, setLinkRole] = React.useState('viewer');
-  const [newLink, setNewLink] = React.useState('');        // dernier lien généré (à copier)
-  const [genLoading, setGenLoading] = React.useState(false);
   // Confirmation in-app générique (ConfirmDialog).
   const [dialog, setDialog] = React.useState(null);
   const [dialogBusy, setDialogBusy] = React.useState(false);
@@ -103,74 +95,8 @@ function Lists({ onNav, onListsChange, addToast }) {
     e.target.value = '';
   }
 
-  // ── Partage ──────────────────────────────────────────────────
-  function loadShareRows(listId) {
-    DXApi.getListShares(listId).then(setShareRows).catch(() => setShareRows([]));
-  }
-  function loadLinks(listId) {
-    DXApi.getShareLinks(listId).then(setShareLinks).catch(() => setShareLinks([]));
-  }
-  function openShare(list, e) {
-    e && e.stopPropagation();
-    setShareFor(list); setShareEmail(''); setShareRole('viewer'); setShareRows([]);
-    setLinkRole('viewer'); setNewLink(''); setShareLinks([]);
-    loadShareRows(list.id);
-    loadLinks(list.id);
-  }
-  const shareErr = (err) => {
-    const m = String(err?.message || '');
-    if (m.includes('user_not_found')) return 'aucun compte avec cet e-mail.';
-    if (m.includes('not_owner')) return 'vous n\'êtes pas propriétaire de cette liste.';
-    if (m.includes('cannot_share_self')) return 'c\'est déjà votre liste.';
-    if (m.includes('bad_role')) return 'rôle invalide.';
-    return m || 'erreur inconnue.';
-  };
-  async function submitShare(e) {
-    e.preventDefault();
-    if (!shareEmail.trim() || !shareFor) return;
-    setSharing(true);
-    try {
-      await DXApi.shareList(shareFor.id, shareEmail.trim(), shareRole);
-      addToast && addToast(`Liste partagée avec ${shareEmail.trim()}.`);
-      setShareEmail('');
-      loadShareRows(shareFor.id);
-    } catch (err) { addToast && addToast('Partage impossible : ' + shareErr(err), 'error'); }
-    finally { setSharing(false); }
-  }
-  async function changeShareRole(row, role) {
-    try { await DXApi.setShareRole(row.id, role); loadShareRows(shareFor.id); }
-    catch (err) { addToast && addToast('Erreur : ' + shareErr(err), 'error'); }
-  }
-  async function revokeShareRow(row) {
-    try { await DXApi.revokeShare(row.id); loadShareRows(shareFor.id); addToast && addToast('Accès retiré.'); }
-    catch (err) { addToast && addToast('Erreur : ' + shareErr(err), 'error'); }
-  }
-  const linkUrl = (token) => window.location.origin + '/#join=' + token;
-  async function genLink() {
-    if (!shareFor) return;
-    setGenLoading(true);
-    try {
-      const l = await DXApi.createShareLink(shareFor.id, linkRole);
-      const url = linkUrl(l.token);
-      setNewLink(url);
-      loadLinks(shareFor.id);
-      try { await navigator.clipboard.writeText(url); addToast && addToast('Lien généré et copié dans le presse-papiers.'); }
-      catch { addToast && addToast('Lien généré.'); }
-    } catch (err) { addToast && addToast('Génération du lien impossible : ' + shareErr(err), 'error'); }
-    finally { setGenLoading(false); }
-  }
-  async function copyLink(url) {
-    try { await navigator.clipboard.writeText(url); addToast && addToast('Lien copié.'); }
-    catch { addToast && addToast('Copie impossible — sélectionnez le lien à la main.', 'error'); }
-  }
-  async function revokeLinkRow(l) {
-    try {
-      await DXApi.revokeShareLink(l.id);
-      if (newLink && newLink.indexOf(l.token) !== -1) setNewLink('');
-      loadLinks(shareFor.id);
-      addToast && addToast('Lien révoqué.');
-    } catch (err) { addToast && addToast('Erreur : ' + shareErr(err), 'error'); }
-  }
+  // ── Partage ── (modale réutilisable window.ShareDialog)
+  function openShare(list, e) { e && e.stopPropagation(); setShareFor(list); }
 
   const scoreColor = (s) => s >= 70 ? 'var(--pos-bright)' : s >= 50 ? 'var(--warn)' : 'var(--neg-bright)';
 
@@ -219,81 +145,9 @@ function Lists({ onNav, onListsChange, addToast }) {
         </div>
       )}
 
-      {/* Share modal */}
-      {shareFor && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
-          onClick={e => { if (e.target === e.currentTarget) setShareFor(null); }}>
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-lg)', padding: 28, width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div>
-              <div style={{ font: 'var(--type-h3)', color: 'var(--text)' }}>Partager « {shareFor.name} »</div>
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 4 }}>Par e-mail. La personne doit avoir un compte DispersionX.</div>
-            </div>
-            <form onSubmit={submitShare} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input type="email" value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="email@exemple.com" required
-                style={{ flex: 1, minWidth: 180, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', font: 'var(--type-body)', padding: '9px 12px', outline: 'none', boxSizing: 'border-box' }} />
-              <select value={shareRole} onChange={e => setShareRole(e.target.value)}
-                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', font: 'var(--type-body)', padding: '9px 12px', outline: 'none' }}>
-                <option value="viewer">Lecture seule</option>
-                <option value="editor">Peut modifier</option>
-              </select>
-              <button type="submit" disabled={sharing}
-                style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>{sharing ? '…' : 'Partager'}</button>
-            </form>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Accès actuels</div>
-              {shareRows.length === 0
-                ? <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-dim)', padding: '6px 0' }}>Personne pour l'instant.</div>
-                : shareRows.map(row => (
-                  <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                    <span style={{ flex: 1, font: 'var(--type-body-sm)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.email || '—'}</span>
-                    <select value={row.role} onChange={e => changeShareRole(row, e.target.value)}
-                      style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-soft)', font: 'var(--type-caption)', padding: '5px 8px', outline: 'none' }}>
-                      <option value="viewer">Lecture</option>
-                      <option value="editor">Modif.</option>
-                    </select>
-                    <button onClick={() => revokeShareRow(row)} title="Retirer l'accès"
-                      style={{ font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
-                  </div>
-                ))}
-            </div>
-
-            {/* Ou par lien */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
-              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Ou par lien</div>
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Quiconque ouvre le lien (et se connecte) rejoint la liste avec le rôle choisi. Révocable à tout moment.</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select value={linkRole} onChange={e => setLinkRole(e.target.value)}
-                  style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', font: 'var(--type-body-sm)', padding: '8px 10px', outline: 'none' }}>
-                  <option value="viewer">Lecture seule</option>
-                  <option value="editor">Peut modifier</option>
-                </select>
-                <button onClick={genLink} disabled={genLoading}
-                  style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>{genLoading ? '…' : '🔗 Générer un lien'}</button>
-              </div>
-              {newLink && (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <input readOnly value={newLink} onFocus={e => e.target.select()}
-                    style={{ flex: 1, minWidth: 0, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-soft)', font: '11px/1.4 var(--font-mono)', padding: '8px 10px', outline: 'none' }} />
-                  <button onClick={() => copyLink(newLink)} style={{ font: '600 11px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Copier</button>
-                </div>
-              )}
-              {shareLinks.map(l => (
-                <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border-subtle)' }}>
-                  <span style={{ font: '10px/1.4 var(--font-mono)', color: 'var(--text-soft)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>lien …{String(l.token).slice(-12)}</span>
-                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', flexShrink: 0 }}>{l.role === 'editor' ? 'Modif.' : 'Lecture'}</span>
-                  <button onClick={() => copyLink(linkUrl(l.token))} title="Copier le lien"
-                    style={{ font: '600 11px/1 var(--font-sans)', padding: '5px 9px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Copier</button>
-                  <button onClick={() => revokeLinkRow(l)} title="Révoquer le lien"
-                    style={{ font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShareFor(null)} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Fermer</button>
-            </div>
-          </div>
-        </div>
+      {/* Share modal (réutilisable) */}
+      {shareFor && window.ShareDialog && (
+        <window.ShareDialog list={shareFor} kind="list" onClose={() => setShareFor(null)} addToast={addToast} />
       )}
 
       {/* Partagées avec moi */}

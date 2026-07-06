@@ -2,10 +2,12 @@
    Connecté aux VRAIES stratégies de l'utilisateur (Builder / Construction),
    stockées en localStorage (dx-strategy-<listId>). Affiche leur composition,
    grecs nets, prime, DTE restant et état dérivé. Aucune exécution auto. */
-function StrategyMonitor({ mode, lists, onNav }) {
+function StrategyMonitor({ mode, lists, onNav, addToast }) {
   const { MetricCard, Badge, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [strats, setStrats] = React.useState(null);
   const [sel, setSel] = React.useState(0);
+  const [shareFor, setShareFor] = React.useState(null);   // liste de la construction à partager
+  const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
 
   const reload = React.useCallback(() => {
     setStrats((window.DXApi && DXApi.localStrategies) ? DXApi.localStrategies(lists) : []);
@@ -136,6 +138,7 @@ function StrategyMonitor({ mode, lists, onNav }) {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {onNav && <button onClick={() => onNav('risk', { listId: cur.s.listId })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Risk Lab →</button>}
               {onNav && <button onClick={() => onNav('construction', { listId: cur.s.listId })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Ajuster</button>}
+              {cloudOn && cur.s.listId && <button onClick={() => setShareFor({ id: cur.s.listId, name: cur.s.listName || cur.m.name })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>🔗 Partager</button>}
               <button onClick={() => del(cur.s.listId)} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>Supprimer</button>
             </div>
           </div>
@@ -191,6 +194,10 @@ function StrategyMonitor({ mode, lists, onNav }) {
             </div>
           </div>
         </section>
+      )}
+
+      {shareFor && window.ShareDialog && (
+        <window.ShareDialog list={shareFor} kind="construction" onClose={() => setShareFor(null)} addToast={addToast} />
       )}
     </div>
   );

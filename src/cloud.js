@@ -429,4 +429,13 @@ if (supa) {
     window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
     if (currentUser && currentUser.id !== prev) onSignedIn();
   });
+  // Les partages changent (ex. après avoir réclamé un lien) → ré-hydrate les
+  // constructions : getAll() renvoie AUSSI celles partagées (RLS §9), donc les
+  // constructions reçues apparaissent dans le Strategy Monitor / Risk Lab.
+  let _stratSyncT = null;
+  window.addEventListener('dx-lists-changed', () => {
+    if (!currentUser) return;
+    clearTimeout(_stratSyncT);
+    _stratSyncT = setTimeout(() => syncStrategies(), 1500);
+  });
 }

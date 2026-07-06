@@ -218,6 +218,14 @@ create policy "shared_items_write" on public.list_items
     exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid() and s.role = 'editor')
   );
 
+-- La CONSTRUCTION (stratégie) devient lisible dès que sa liste est partagée avec
+-- vous → partager une construction = partager sa liste (Risk Lab inclus).
+drop policy if exists "shared_strategies_select" on public.strategies;
+create policy "shared_strategies_select" on public.strategies
+  for select using (
+    exists (select 1 from public.list_shares s where s.list_id = strategies.list_id and s.shared_with = auth.uid())
+  );
+
 -- Partage par e-mail : résout l'e-mail en utilisateur sans exposer auth.users,
 -- et vérifie que l'appelant possède bien la liste.
 create or replace function public.share_list(p_list_id uuid, p_email text, p_role text default 'viewer')

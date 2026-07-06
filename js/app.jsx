@@ -193,7 +193,7 @@ function App() {
       screenEl = <window.VolatilityLab mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} onNav={onNav} />;
       break;
     case 'construction':
-      screenEl = <window.Construction listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
+      screenEl = <window.Construction listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} addToast={addToast} />;
       break;
     case 'risk':
       screenEl = <window.RiskLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
@@ -202,7 +202,7 @@ function App() {
       screenEl = <window.Builder listId={params.listId} onNav={onNav} onScore={onScore} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'monitor':
-      screenEl = <window.StrategyMonitor mode={mode} lists={lists} onNav={onNav} />;
+      screenEl = <window.StrategyMonitor mode={mode} lists={lists} onNav={onNav} addToast={addToast} />;
       break;
     case 'checklist':
       screenEl = <window.Checklist listId={params.listId} onNav={onNav} addToast={addToast} mode={mode} />;

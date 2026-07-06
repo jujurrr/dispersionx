@@ -13,7 +13,7 @@ function persistStrategy(listId, s) {
   if (window.DXApi && DXApi.saveStrategy) return DXApi.saveStrategy(listId, s);
   try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
 }
-function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, indexOverride, durationOverride, onSaved }) {
+function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, indexOverride, durationOverride, onSaved, addToast }) {
   const { MetricCard, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const CONTRACT  = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
   const fmtMoney  = (window.DXRisk && window.DXRisk.fmtMoney) || (n => Math.round(n).toLocaleString('fr-FR') + ' $');
@@ -41,6 +41,10 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [deltaHedge, setDeltaHedge] = React.useState('none');      // none | index | legs
   const [savedTick, setSavedTick] = React.useState(0);
   const [importMsg, setImportMsg] = React.useState(null);
+  const [shareOpen, setShareOpen] = React.useState(false);
+  // Partage de la construction = partage de sa liste (cloud uniquement).
+  const canShare = !!(window.DXCloud && window.DXCloud.enabled) && !!listId;
+  const shareList = listId ? { id: listId, name: (lists || []).find(l => l.id === listId)?.name || (moduleCtx && moduleCtx.listName) || 'la construction' } : null;
 
   function pickExpiry(o) { if (!o) return; setExpiry(o.date); setDuration(Math.max(1, o.dte)); }
 
@@ -629,6 +633,12 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               <input type="file" accept=".json,application/json" style={{ display: 'none' }}
                 onChange={e => { const f = e.target.files && e.target.files[0]; if (f) importStrategy(f); e.target.value = ''; }} />
             </label>
+            {canShare && (
+              <button onClick={() => { save(false); setShareOpen(true); }}
+                style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>
+                🔗 Partager la construction
+              </button>
+            )}
             {savedTick > 0 && !importMsg && (
               <span style={{ font: 'var(--type-body-sm)', color: 'var(--pos-bright)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ font: '700 13px/1 var(--font-mono)' }}>✓</span> Stratégie enregistrée — le Risk Lab l'utilisera.
@@ -641,6 +651,10 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
             </div>
           )}
         </div>
+      )}
+
+      {shareOpen && window.ShareDialog && shareList && (
+        <window.ShareDialog list={shareList} kind="construction" onClose={() => setShareOpen(false)} addToast={addToast} />
       )}
     </div>
   );
