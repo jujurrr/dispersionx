@@ -198,11 +198,15 @@ export function atmGreeks(spot, options, targetDte) {
 // Pipeline complet pour un symbole : { spot, iv, iv30, term, greeks, asof } ou null.
 // `iv` = IV ATM interpolée au DTE demandé ; à 30 j (±3), l'iv30 officielle du
 // Cboe prime quand elle existe (c'est la valeur affichée par IBKR & co).
-export async function cboeIvBundle(symbol, dte = 30, timeoutMs = 15000) {
+export async function cboeIvBundle(symbol, dte = 30, timeoutMs = 15000, force = false) {
   const sym = String(symbol).toUpperCase();
   // 1) Cache PARTAGÉ (Supabase, ~15 min) — fiable quelle que soit la région.
-  const cached = await ivCacheGet(sym, dte);
-  if (cached) return { ...cached, source: 'cboe_cached' };   // marqueur : lu du cache partagé
+  //    force=true (réchauffeur) : on saute la lecture pour RE-télécharger et
+  //    rafraîchir la date du cache (sinon une simple lecture ne prolonge pas le TTL).
+  if (!force) {
+    const cached = await ivCacheGet(sym, dte);
+    if (cached) return { ...cached, source: 'cboe_cached' };   // marqueur : lu du cache partagé
+  }
   // 2) Sinon on télécharge la chaîne Cboe.
   const chain = await fetchCboeChain(symbol, timeoutMs);
   if (!chain) return null;
