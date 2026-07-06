@@ -44,6 +44,17 @@ const auth = {
   },
   async signInGoogle()  { return this.signInOAuth('google'); },
   async signInDiscord() { return this.signInOAuth('discord'); },
+  // Mot de passe oublié : envoie un e-mail de réinitialisation. Le lien ramène
+  // sur l'app (detectSessionInUrl) → événement PASSWORD_RECOVERY → l'app propose
+  // de saisir un nouveau mot de passe (updatePassword).
+  async resetPassword(email) {
+    const { error } = await supa.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) throw error;
+  },
+  async updatePassword(password) {
+    const { error } = await supa.auth.updateUser({ password });
+    if (error) throw error;
+  },
   async signOut() { if (supa) await supa.auth.signOut(); },
 };
 
@@ -423,10 +434,11 @@ if (supa) {
     window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
     if (currentUser) onSignedIn();
   });
-  supa.auth.onAuthStateChange((_evt, session) => {
+  supa.auth.onAuthStateChange((evt, session) => {
     const prev = currentUser?.id;
     currentUser = userFromSession(session);
     window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
+    if (evt === 'PASSWORD_RECOVERY') window.dispatchEvent(new CustomEvent('dx-password-recovery'));
     if (currentUser && currentUser.id !== prev) onSignedIn();
   });
   // Les partages changent (ex. après avoir réclamé un lien) → ré-hydrate les

@@ -8,7 +8,22 @@ import { ivViaApi } from '../../_lib/cboe.js';
 import { PROXY_SCALE as PROXY } from '../../_lib/proxy-scale.js';
 
 const DATA_BASE = 'https://data.alpaca.markets';
+const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const FEED = process.env.ALPACA_DATA_FEED || 'iex';
+
+// Prix LIVE de l'ETF proxy (Finnhub, temps réel US) → prix d'indice quasi
+// temps réel au lieu de la dernière clôture journalière.
+async function fetchEtfQuoteFinnhub(etf) {
+  const token = process.env.FINNHUB_API_KEY;
+  if (!token) return null;
+  try {
+    const r = await fetch(`${FINNHUB_BASE}/quote?symbol=${etf}&token=${token}`, { signal: AbortSignal.timeout(4000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d || d.c == null || d.c === 0) return null;
+    return { price: d.c, prevClose: d.pc || null };
+  } catch { return null; }
+}
 
 function alpacaHeaders() {
   return {
@@ -91,8 +106,9 @@ export default async (req) => {
   let bars = null;
   let barSource = 'unknown';
 
-  // IV réelle (Cboe, cache CDN 15 min) en parallèle des barres
-  const ivPromise = ivViaApi(new URL(req.url).origin, symbol, 30).catch(() => null);
+  // IV réelle (Cboe, cache CDN 15 min) + prix LIVE de l'ETF, en parallèle des barres
+  const ivPromise   = ivViaApi(new URL(req.url).origin, symbol, 30).catch(() => null);
+  const livePromise = fetchEtfQuoteFinnhub(map.etf).catch(() => null);
 
   // 1) Alpaca bars
   if (process.env.ALPACA_API_KEY_ID) {
@@ -110,6 +126,18 @@ export default async (req) => {
   const ivReal = await ivPromise;
   if (ivReal?.iv != null) { snap.iv_est = ivReal.iv; snap.iv_source = 'cboe_delayed'; }
   else snap.iv_source = 'estimated';
+
+  // Prix quasi temps réel : on remplace la clôture journalière par le prix live
+  // de l'ETF proxy (Finnhub) quand il est disponible.
+  const live = await livePromise;
+  if (live && live.price) {
+    snap.etf_price = Number(live.price.toFixed(2));
+    snap.price = Number((live.price * map.scale).toFixed(2));
+    if (live.prevClose) snap.change = Number((((live.price - live.prevClose) / live.prevClose) * 100).toFixed(2));
+    snap.price_source = 'realtime';
+  } else {
+    snap.price_source = 'daily_close';
+  }
 
   return Response.json({ ...snap, etf: map.etf, source: barSource });
 };

@@ -79,9 +79,11 @@ function App() {
   React.useEffect(() => {
     const reload = () => DXApi.getLists().then(d => setLists(d || [])).catch(() => {});
     const onAuthChange = (e) => { handleAuth(e.detail); reload(); if (e.detail) tryRedeemJoinRef.current(); };
+    const onRecovery = () => onNav('login');   // lien « mot de passe oublié » → formulaire nouveau mot de passe
     window.addEventListener('dx-auth-change', onAuthChange);
     window.addEventListener('dx-lists-changed', reload);
-    return () => { window.removeEventListener('dx-auth-change', onAuthChange); window.removeEventListener('dx-lists-changed', reload); };
+    window.addEventListener('dx-password-recovery', onRecovery);
+    return () => { window.removeEventListener('dx-auth-change', onAuthChange); window.removeEventListener('dx-lists-changed', reload); window.removeEventListener('dx-password-recovery', onRecovery); };
   }, []);
 
   // Persist mode

@@ -242,7 +242,12 @@ function Sidebar({ active, onNav, lists, user }) {
               <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 Mode réel · <span style={{ textTransform: 'none', color: 'var(--text)', fontWeight: 600 }}>{who}</span>
               </span>
-            ) : 'Mode démo'}
+            ) : (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span onClick={() => onNav && onNav('login')} style={{ cursor: 'pointer' }} title="Se connecter">Mode invité</span>
+                {window.HintDot && <window.HintDot text="Vos listes et stratégies restent uniquement sur cet appareil. Connectez-vous (gratuit) pour les sauvegarder et les retrouver sur tous vos appareils." />}
+              </span>
+            )}
           </div>
           {/* Sources de données réelles — liens à jour */}
           <div style={{ font: '10px/1.5 var(--font-sans)', color: 'var(--text-dim)' }}>

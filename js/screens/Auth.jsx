@@ -42,7 +42,44 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
   const [pw, setPw] = React.useState('');
   const [pw2, setPw2] = React.useState('');
   const [error, setError] = React.useState('');
+  const [notice, setNotice] = React.useState('');       // message de succès (vert)
   const [busy, setBusy] = React.useState(false);
+  const [recovering, setRecovering] = React.useState(false);   // saisie d'un nouveau mot de passe
+  const [newPw, setNewPw] = React.useState('');
+
+  // Retour du lien « mot de passe oublié » → Supabase établit une session de
+  // récupération et émet dx-password-recovery : on propose le nouveau mot de passe.
+  React.useEffect(() => {
+    const onRec = () => { setRecovering(true); setError(''); setNotice(''); };
+    window.addEventListener('dx-password-recovery', onRec);
+    return () => window.removeEventListener('dx-password-recovery', onRec);
+  }, []);
+
+  async function forgot() {
+    setError(''); setNotice('');
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setError('Entrez votre e-mail ci-dessus, puis cliquez « Mot de passe oublié ? ».');
+    const C = window.DXCloud;
+    if (!(C && C.configured && C.auth)) return setError('Récupération indisponible en mode invité.');
+    setBusy(true);
+    try {
+      await C.auth.resetPassword(email);
+      setNotice('E-mail de réinitialisation envoyé — vérifie ta boîte mail et clique le lien pour choisir un nouveau mot de passe.');
+    } catch (err) { setError(err && err.message ? err.message : 'Envoi impossible.'); }
+    finally { setBusy(false); }
+  }
+
+  async function submitNewPassword(e) {
+    e.preventDefault();
+    setError(''); setNotice('');
+    if (newPw.length < 6) return setError('Le mot de passe doit faire au moins 6 caractères.');
+    setBusy(true);
+    try {
+      await window.DXCloud.auth.updatePassword(newPw);
+      setRecovering(false); setNewPw('');
+      onNav('home');
+    } catch (err) { setError(err && err.message ? err.message : 'Mise à jour impossible.'); }
+    finally { setBusy(false); }
+  }
 
   const inputStyle = {
     width: '100%', background: 'var(--bg-base)', border: '1px solid var(--border)',
@@ -130,6 +167,24 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
     </div>
   );
 
+  // ════════════ Vue « nouveau mot de passe » (retour du lien de récupération) ════════════
+  if (recovering) {
+    return shell(
+      <div style={{ width: '100%', maxWidth: 420, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 32, boxShadow: 'var(--shadow-lg)' }}>
+        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Nouveau mot de passe</h1>
+        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '0 0 24px' }}>Choisissez un nouveau mot de passe pour votre compte.</p>
+        <form onSubmit={submitNewPassword} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <label style={labelStyle}>Nouveau mot de passe</label>
+            <PwField style={inputStyle} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
+          </div>
+          {error && (<div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>{error}</div>)}
+          <Button variant="primary" size="lg" full type="submit" disabled={busy}>{busy ? '…' : 'Enregistrer le mot de passe'}</Button>
+        </form>
+      </div>
+    );
+  }
+
   // ════════════ Vue profil (déjà connecté) ════════════
   if (user) {
     return shell(
@@ -181,10 +236,15 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
 
         {mode === 'login' && (
           <div style={{ textAlign: 'right', marginTop: -6 }}>
-            <a onClick={() => setError('Fonction de récupération à venir — utilisez le mode démo en attendant.')} style={{ font: 'var(--type-caption)', color: 'var(--accent-hover)', cursor: 'pointer' }}>Mot de passe oublié ?</a>
+            <a onClick={forgot} style={{ font: 'var(--type-caption)', color: 'var(--accent-hover)', cursor: 'pointer' }}>Mot de passe oublié ?</a>
           </div>
         )}
 
+        {notice && (
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--pos-bright)', background: 'var(--pos-soft)', border: '1px solid var(--pos)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
+            {notice}
+          </div>
+        )}
         {error && (
           <div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
             {error}
