@@ -150,7 +150,7 @@ async function oppGather(index, dur) {
 function OpportunityFinder({ onNav, lists, addToast, pro }) {
   const { MetricCard, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const INDICES = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
-  const DURATIONS = [{ v: 14, l: '2 sem.' }, { v: 30, l: '1 mois' }, { v: 45, l: '6 sem.' }, { v: 60, l: '2 mois' }];
+  const DURATIONS = [{ v: 15, l: '15 jours' }, { v: 30, l: '30 jours' }, { v: 45, l: '45 jours' }, { v: 60, l: '60 jours' }];
   const [index, setIndex] = React.useState('SPX');
   const [duration, setDuration] = React.useState(30);
   const [running, setRunning] = React.useState(false);
