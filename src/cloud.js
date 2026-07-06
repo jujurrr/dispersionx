@@ -26,14 +26,41 @@ let currentUser = null;
 let proAccess = false;   // accès au module « Opportunités Pro » (table pro_access)
 
 // Vérifie l'accès Pro de l'utilisateur courant (RLS : il ne lit que sa ligne).
+// Un abonnement Stripe écrit status + current_period_end (via webhook, service
+// role). Compat : les octrois manuels en SQL (sans statut) restent actifs.
 async function checkPro() {
   if (!supa || !currentUser) return false;
   try {
-    const { data, error } = await supa.from('pro_access').select('user_id').eq('user_id', currentUser.id).maybeSingle();
-    if (error) return false;
-    return !!data;
+    const { data, error } = await supa.from('pro_access')
+      .select('status,current_period_end').eq('user_id', currentUser.id).maybeSingle();
+    if (error || !data) return false;
+    const status = data.status || 'active';                       // octroi manuel = actif
+    if (status !== 'active' && status !== 'trialing') return false;
+    if (data.current_period_end && new Date(data.current_period_end).getTime() < Date.now()) return false;
+    return true;
   } catch { return false; }
 }
+
+// Lance le paiement Stripe (redirige vers le Checkout hébergé). Le retour se
+// fait sur ?pro=success ; c'est le WEBHOOK (serveur, service role) qui accorde
+// réellement le Pro — jamais le navigateur.
+const proApi = {
+  async startCheckout() {
+    if (!currentUser) throw new Error('not_signed_in');
+    const r = await fetch('/api/pro/checkout', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: currentUser.id, email: currentUser.email }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.url) throw new Error(j.error || 'checkout_indisponible');
+    window.location.href = j.url;
+  },
+  async refresh() {
+    proAccess = await checkPro();
+    window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: proAccess }));
+    return proAccess;
+  },
+};
 
 function userFromSession(session) {
   const u = session?.user;
@@ -388,6 +415,8 @@ window.DXCloud = {
   auth: supa ? auth : null,
   get pro() { return proAccess; },
   isPro: () => checkPro(),
+  startProCheckout: () => proApi.startCheckout(),
+  refreshPro: () => proApi.refresh(),
   lists: supa ? lists : null,
   strategies: supa ? strategies : null,
   positions: supa ? positions : null,

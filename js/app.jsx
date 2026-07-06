@@ -136,6 +136,30 @@ function App() {
   };
   React.useEffect(() => { tryRedeemJoinRef.current(); }, []);
 
+  // Retour du paiement Stripe (?pro=success|cancel). Le webhook accorde le Pro
+  // côté serveur avec un léger décalage → on rafraîchit quelques fois, puis on
+  // nettoie l'URL. C'est toujours le serveur qui décide de l'accès, pas ceci.
+  React.useEffect(() => {
+    let sp; try { sp = new URLSearchParams(window.location.search); } catch { return; }
+    const p = sp.get('pro');
+    if (!p) return;
+    const clean = () => { try { sp.delete('pro'); const q = sp.toString(); history.replaceState(null, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash); } catch {} };
+    clean();
+    if (p === 'cancel') { addToast && addToast('Paiement annulé — vous pouvez réessayer à tout moment.', 'info'); return; }
+    if (p !== 'success' || !(window.DXCloud && window.DXCloud.refreshPro)) return;
+    addToast && addToast('Merci ! Activation de votre accès Pro…', 'ok');
+    let n = 0, done = false;
+    const tick = async () => {
+      n++;
+      let ok = false;
+      try { ok = await window.DXCloud.refreshPro(); } catch {}
+      if (ok) { done = true; addToast && addToast('Accès Pro activé ✦', 'ok'); onNav('opportunities'); return; }
+      if (n < 6) setTimeout(tick, 2500);
+      else if (!done) addToast && addToast('Paiement reçu — votre accès Pro s\'activera dans un instant.', 'info');
+    };
+    setTimeout(tick, 1500);
+  }, []);
+
   // Rafraîchissement des prix toutes les 30 s (tick global) — uniquement quand
   // l'onglet est visible, pour éviter des appels API inutiles en arrière-plan.
   React.useEffect(() => {

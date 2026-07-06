@@ -189,6 +189,7 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
   const [ctx, setCtx] = React.useState(null);
   const [error, setError] = React.useState('');
   const [bt, setBt] = React.useState({});   // i -> { open, loading, data, error }
+  const [checkoutBusy, setCheckoutBusy] = React.useState(false);
 
   // Changer d'indice ou d'horizon efface les anciens résultats (pas de confusion).
   function clearResults() { setResults(null); setError(''); setCtx(null); setBt({}); }
@@ -247,14 +248,30 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
 
   // ── Écran verrouillé (non Pro) ──
   if (!pro) {
+    const signedIn = !!(window.DXCloud && window.DXCloud.user);
+    async function goPro() {
+      if (!signedIn) { onNav('login'); return; }
+      setCheckoutBusy(true);
+      try { await window.DXCloud.startProCheckout(); }
+      catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setCheckoutBusy(false); }
+    }
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '64px 24px', textAlign: 'center' }}>
         <div style={{ font: '700 22px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>✦ Pro</div>
         <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 520 }}>
-          Fonction <strong style={{ color: 'var(--text-soft)' }}>Pro</strong> : trouve automatiquement les meilleurs paniers d'un indice (score de dispersion + prime de corrélation) et propose leur construction. Réservée aux comptes Pro.
+          Fonction <strong style={{ color: 'var(--text-soft)' }}>Pro</strong> : trouve automatiquement les meilleurs paniers d'un indice (score de dispersion + prime de corrélation), avec risque & sizing inline et backtest historique approché.
         </p>
-        <button onClick={() => onNav('login')} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 22px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Se connecter</button>
+        <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0', display: 'flex', flexDirection: 'column', gap: 6, font: 'var(--type-body-sm)', color: 'var(--text-soft)', textAlign: 'left' }}>
+          <li>✓ Meilleurs paniers de dispersion par indice (5 à 20 actions)</li>
+          <li>✓ Sizing vega-neutre + 3 scénarios de stress, comme le Risk Lab</li>
+          <li>✓ Backtest historique de la prime de corrélation capturée</li>
+        </ul>
+        <button onClick={goPro} disabled={checkoutBusy}
+          style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 24px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: checkoutBusy ? 'default' : 'pointer', opacity: checkoutBusy ? 0.7 : 1 }}>
+          {checkoutBusy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
+        </button>
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Paiement sécurisé via Stripe · abonnement mensuel · résiliable à tout moment</div>
       </div>
     );
   }

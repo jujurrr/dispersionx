@@ -487,6 +487,51 @@ Recharge la page après : l'entrée **« Opportunités »** apparaît dans la ba
 latérale. Pour retirer l'accès : `delete from public.pro_access where user_id =
 (select id from auth.users where lower(email) = lower('ton-email@exemple.com'));`.
 
+## 13. Paiement Pro par abonnement Stripe (optionnel)
+Permet à un utilisateur de **passer Pro tout seul** en payant (abonnement
+mensuel), sans octroi manuel en SQL. Le navigateur ne fait que déclencher le
+paiement ; c'est le **webhook Stripe** (serveur, clé service role) qui accorde
+réellement le Pro. Non-cassant : sans les variables d'env Stripe, le bouton
+« Passer Pro » renvoie « paiement indisponible » et l'octroi manuel (§12) marche
+toujours.
+
+**1) Colonnes d'abonnement** (SQL Editor → Run). Les octrois manuels du §12
+restent valides (`status` par défaut = `active`, pas d'expiration) :
+```sql
+alter table public.pro_access
+  add column if not exists status               text default 'active',
+  add column if not exists stripe_customer_id   text,
+  add column if not exists stripe_subscription_id text,
+  add column if not exists current_period_end   timestamptz;
+create index if not exists pro_access_sub_idx
+  on public.pro_access (stripe_subscription_id);
+```
+> La RLS reste en **lecture de sa propre ligne** uniquement. Les écritures se
+> font exclusivement via la clé **service role** (webhook serveur) — le client
+> n'écrit jamais dans cette table.
+
+**2) Côté Stripe** (dashboard) :
+- Crée un **produit** « DispersionX Pro » avec un **prix récurrent mensuel** →
+  note son **Price ID** (`price_…`).
+- Crée un **webhook** vers `https://TON-DOMAINE/api/pro/webhook`, événements :
+  `checkout.session.completed`, `customer.subscription.updated`,
+  `customer.subscription.deleted` → note le **signing secret** (`whsec_…`).
+
+**3) Variables d'environnement Vercel** (Project → Settings → Environment
+Variables) — **jamais** exposées au client :
+```
+STRIPE_SECRET_KEY        = sk_live_… (ou sk_test_…)
+STRIPE_PRICE_ID          = price_…
+STRIPE_WEBHOOK_SECRET    = whsec_…
+SUPABASE_URL             = https://xxxx.supabase.co   (déjà présent si cache IV)
+SUPABASE_SERVICE_KEY     = clé service role           (déjà présent si cache IV)
+APP_URL                  = https://ton-domaine        (repli si l'origine manque)
+```
+Redéploie. Teste d'abord en **mode test** Stripe (carte `4242 4242 4242 4242`).
+À la fin du paiement, le retour `?pro=success` rafraîchit l'accès ; le webhook a
+écrit `status='active'` + `current_period_end`. À la résiliation, Stripe envoie
+`customer.subscription.deleted` → `status='canceled'` → le Pro se retire tout seul.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).
