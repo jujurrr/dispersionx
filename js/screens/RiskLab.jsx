@@ -1014,4 +1014,4 @@ window.RiskLab = RiskLab;
 // Helpers partagés (réutilisés par le module Construction) — une seule source
 // de vérité pour les grecs d'un straddle ATM. Seuils partagés par tous les
 // écrans : |vega net| < VEGA_NEUTRAL → quasi-neutre ✓ · > VEGA_ALERT → alerte.
-window.DXRisk = { straddleGreeks, CONTRACT, fmtMoney, VEGA_NEUTRAL: 60, VEGA_ALERT: 250 };
+window.DXRisk = { straddleGreeks, buildRiskModel, scenarioPnL, legAttribution, dispFactor, CONTRACT, fmtMoney, VEGA_NEUTRAL: 60, VEGA_ALERT: 250 };

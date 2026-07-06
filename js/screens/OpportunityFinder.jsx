@@ -90,23 +90,6 @@ function oppFind(ctx) {
   return picked.slice(0, OPP_TOP);
 }
 
-// Aperçu de construction vega-neutre (répartition égale) — 100 % local.
-function oppPreview(members, ctx, dur) {
-  const sg = window.DXRisk && window.DXRisk.straddleGreeks;
-  if (!sg) return null;
-  const idxG = sg(ctx.indexPrice, ctx.indexIV, dur);
-  const targetVega = idxG.vega, w = 1 / members.length;
-  let compVega = 0, compTheta = 0, totalContracts = 0, priced = 0;
-  members.forEach(t => {
-    const S = ctx.price[t], ivv = ctx.iv[t];
-    if (!S || !ivv) return;
-    const g = sg(S, ivv, dur);
-    const n = Math.max(1, Math.round(targetVega * w / g.vega));
-    compVega += g.vega * n; compTheta += g.theta * n; totalContracts += n; priced++;
-  });
-  return { totalContracts, netVega: compVega - idxG.vega, netTheta: compTheta - idxG.theta, priced, total: members.length };
-}
-
 function oppScoreOf(o) {
   return Math.max(0, Math.min(100, Math.round(50 + o.prime * 2.2 + (o.avgScore - 62) * 0.6)));
 }
@@ -130,8 +113,8 @@ async function oppGather(index, dur) {
   if (mt.length < OPP_SIZE_MIN) throw new Error('données de corrélation indisponibles — réessayez.');
   const corr = {};
   mt.forEach((ta, i) => { corr[ta] = {}; mt.forEach((tb, j) => { corr[ta][tb] = i === j ? 1 : (M[i] && M[i][j] != null ? M[i][j] : 0.5); }); });
-  const hv = {}, iv = {};
-  (volData?.results || []).forEach(r => { if (r && r.ticker && !r.error) { hv[r.ticker] = r.hv30 != null ? r.hv30 : 25; iv[r.ticker] = r.iv_est != null ? r.iv_est : 30; } });
+  const hv = {}, iv = {}, beta = {};
+  (volData?.results || []).forEach(r => { if (r && r.ticker && !r.error) { hv[r.ticker] = r.hv30 != null ? r.hv30 : 25; iv[r.ticker] = r.iv_est != null ? r.iv_est : 30; beta[r.ticker] = r.beta != null ? r.beta : 1.0; } });
   const quotes = d.quotes || {};
   const price = {}, sector = {};
   mt.forEach(t => { price[t] = quotes[t] && quotes[t].price != null ? parseFloat(quotes[t].price) : null; });
@@ -140,11 +123,34 @@ async function oppGather(index, dur) {
   const pool = mt.filter(t => hv[t] != null && scores[t] != null);
   if (pool.length < OPP_SIZE_MIN) throw new Error('vivier trop maigre (données de vol manquantes) — réessayez.');
   return {
-    index, pool, corr, hv, iv, score: scores, price, sector, sigmaIdx,
+    index, pool, corr, hv, iv, beta, score: scores, price, sector, sigmaIdx,
     indexPrice: (d.snap && (d.snap.etf_price || d.snap.price)) || 100,
     indexIV: (d.snap && d.snap.iv_est) || 18,
     indexEtf: (d.snap && d.snap.etf) || index,
   };
+}
+
+// Risque INLINE : réutilise le VRAI moteur du Risk Lab (window.DXRisk) → mêmes
+// chiffres. Sizing vega-neutre (strategy=null), grecs nets + 3 scénarios de
+// stress + rapport edge/risque.
+const OPP_SCEN = [
+  { name: 'Sell-off corrélé', tone: 'neg', params: { spot: -6, dIVidx: 18, dIVcomp: 8, rho: 0.92 } },
+  { name: 'Dispersion réalisée', tone: 'pos', params: { spot: 1.5, dIVidx: -3, dIVcomp: 4, rho: 0.25 } },
+  { name: 'Marché calme', tone: 'warn', params: { spot: 0, dIVidx: -3, dIVcomp: -3, rho: 0.74 } },
+];
+function oppRisk(members, ctx, dur) {
+  const R = window.DXRisk;
+  if (!R || !R.buildRiskModel || !R.scenarioPnL) return null;
+  const volMap = {}; members.forEach(t => { volMap[t] = { iv_est: ctx.iv[t], hv30: ctx.hv[t], beta: ctx.beta[t] }; });
+  const m = R.buildRiskModel({
+    tickers: members, weightMap: {}, priceMap: ctx.price, volMap,
+    indexSym: ctx.index, indexPrice: ctx.indexPrice, indexIV: ctx.indexIV, duration: dur, strategy: null,
+  });
+  const totalContracts = m.perTicker.reduce((s, t) => s + t.nContracts, 0);
+  const scen = OPP_SCEN.map(s => ({ name: s.name, tone: s.tone, pnl: Math.round(R.scenarioPnL(m, s.params).total) }));
+  const selloff = scen[0].pnl, disp = scen[1].pnl;
+  const edgeRisk = selloff < 0 ? disp / Math.abs(selloff) : null;
+  return { netVega: m.netVega, netTheta: m.netTheta, netDelta: m.netDelta, netPremium: m.netPremium, totalContracts, scen, edgeRisk };
 }
 
 function OpportunityFinder({ onNav, lists, addToast, pro }) {
@@ -172,7 +178,7 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
       }
       const c = await oppGather(index, duration);
       const found = oppFind(c);
-      const withPrev = found.map(o => ({ ...o, preview: oppPreview(o.members, c, duration), opp: oppScoreOf(o) }));
+      const withPrev = found.map(o => ({ ...o, risk: oppRisk(o.members, c, duration), opp: oppScoreOf(o) }));
       _oppCache[key] = { at: Date.now(), ctx: c, results: withPrev };
       setCtx(c); setResults(withPrev);
     } catch (e) { setError(e && e.message ? e.message : 'Recherche impossible.'); }
@@ -305,12 +311,25 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                   <span key={t} style={{ font: '600 11px/1 var(--font-mono)', padding: '4px 9px', borderRadius: 999, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)' }}>{t}</span>
                 ))}
               </div>
-              {o.preview && (
-                <div style={{ padding: '10px 20px 16px', display: 'flex', gap: 20, flexWrap: 'wrap', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                  <span>Aperçu construction (vega-neutre) :</span>
-                  <span><strong style={{ color: 'var(--text-soft)' }}>{o.preview.totalContracts}</strong> contrats long comp. · 1 indice short</span>
-                  <span>Vega net <strong style={{ color: Math.abs(o.preview.netVega) < 60 ? 'var(--pos-bright)' : 'var(--warn)' }}>{fmtS(o.preview.netVega)} $/1%</strong></span>
-                  <span>Theta net <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.preview.netTheta)} $/j</strong></span>
+              {o.risk && (
+                <div style={{ padding: '12px 20px 16px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--border-subtle)' }}>
+                  <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'baseline', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                    <span>Construction vega-neutre : <strong style={{ color: 'var(--text-soft)' }}>{o.risk.totalContracts}</strong> contrats long · 1 indice short</span>
+                    <span>Vega net <strong style={{ color: Math.abs(o.risk.netVega) < 60 ? 'var(--pos-bright)' : 'var(--warn)' }}>{fmtS(o.risk.netVega)} $/1%</strong></span>
+                    <span>Theta <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.netTheta)} $/j</strong></span>
+                    <span>Prime <strong style={{ color: o.risk.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(o.risk.netPremium)} $</strong></span>
+                    {o.risk.edgeRisk != null && (
+                      <span>Edge/risque <strong style={{ color: o.risk.edgeRisk >= 1 ? 'var(--pos-bright)' : 'var(--warn)' }}>{o.risk.edgeRisk.toFixed(2)}×</strong></span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {o.risk.scen.map(s => (
+                      <div key={s.name} style={{ flex: '1 1 150px', minWidth: 130, padding: '8px 12px', borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: `3px solid var(--${s.tone})` }}>
+                        <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{s.name}</div>
+                        <div style={{ font: 'var(--type-data-sm)', color: s.pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginTop: 2 }}>{fmtS(s.pnl)} $</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
