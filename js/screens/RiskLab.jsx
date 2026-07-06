@@ -642,6 +642,12 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
 
   // ── Scénarios canoniques (calculés depuis le moteur) ──
   const dur = model.duration;
+
+  // Taille CONCRÈTE du hedge par indice (affichage seul, ne change aucun calcul).
+  // netDelta est en $/1% ; 1 part d'ETF (delta 1) vaut prix_ETF × 1% en $/1%.
+  const hedgeEtf = model.indexEtf || model.indexSym;
+  const hedgeShares = model.indexPrice ? model.netDelta / (model.indexPrice * 0.01) : 0;
+  const hedgeN = Math.round(Math.abs(hedgeShares));
   const scenarioDefs = [
     { name: 'Sell-off corrélé',    risk: 'critique', params: { spot: -6, dIVidx: 18, dIVcomp: 8, rho: 0.92 } },
     { name: 'Dispersion réalisée', risk: 'faible',   params: { spot: 1.5, dIVidx: -3, dIVcomp: 4, rho: 0.25 } },
@@ -804,6 +810,22 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
               );
             })}
           </div>
+          {deltaHedge === 'index' && (
+            <div style={{ flexBasis: '100%', font: 'var(--type-caption)', color: 'var(--text-soft)', borderTop: '1px solid var(--border-subtle)', paddingTop: 10, marginTop: 2 }}>
+              {hedgeN >= 1 ? (
+                <><strong style={{ color: 'var(--text)' }}>Taille du hedge à exécuter :</strong>{' '}
+                  {model.netDelta >= 0 ? 'vendre' : 'acheter'} <strong style={{ color: 'var(--accent-hover)' }}>~{hedgeN} part{hedgeN > 1 ? 's' : ''} de {hedgeEtf}</strong>{' '}
+                  pour neutraliser le delta net ({fmtS(model.netDelta)} $/1%). <span style={{ color: 'var(--text-dim)' }}>Delta en dollars → {hedgeN} part(s), pas {Math.abs(Math.round(model.netDelta))}.</span></>
+              ) : (
+                <><strong style={{ color: 'var(--text)' }}>Taille du hedge :</strong> delta net déjà négligeable (&lt; 1 part de {hedgeEtf}) — couverture superflue.</>
+              )}
+            </div>
+          )}
+          {deltaHedge === 'legs' && (
+            <div style={{ flexBasis: '100%', font: 'var(--type-caption)', color: 'var(--text-dim)', borderTop: '1px solid var(--border-subtle)', paddingTop: 10, marginTop: 2 }}>
+              Couverture par sous-jacent : chaque jambe est neutralisée par son action (un nombre de parts propre à chaque titre, non détaillé ici).
+            </div>
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
           <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 $ ✓' : fmtS(model.netDelta) + ' $/1%'} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}
