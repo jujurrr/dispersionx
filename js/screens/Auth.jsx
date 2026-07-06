@@ -94,6 +94,12 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
     catch (err) { setError(err && err.message ? err.message : 'Connexion Google indisponible.'); }
   }
 
+  async function apple() {
+    setError('');
+    try { await window.DXCloud.auth.signInApple(); }    // redirige vers Apple
+    catch (err) { setError(err && err.message ? err.message : 'Connexion Apple indisponible.'); }
+  }
+
   function demo() {
     onAuth && onAuth({ email: 'demo@dispersionx.app', name: 'Invité Démo' });
     onNav('home');
@@ -198,7 +204,10 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
       </div>
 
       {window.DXCloud && window.DXCloud.configured && (
-        <Button variant="outline" size="md" full onClick={google} type="button">Continuer avec Google</Button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <Button variant="outline" size="md" full onClick={google} type="button">Continuer avec Google</Button>
+          <Button variant="outline" size="md" full onClick={apple} type="button">Continuer avec Apple</Button>
+        </div>
       )}
 
       <div style={{ height: 10 }} />

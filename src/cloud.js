@@ -38,10 +38,12 @@ const auth = {
     if (error) throw error;
     return userFromSession(data.session);
   },
-  async signInGoogle() {
-    const { error } = await supa.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: window.location.origin } });
+  async signInOAuth(provider) {
+    const { error } = await supa.auth.signInWithOAuth({ provider, options: { redirectTo: window.location.origin } });
     if (error) throw error;   // redirection ; la session revient via onAuthStateChange
   },
+  async signInGoogle() { return this.signInOAuth('google'); },
+  async signInApple()  { return this.signInOAuth('apple'); },
   async signOut() { if (supa) await supa.auth.signOut(); },
 };
 
