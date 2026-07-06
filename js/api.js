@@ -236,6 +236,35 @@
     return window.DXMock.importLists(parsed);
   }
 
+  /* ── Partage de listes (tranche 3) ───────────────────────────────
+     Cloud uniquement (window.DXCloud.shares). Sans connexion, les listes
+     restent privées : getSharedLists → [] et partager lève « connexion requise ». */
+  async function getSharedLists() {
+    const c = _cloud();
+    if (c && c.shares) { try { return await c.shares.sharedWithMe(); } catch (e) { console.warn('cloud getSharedLists', e); } }
+    return [];
+  }
+  async function getListShares(listId) {
+    const c = _cloud();
+    if (c && c.shares) { try { return await c.shares.forList(listId); } catch (e) { console.warn('cloud getListShares', e); } }
+    return [];
+  }
+  async function shareList(listId, email, role) {
+    const c = _cloud();
+    if (!(c && c.shares)) throw new Error('connexion requise pour partager');
+    return c.shares.share(listId, email, role);
+  }
+  async function setShareRole(shareId, role) {
+    const c = _cloud();
+    if (!(c && c.shares)) throw new Error('connexion requise');
+    return c.shares.setRole(shareId, role);
+  }
+  async function revokeShare(shareId) {
+    const c = _cloud();
+    if (!(c && c.shares)) throw new Error('connexion requise');
+    return c.shares.revoke(shareId);
+  }
+
   /* ── Correlation ─────────────────────────────────────────────── */
   async function getCorrelation(list_id, tickers, index_symbol) {
     const body = { tickers: tickers || [], index: index_symbol || 'SPX', days: 60 };
@@ -490,6 +519,7 @@
     getLists, createList, getList, updateList, deleteList,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
+    getSharedLists, getListShares, shareList, setShareRole, revokeShare,
     getCorrelation,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,

@@ -9,6 +9,14 @@ function Lists({ onNav, onListsChange, addToast }) {
   const [newDesc, setNewDesc] = React.useState('');
   const [creating, setCreating] = React.useState(false);
   const importRef = React.useRef();
+  // Partage (tranche 3) — cloud uniquement.
+  const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
+  const [shared, setShared] = React.useState([]);          // listes partagées AVEC moi
+  const [shareFor, setShareFor] = React.useState(null);    // liste en cours de partage (modal)
+  const [shareEmail, setShareEmail] = React.useState('');
+  const [shareRole, setShareRole] = React.useState('viewer');
+  const [shareRows, setShareRows] = React.useState([]);    // accès actuels de shareFor
+  const [sharing, setSharing] = React.useState(false);
 
   const load = React.useCallback(() => {
     DXApi.getLists().then(data => {
@@ -16,6 +24,7 @@ function Lists({ onNav, onListsChange, addToast }) {
       setLoading(false);
       onListsChange && onListsChange(data);
     }).catch(() => setLoading(false));
+    DXApi.getSharedLists().then(setShared).catch(() => setShared([]));
   }, []);
 
   React.useEffect(() => { load(); }, []);
@@ -79,6 +88,44 @@ function Lists({ onNav, onListsChange, addToast }) {
     e.target.value = '';
   }
 
+  // ── Partage ──────────────────────────────────────────────────
+  function loadShareRows(listId) {
+    DXApi.getListShares(listId).then(setShareRows).catch(() => setShareRows([]));
+  }
+  function openShare(list, e) {
+    e && e.stopPropagation();
+    setShareFor(list); setShareEmail(''); setShareRole('viewer'); setShareRows([]);
+    loadShareRows(list.id);
+  }
+  const shareErr = (err) => {
+    const m = String(err?.message || '');
+    if (m.includes('user_not_found')) return 'aucun compte avec cet e-mail.';
+    if (m.includes('not_owner')) return 'vous n\'êtes pas propriétaire de cette liste.';
+    if (m.includes('cannot_share_self')) return 'c\'est déjà votre liste.';
+    if (m.includes('bad_role')) return 'rôle invalide.';
+    return m || 'erreur inconnue.';
+  };
+  async function submitShare(e) {
+    e.preventDefault();
+    if (!shareEmail.trim() || !shareFor) return;
+    setSharing(true);
+    try {
+      await DXApi.shareList(shareFor.id, shareEmail.trim(), shareRole);
+      addToast && addToast(`Liste partagée avec ${shareEmail.trim()}.`);
+      setShareEmail('');
+      loadShareRows(shareFor.id);
+    } catch (err) { addToast && addToast('Partage impossible : ' + shareErr(err), 'error'); }
+    finally { setSharing(false); }
+  }
+  async function changeShareRole(row, role) {
+    try { await DXApi.setShareRole(row.id, role); loadShareRows(shareFor.id); }
+    catch (err) { addToast && addToast('Erreur : ' + shareErr(err), 'error'); }
+  }
+  async function revokeShareRow(row) {
+    try { await DXApi.revokeShare(row.id); loadShareRows(shareFor.id); addToast && addToast('Accès retiré.'); }
+    catch (err) { addToast && addToast('Erreur : ' + shareErr(err), 'error'); }
+  }
+
   const scoreColor = (s) => s >= 70 ? 'var(--pos-bright)' : s >= 50 ? 'var(--warn)' : 'var(--neg-bright)';
 
   return (
@@ -126,6 +173,79 @@ function Lists({ onNav, onListsChange, addToast }) {
         </div>
       )}
 
+      {/* Share modal */}
+      {shareFor && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setShareFor(null); }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-lg)', padding: 28, width: '100%', maxWidth: 480, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <div style={{ font: 'var(--type-h3)', color: 'var(--text)' }}>Partager « {shareFor.name} »</div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 4 }}>Par e-mail. La personne doit avoir un compte DispersionX.</div>
+            </div>
+            <form onSubmit={submitShare} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input type="email" value={shareEmail} onChange={e => setShareEmail(e.target.value)} placeholder="email@exemple.com" required
+                style={{ flex: 1, minWidth: 180, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', font: 'var(--type-body)', padding: '9px 12px', outline: 'none', boxSizing: 'border-box' }} />
+              <select value={shareRole} onChange={e => setShareRole(e.target.value)}
+                style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text)', font: 'var(--type-body)', padding: '9px 12px', outline: 'none' }}>
+                <option value="viewer">Lecture seule</option>
+                <option value="editor">Peut modifier</option>
+              </select>
+              <button type="submit" disabled={sharing}
+                style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>{sharing ? '…' : 'Partager'}</button>
+            </form>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Accès actuels</div>
+              {shareRows.length === 0
+                ? <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-dim)', padding: '6px 0' }}>Personne pour l'instant.</div>
+                : shareRows.map(row => (
+                  <div key={row.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderBottom: '1px solid var(--border-subtle)' }}>
+                    <span style={{ flex: 1, font: 'var(--type-body-sm)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.email || '—'}</span>
+                    <select value={row.role} onChange={e => changeShareRole(row, e.target.value)}
+                      style={{ background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', color: 'var(--text-soft)', font: 'var(--type-caption)', padding: '5px 8px', outline: 'none' }}>
+                      <option value="viewer">Lecture</option>
+                      <option value="editor">Modif.</option>
+                    </select>
+                    <button onClick={() => revokeShareRow(row)} title="Retirer l'accès"
+                      style={{ font: '600 11px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
+                  </div>
+                ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShareFor(null)} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Fermer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Partagées avec moi */}
+      {shared.length > 0 && (
+        <section style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>
+            Partagées avec moi <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', fontWeight: 400 }}>({shared.length})</span>
+          </h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
+            {shared.map(list => (
+              <div key={list.id} className="dx-glass dx-lift" style={{ borderRadius: 'var(--radius-lg)', padding: 18, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10, borderLeft: '3px solid var(--info)' }}
+                onClick={() => onNav('list-detail', { listId: list.id })}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <div style={{ font: 'var(--type-ticker)', color: 'var(--accent-hover)', marginBottom: 4 }}>{list.index_symbol}</div>
+                    <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{list.name}</div>
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 3 }}>partagée par {list.owner_email || 'un utilisateur'}</div>
+                  </div>
+                  <span style={{ font: '500 10px/1 var(--font-mono)', padding: '3px 8px', borderRadius: 'var(--radius-pill)', background: 'var(--bg-elevated)', color: 'var(--info)', border: '1px solid var(--border)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>
+                    {list.role === 'editor' ? 'Modif.' : 'Lecture'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', gap: 10, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                  <span>{list.n_items} actions</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Lists grid */}
       {loading ? (
         <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>
@@ -162,6 +282,10 @@ function Lists({ onNav, onListsChange, addToast }) {
                 <button onClick={e => { e.stopPropagation(); handleDelete(list); }}
                   style={{ font: '600 11px/1 var(--font-sans)', padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
               </div>
+              {cloudOn && (
+                <button onClick={e => openShare(list, e)}
+                  style={{ font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>⤳ Partager</button>
+              )}
             </div>
           ))}
         </div>

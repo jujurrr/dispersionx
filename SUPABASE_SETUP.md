@@ -156,6 +156,92 @@ local sont **remontées automatiquement** vers ton compte (une seule fois), puis
 l'app lit/écrit côté serveur. Les positions créées hors-ligne restent gérées en
 local et n'interfèrent pas.
 
+## 9. Partage de listes (tranche 3)
+Permet de partager une de tes listes avec un(e) autre utilisateur **par son
+e-mail** (il doit avoir un compte), en **lecture seule** (`viewer`) ou avec
+**modification** (`editor`). Sans ces objets (ou sans connexion), rien ne change :
+le bouton « Partager » n'a simplement aucun effet et tes listes restent privées.
+
+Point de sécurité : le partage par e-mail passe par une **fonction serveur
+`share_list` (SECURITY DEFINER)** qui traduit l'e-mail en utilisateur **sans
+jamais exposer la table des comptes** (`auth.users`) au navigateur.
+
+Dans **SQL Editor → New query → Run** :
+
+```sql
+-- Qui a accès à quelle liste, et avec quel rôle.
+create table if not exists public.list_shares (
+  id uuid primary key default gen_random_uuid(),
+  list_id uuid not null references public.lists(id) on delete cascade,
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  owner_email text,
+  shared_with uuid not null references auth.users(id) on delete cascade,
+  shared_with_email text,
+  role text not null default 'viewer' check (role in ('viewer','editor')),
+  created_at timestamptz not null default now(),
+  unique (list_id, shared_with)
+);
+create index if not exists list_shares_shared_with_idx on public.list_shares(shared_with);
+create index if not exists list_shares_list_id_idx on public.list_shares(list_id);
+
+alter table public.list_shares enable row level security;
+-- Le propriétaire gère les partages de SES listes ; le destinataire lit les siens.
+create policy "owner_manages_shares" on public.list_shares
+  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+create policy "recipient_reads_shares" on public.list_shares
+  for select using (auth.uid() = shared_with);
+
+-- Une liste partagée devient LISIBLE par le destinataire.
+create policy "shared_lists_select" on public.lists
+  for select using (
+    exists (select 1 from public.list_shares s where s.list_id = lists.id and s.shared_with = auth.uid())
+  );
+-- Ses items sont lisibles (viewer + editor)…
+create policy "shared_items_select" on public.list_items
+  for select using (
+    exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid())
+  );
+-- …et modifiables uniquement par le rôle 'editor'.
+create policy "shared_items_write" on public.list_items
+  for all using (
+    exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid() and s.role = 'editor')
+  ) with check (
+    exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid() and s.role = 'editor')
+  );
+
+-- Partage par e-mail : résout l'e-mail en utilisateur sans exposer auth.users,
+-- et vérifie que l'appelant possède bien la liste.
+create or replace function public.share_list(p_list_id uuid, p_email text, p_role text default 'viewer')
+returns json language plpgsql security definer set search_path = public as $$
+declare
+  v_owner uuid := auth.uid();
+  v_owner_email text;
+  v_target uuid;
+  v_target_email text;
+begin
+  if v_owner is null then raise exception 'not_authenticated'; end if;
+  if p_role not in ('viewer','editor') then raise exception 'bad_role'; end if;
+  if not exists (select 1 from public.lists where id = p_list_id and user_id = v_owner) then
+    raise exception 'not_owner';
+  end if;
+  select id, email into v_target, v_target_email
+    from auth.users where lower(email) = lower(trim(p_email)) limit 1;
+  if v_target is null then raise exception 'user_not_found'; end if;
+  if v_target = v_owner then raise exception 'cannot_share_self'; end if;
+  select email into v_owner_email from auth.users where id = v_owner;
+  insert into public.list_shares (list_id, owner_id, owner_email, shared_with, shared_with_email, role)
+  values (p_list_id, v_owner, v_owner_email, v_target, v_target_email, p_role)
+  on conflict (list_id, shared_with) do update
+    set role = excluded.role, shared_with_email = excluded.shared_with_email;
+  return json_build_object('ok', true, 'shared_with_email', v_target_email, 'role', p_role);
+end; $$;
+revoke all on function public.share_list(uuid, text, text) from public, anon;
+grant execute on function public.share_list(uuid, text, text) to authenticated;
+```
+
+Ensuite, dans **Mes listes** : bouton **Partager** sur tes listes (e-mail +
+rôle, gestion/retrait des accès) et section **Partagées avec moi**.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

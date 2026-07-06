@@ -65,7 +65,9 @@ function scoreOf(sd) { return sd?.score ?? sd?.composite_score?.score ?? null; }
 
 const lists = {
   async getAll() {
-    const { data: ls, error } = await supa.from('lists').select('*').order('created_at', { ascending: true });
+    // MES listes uniquement (filtre explicite : la RLS de partage rend AUSSI
+    // lisibles les listes partagées avec moi — celles-ci ont leur propre section).
+    const { data: ls, error } = await supa.from('lists').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
     if (error) throw error;
     const byList = {};
     if (ls.length) {
@@ -215,6 +217,55 @@ const positions = {
   },
 };
 
+// ── Partage de listes (par e-mail, rôle viewer|editor) ──────────────────────
+// La résolution e-mail → utilisateur passe par une fonction SQL SECURITY DEFINER
+// (share_list) : le navigateur ne lit JAMAIS la table des comptes (auth.users).
+// Les e-mails du propriétaire et du destinataire sont dénormalisés dans
+// list_shares pour l'affichage. RLS et fonction : voir SUPABASE_SETUP.md §9.
+const shares = {
+  // Listes partagées AVEC moi (façonnées comme des listes + drapeaux de partage).
+  async sharedWithMe() {
+    const { data: sh, error } = await supa.from('list_shares').select('*').eq('shared_with', currentUser.id);
+    if (error) throw error;
+    if (!sh || !sh.length) return [];
+    const ids = sh.map(s => s.list_id);
+    const { data: ls, error: e2 } = await supa.from('lists').select('*').in('id', ids);
+    if (e2) throw e2;
+    const { data: its } = await supa.from('list_items').select('*').in('list_id', ids);
+    const byList = {};
+    (its || []).forEach(it => { (byList[it.list_id] = byList[it.list_id] || []).push(it); });
+    const meta = {}; sh.forEach(s => { meta[s.list_id] = s; });
+    return (ls || []).map(l => ({
+      ...shapeList(l, byList[l.id]),
+      shared: true, role: meta[l.id]?.role || 'viewer',
+      owner_email: meta[l.id]?.owner_email || null, share_id: meta[l.id]?.id,
+    }));
+  },
+  // Partages d'une liste que JE possède (pour la gérer).
+  async forList(listId) {
+    const { data, error } = await supa.from('list_shares').select('*').eq('list_id', listId).eq('owner_id', currentUser.id).order('created_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map(s => ({ id: s.id, email: s.shared_with_email, role: s.role, created_at: s.created_at }));
+  },
+  // Partager par e-mail via la RPC sécurisée. Erreurs possibles (message) :
+  // not_owner, user_not_found, cannot_share_self, bad_role.
+  async share(listId, email, role) {
+    const { data, error } = await supa.rpc('share_list', { p_list_id: listId, p_email: email, p_role: role || 'viewer' });
+    if (error) throw error;
+    return data;
+  },
+  async setRole(shareId, role) {
+    const { error } = await supa.from('list_shares').update({ role }).eq('id', shareId);
+    if (error) throw error;
+    return { success: true };
+  },
+  async revoke(shareId) {
+    const { error } = await supa.from('list_shares').delete().eq('id', shareId);
+    if (error) throw error;
+    return { success: true };
+  },
+};
+
 // ── API publique exposée au reste de l'app (js/api.js, Auth.jsx, app.jsx) ────
 window.DXCloud = {
   configured: !!supa,
@@ -224,6 +275,7 @@ window.DXCloud = {
   lists: supa ? lists : null,
   strategies: supa ? strategies : null,
   positions: supa ? positions : null,
+  shares: supa ? shares : null,
 };
 
 // ── Suivi de session : maintient currentUser + prévient l'app ───────────────
