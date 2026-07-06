@@ -24,7 +24,10 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
   React.useEffect(() => {
     const onUpd = (e) => { if (!e.detail || e.detail.symbol === symbol) setTick(t => t + 1); };
     window.addEventListener('dx-index-update', onUpd);
-    return () => window.removeEventListener('dx-index-update', onUpd);
+    // Rafraîchissement des prix (tick global) : re-récupère snapshot + cours.
+    const onTick = () => { if (window.DXStore && window.DXStore.refreshQuotes) window.DXStore.refreshQuotes(symbol); };
+    window.addEventListener('dx-price-tick', onTick);
+    return () => { window.removeEventListener('dx-index-update', onUpd); window.removeEventListener('dx-price-tick', onTick); };
   }, [symbol]);
 
   // Garantir le chargement de l'indice + son scoring pour la durée courante.

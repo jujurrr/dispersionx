@@ -95,6 +95,16 @@
     return d._loadPromise;
   }
 
+  /* ── Rafraîchissement des PRIX d'un indice déjà chargé (tick 30 s) ──
+     Re-récupère le snapshot (prix d'indice via ETF live) et les cours des
+     composants, puis émet la MAJ. Ne re-score PAS (les scores changent peu). */
+  function refreshQuotes(symbol) {
+    const d = state.data[symbol];
+    if (!d || !d.loaded) return;
+    DXApi.getSnapshot(symbol).then(snap => { if (snap) { d.snap = snap; emitIndex(symbol); } }).catch(() => {});
+    loadQuotes(symbol);
+  }
+
   /* ── Scoring de tous les composants d'un indice (durée donnée) ─ */
   async function scoreIndex(symbol, dur) {
     dur = dur || PRELOAD_DUR;
@@ -150,6 +160,7 @@
     loadIndex,
     scoreIndex,
     loadQuotes,
+    refreshQuotes,
     getIndexData: (symbol) => state.data[symbol] || null,
     getScores: (symbol, dur) => (state.data[symbol] && state.data[symbol].scores[dur || PRELOAD_DUR]) || {},
     isScoring: (symbol, dur) => !!(state.data[symbol] && state.data[symbol].scoring[dur || PRELOAD_DUR]),

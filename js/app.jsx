@@ -130,14 +130,14 @@ function App() {
   };
   React.useEffect(() => { tryRedeemJoinRef.current(); }, []);
 
-  // Rafraîchissement des prix toutes les 60 s (tick global) — uniquement quand
+  // Rafraîchissement des prix toutes les 30 s (tick global) — uniquement quand
   // l'onglet est visible, pour éviter des appels API inutiles en arrière-plan.
   React.useEffect(() => {
     const id = setInterval(() => {
       if (typeof document === 'undefined' || document.visibilityState === 'visible') {
         window.dispatchEvent(new CustomEvent('dx-price-tick'));
       }
-    }, 60000);
+    }, 30000);
     return () => clearInterval(id);
   }, []);
 
