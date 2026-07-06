@@ -60,37 +60,47 @@ function oppSearchSize(k, pool, ctx, seed) {
   return oppEval(basket, ctx);
 }
 
-// Toutes les tailles 5..20 (+ un seed décalé pour la diversité) → top 5 uniques.
+// Meilleur panier de CHAQUE taille 5..20, puis un par TRANCHE de taille pour
+// garantir la diversité (sinon le « top par objectif » ne renvoie que des petits
+// paniers : score moyen + prime sont mécaniquement plus élevés sur peu d'actions).
+const OPP_BUCKETS = [[5, 7], [8, 10], [11, 13], [14, 16], [17, 20]];
 function oppFind(ctx) {
   const byScore = ctx.pool.slice().sort((a, b) => (ctx.score[b] || 0) - (ctx.score[a] || 0));
-  const found = [];
   const kmax = Math.min(OPP_SIZE_MAX, ctx.pool.length);
+  const bestPerK = {};
   for (let k = OPP_SIZE_MIN; k <= kmax; k++) {
-    found.push(oppSearchSize(k, ctx.pool, ctx, byScore));
-    if (byScore.length > k + 2) found.push(oppSearchSize(k, ctx.pool, ctx, byScore.slice(2)));
+    const cands = [oppSearchSize(k, ctx.pool, ctx, byScore)];
+    if (byScore.length > k + 2) cands.push(oppSearchSize(k, ctx.pool, ctx, byScore.slice(2)));
+    cands.sort((a, b) => b.objective - a.objective);
+    bestPerK[k] = cands[0];
   }
-  found.sort((a, b) => b.objective - a.objective);
-  const seen = new Set(), uniq = [];
-  for (const f of found) {
-    const key = f.members.slice().sort().join(',');
-    if (seen.has(key)) continue;
-    seen.add(key); uniq.push(f);
-    if (uniq.length >= OPP_TOP) break;
+  const seen = new Set(), picked = [];
+  for (const [lo, hi] of OPP_BUCKETS) {
+    let best = null;
+    for (let k = lo; k <= Math.min(hi, kmax); k++) {
+      const r = bestPerK[k];
+      if (r && (!best || r.objective > best.objective)) best = r;
+    }
+    if (best) {
+      const key = best.members.slice().sort().join(',');
+      if (!seen.has(key)) { seen.add(key); picked.push(best); }
+    }
   }
-  return uniq;
+  picked.sort((a, b) => b.objective - a.objective);   // meilleure opportunité en tête
+  return picked.slice(0, OPP_TOP);
 }
 
 // Aperçu de construction vega-neutre (répartition égale) — 100 % local.
-function oppPreview(members, ctx) {
+function oppPreview(members, ctx, dur) {
   const sg = window.DXRisk && window.DXRisk.straddleGreeks;
   if (!sg) return null;
-  const idxG = sg(ctx.indexPrice, ctx.indexIV, OPP_DUR);
+  const idxG = sg(ctx.indexPrice, ctx.indexIV, dur);
   const targetVega = idxG.vega, w = 1 / members.length;
   let compVega = 0, compTheta = 0, totalContracts = 0, priced = 0;
   members.forEach(t => {
     const S = ctx.price[t], ivv = ctx.iv[t];
     if (!S || !ivv) return;
-    const g = sg(S, ivv, OPP_DUR);
+    const g = sg(S, ivv, dur);
     const n = Math.max(1, Math.round(targetVega * w / g.vega));
     compVega += g.vega * n; compTheta += g.theta * n; totalContracts += n; priced++;
   });
@@ -101,12 +111,12 @@ function oppScoreOf(o) {
   return Math.max(0, Math.min(100, Math.round(50 + o.prime * 2.2 + (o.avgScore - 62) * 0.6)));
 }
 
-async function oppGather(index) {
+async function oppGather(index, dur) {
   await window.DXStore.loadIndex(index);
-  await window.DXStore.scoreIndex(index, OPP_DUR);
+  await window.DXStore.scoreIndex(index, dur);
   const d = window.DXStore.getIndexData(index) || {};
   const comps = d.components || [];
-  const scores = window.DXStore.getScores(index, OPP_DUR) || {};
+  const scores = window.DXStore.getScores(index, dur) || {};
   const scored = comps.map(c => c.ticker).filter(t => scores[t] != null).sort((a, b) => scores[b] - scores[a]);
   const poolTickers = scored.slice(0, OPP_POOL_MAX);
   if (poolTickers.length < OPP_SIZE_MIN) throw new Error('pas assez d\'actions scorées pour cet indice — réessayez dans quelques secondes (scoring en cours).');
@@ -140,22 +150,30 @@ async function oppGather(index) {
 function OpportunityFinder({ onNav, lists, addToast, pro }) {
   const { MetricCard, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const INDICES = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
+  const DURATIONS = [{ v: 14, l: '2 sem.' }, { v: 30, l: '1 mois' }, { v: 45, l: '6 sem.' }, { v: 60, l: '2 mois' }];
   const [index, setIndex] = React.useState('SPX');
+  const [duration, setDuration] = React.useState(30);
   const [running, setRunning] = React.useState(false);
   const [results, setResults] = React.useState(null);
   const [ctx, setCtx] = React.useState(null);
   const [error, setError] = React.useState('');
 
+  // Changer d'indice ou d'horizon efface les anciens résultats (pas de confusion).
+  function clearResults() { setResults(null); setError(''); setCtx(null); }
+  function pickIndex(s) { if (s !== index) { setIndex(s); clearResults(); } }
+  function pickDur(d) { if (d !== duration) { setDuration(d); clearResults(); } }
+
   async function run(force) {
     setError(''); setRunning(true); setResults(null);
     try {
-      if (!force && _oppCache[index] && Date.now() - _oppCache[index].at < 10 * 60 * 1000) {
-        setCtx(_oppCache[index].ctx); setResults(_oppCache[index].results); setRunning(false); return;
+      const key = index + '|' + duration;
+      if (!force && _oppCache[key] && Date.now() - _oppCache[key].at < 10 * 60 * 1000) {
+        setCtx(_oppCache[key].ctx); setResults(_oppCache[key].results); setRunning(false); return;
       }
-      const c = await oppGather(index);
+      const c = await oppGather(index, duration);
       const found = oppFind(c);
-      const withPrev = found.map(o => ({ ...o, preview: oppPreview(o.members, c), opp: oppScoreOf(o) }));
-      _oppCache[index] = { at: Date.now(), ctx: c, results: withPrev };
+      const withPrev = found.map(o => ({ ...o, preview: oppPreview(o.members, c, duration), opp: oppScoreOf(o) }));
+      _oppCache[key] = { at: Date.now(), ctx: c, results: withPrev };
       setCtx(c); setResults(withPrev);
     } catch (e) { setError(e && e.message ? e.message : 'Recherche impossible.'); }
     finally { setRunning(false); }
@@ -211,9 +229,17 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
         <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Indice</span>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {INDICES.map(s => (
-            <button key={s} onClick={() => setIndex(s)} disabled={running}
+            <button key={s} onClick={() => pickIndex(s)} disabled={running}
               style={{ padding: '7px 14px', font: '700 12px/1 var(--font-mono)', borderRadius: 'var(--radius)', cursor: running ? 'default' : 'pointer',
                 background: index === s ? 'var(--accent)' : 'var(--bg-elevated)', color: index === s ? '#fff' : 'var(--text-soft)', border: `1px solid ${index === s ? 'var(--accent)' : 'var(--border)'}` }}>{s}</button>
+          ))}
+        </div>
+        <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginLeft: 6 }}>Horizon</span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+          {DURATIONS.map(o => (
+            <button key={o.v} onClick={() => pickDur(o.v)} disabled={running} title={o.v + ' jours'}
+              style={{ padding: '7px 12px', font: '600 12px/1 var(--font-sans)', borderRadius: 'var(--radius)', cursor: running ? 'default' : 'pointer',
+                background: duration === o.v ? 'var(--accent)' : 'var(--bg-elevated)', color: duration === o.v ? '#fff' : 'var(--text-soft)', border: `1px solid ${duration === o.v ? 'var(--accent)' : 'var(--border)'}` }}>{o.l}</button>
           ))}
         </div>
         <button onClick={() => run(false)} disabled={running}
@@ -253,7 +279,7 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                 </div>
                 <div style={{ flex: 1, minWidth: 180 }}>
                   <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>Opportunité #{i + 1} · {o.k} actions</div>
-                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>Score d'opportunité {o.opp}/100 · {index}</div>
+                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>Score d'opportunité {o.opp}/100 · {index} · horizon {duration}j</div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: 18 }}>
                   <div style={{ textAlign: 'right' }}>
