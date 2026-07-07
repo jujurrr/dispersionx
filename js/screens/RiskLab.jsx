@@ -448,7 +448,7 @@ function AttribRow({ label, pnl, max, logo }) {
 const _riskCache = {};
 const RISK_TTL = 15 * 60 * 1000;
 
-function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded }) {
+function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, pro }) {
   const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [model,    setModel]    = React.useState(null);
   const [loading,  setLoading]  = React.useState(true);
@@ -737,9 +737,17 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           </p>
         </div>
         {listId && onNav && (
-          <button onClick={() => onNav('checklist', { listId })}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
-            Checklist & Suivi →
+          // Checklist & Suivi = module Pro. Sans accès Pro, le bouton mène à
+          // l'onglet « Suivi » (upsell) au lieu d'ouvrir la checklist.
+          <button onClick={() => onNav(pro ? 'checklist' : 'positions', pro ? { listId } : undefined)}
+            title={pro ? undefined : 'Réservé au forfait Pro'}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+            {!pro && (
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+              </svg>
+            )}
+            Checklist & Suivi {!pro && <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'rgba(255,255,255,0.18)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pro</span>} →
           </button>
         )}
       </div>
