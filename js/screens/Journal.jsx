@@ -59,11 +59,22 @@ function Journal({ onNav, addToast, pro, lists, prefill }) {
   async function reopen(t) { try { await C.trades.reopen(t.id); await refresh(); } catch {} }
   async function remove(t) { try { await C.trades.remove(t.id); await refresh(); } catch {} }
 
-  // ── Écran verrouillé (non Pro) : carte d'upsell contextuelle partagée ──
+  // ── Écran verrouillé (non Pro) : soft-paywall (esquisse floutée + carte) ──
   if (!pro) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}>
-        <window.ProUpsellCard context="journal" onNav={onNav} addToast={addToast} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Journal de trades</h1>
+            <Badge tone="accent" size="sm">Pro</Badge>
+          </div>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 640 }}>
+            Votre track record — un aperçu de ce que Pro débloque.
+          </p>
+        </div>
+        <window.ProLockedPreview context="journal" onNav={onNav} addToast={addToast}>
+          {window.ProDemoJournal()}
+        </window.ProLockedPreview>
       </div>
     );
   }

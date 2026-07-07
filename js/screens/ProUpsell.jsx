@@ -130,17 +130,20 @@ function ProUpsellCard({ context = 'default', onNav, addToast }) {
 }
 
 /* Soft-paywall : rend un aperçu (children) flouté + non-interactif, avec la carte
-   d'upsell posée par-dessus. « Voir mais ne pas toucher » → crée le désir. */
-function ProLockedPreview({ context = 'default', onNav, addToast, children, minHeight = 460 }) {
+   d'upsell posée par-dessus. « Voir mais ne pas toucher » → crée le désir.
+   Voile UNIFORME (pas de dégradé) et PAS de overflow:hidden → l'esquisse reste
+   entièrement visible, rien n'est coupé en bas. */
+function ProLockedPreview({ context = 'default', onNav, addToast, children, minHeight = 520 }) {
   return (
-    <div style={{ position: 'relative', minHeight, overflow: 'hidden', borderRadius: 'var(--radius-lg)' }}>
-      {/* Aperçu flouté, inerte */}
-      <div aria-hidden style={{ filter: 'blur(5px)', opacity: 0.55, pointerEvents: 'none', userSelect: 'none' }}>
+    <div style={{ position: 'relative' }}>
+      {/* Esquisse floutée du module (inerte). minHeight garantit la place pour la carte. */}
+      <div aria-hidden style={{ filter: 'blur(4px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none', minHeight }}>
         {children}
       </div>
-      {/* Voile + carte */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, transparent, var(--bg-base) 82%)' }} />
-      <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: 40 }}>
+      {/* Voile translucide uniforme : l'esquisse transparaît en dessous. */}
+      <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-base)', opacity: 0.4, pointerEvents: 'none' }} />
+      {/* Carte d'upsell centrée en haut. */}
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'flex-start', paddingTop: 44 }}>
         <ProUpsellCard context={context} onNav={onNav} addToast={addToast} />
       </div>
     </div>
@@ -277,6 +280,60 @@ function ProDemoSuivi() {
           <path d={`${d} L${W},${H} L0,${H} Z`} fill="var(--pos-soft)" opacity="0.5" />
           <path d={d} fill="none" stroke="var(--pos-bright)" strokeWidth="2" />
         </svg>
+      </div>
+    </div>
+  );
+}
+
+/* Mock visuel : contexte de marché (baromètre ρ + alertes + résultats). */
+function ProDemoMarket() {
+  const rows = [['Alerte NDX', 'corrélation > 80ᵉ pct', 'var(--pos)'], ['NVDA', 'résultats dans 3 j', 'var(--warn)'], ['AAPL', 'résultats dans 8 j', 'var(--info)']];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 18px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Baromètre de corrélation · NDX</span>
+          <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>82ᵉ pct</span>
+        </div>
+        <div style={{ height: 10, borderRadius: 999, background: 'linear-gradient(90deg, var(--neg), var(--warn), var(--pos))', position: 'relative' }}>
+          <div style={{ position: 'absolute', left: '82%', top: -4, width: 4, height: 18, background: 'var(--text)', borderRadius: 2 }} />
+        </div>
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 10 }}>Corrélation implicite élevée — une dispersion est potentiellement attractive.</div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(210px, 1fr))', gap: 12 }}>
+        {rows.map(([t, s, c], i) => (
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'center' }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: c, flexShrink: 0 }} />
+            <div><div style={{ font: '600 12px/1 var(--font-sans)', color: 'var(--text)' }}>{t}</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 3 }}>{s}</div></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* Mock visuel : journal de trades / track record. */
+function ProDemoJournal() {
+  const stats = [['Trades', '12'], ['Taux de réussite', '67 %'], ['P&L cumulé', '+4 230 $']];
+  const trades = [['Dispersion NDX tech', 'NDX', '+1 840', true], ['Value SPX', 'SPX', '−520', false], ['Semis', 'NDX', '+3 110', true]];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+        {stats.map(([l, v], i) => (
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px 14px' }}>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{l}</div>
+            <div style={{ font: 'var(--type-data)', color: i === 2 ? 'var(--pos-bright)' : 'var(--text)', marginTop: 3 }}>{v}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+        {trades.map(([label, idx, pnl, win], i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: i < trades.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+            <div style={{ flex: 1, minWidth: 0 }}><div style={{ font: '600 12px/1 var(--font-sans)', color: 'var(--text)' }}>{label}</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 3 }}>{idx} · dispersion</div></div>
+            <span style={{ font: '600 10px/1 var(--font-mono)', padding: '3px 8px', borderRadius: 999, background: win ? 'var(--pos-soft)' : 'var(--neg-soft)', color: win ? 'var(--pos-bright)' : 'var(--neg-bright)', border: `1px solid ${win ? 'var(--pos)' : 'var(--neg)'}` }}>{win ? 'Gagnant' : 'Perdant'}</span>
+            <span style={{ font: 'var(--type-data)', color: win ? 'var(--pos-bright)' : 'var(--neg-bright)', minWidth: 66, textAlign: 'right' }}>{pnl} $</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -438,4 +495,4 @@ function ProPricing({ onNav, addToast }) {
   );
 }
 
-Object.assign(window, { DX_PRO, ProUpsellCard, ProLockedPreview, ProComparison, ProPricing, ProBenefits, ProDemoOpportunities, ProDemoSuivi });
+Object.assign(window, { DX_PRO, ProUpsellCard, ProLockedPreview, ProComparison, ProPricing, ProBenefits, ProDemoOpportunities, ProDemoSuivi, ProDemoMarket, ProDemoJournal });

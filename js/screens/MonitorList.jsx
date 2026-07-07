@@ -30,7 +30,7 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
             Suivez l'avancée de vos positions en temps réel — voici un aperçu de ce que Pro débloque.
           </p>
         </div>
-        <window.ProLockedPreview context="positions" onNav={onNav} addToast={addToast} minHeight={430}>
+        <window.ProLockedPreview context="positions" onNav={onNav} addToast={addToast}>
           {window.ProDemoSuivi()}
         </window.ProLockedPreview>
       </div>
