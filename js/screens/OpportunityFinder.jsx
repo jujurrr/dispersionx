@@ -265,23 +265,75 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
       try { await window.DXCloud.startProCheckout(); }
       catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setCheckoutBusy(false); }
     }
+    // Mini-carte factice (aperçu grisé de ce que verrait un abonné).
+    const ghostChip = t => <span key={t} style={{ font: '600 11px/1 var(--font-mono)', padding: '4px 9px', borderRadius: 999, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)' }}>{t}</span>;
+    const ghostCard = (n, score, tickers, prime, avg, rho) => (
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
+          <div style={{ width: 46, height: 46, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', font: '700 16px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>{score}</div>
+          <div style={{ flex: 1, minWidth: 120 }}>
+            <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>Opportunité #{n} · {tickers.length} actions</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>Score d'opportunité {score}/100</div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: 18 }}>
+            <div style={{ textAlign: 'right' }}><div style={{ font: 'var(--type-data)', color: 'var(--pos-bright)' }}>+{prime} pts</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Prime ρ</div></div>
+            <div style={{ textAlign: 'right' }}><div style={{ font: 'var(--type-data)', color: 'var(--text)' }}>{avg}</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Score moy.</div></div>
+            <div style={{ textAlign: 'right' }}><div style={{ font: 'var(--type-data)', color: 'var(--info)' }}>{rho}</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ρ réalisée</div></div>
+          </div>
+        </div>
+        <div style={{ padding: '12px 20px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>{tickers.map(ghostChip)}</div>
+      </div>
+    );
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '64px 24px', textAlign: 'center' }}>
-        <div style={{ font: '700 22px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>✦ Pro</div>
-        <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 520 }}>
-          Fonction <strong style={{ color: 'var(--text-soft)' }}>Pro</strong> : trouve automatiquement les meilleurs paniers d'un indice (score de dispersion + prime de corrélation), avec risque & sizing inline et backtest historique approché.
-        </p>
-        <ul style={{ listStyle: 'none', padding: 0, margin: '4px 0', display: 'flex', flexDirection: 'column', gap: 6, font: 'var(--type-body-sm)', color: 'var(--text-soft)', textAlign: 'left' }}>
-          <li>✓ Meilleurs paniers de dispersion par indice (5 à 20 actions)</li>
-          <li>✓ Sizing vega-neutre + 3 scénarios de stress, comme le Risk Lab</li>
-          <li>✓ Backtest historique de la prime de corrélation capturée</li>
-        </ul>
-        <button onClick={goPro} disabled={checkoutBusy}
-          style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 24px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: checkoutBusy ? 'default' : 'pointer', opacity: checkoutBusy ? 0.7 : 1 }}>
-          {checkoutBusy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
-        </button>
-        <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Paiement sécurisé via Stripe · abonnement mensuel · résiliable à tout moment</div>
+      <div style={{ position: 'relative' }}>
+        {/* Aperçu grisé/flouté de la fonction */}
+        <div aria-hidden style={{ filter: 'blur(3.5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
+              <Badge tone="accent" size="sm">Pro</Badge>
+            </div>
+            <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>Teste des milliers de paniers pour trouver les meilleures dispersions d'un indice.</p>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map((s, i) => (
+              <span key={s} style={{ padding: '7px 14px', font: '700 12px/1 var(--font-mono)', borderRadius: 'var(--radius)', background: i === 0 ? 'var(--accent)' : 'var(--bg-elevated)', color: i === 0 ? '#fff' : 'var(--text-soft)', border: `1px solid ${i === 0 ? 'var(--accent)' : 'var(--border)'}` }}>{s}</span>
+            ))}
+          </div>
+          {ghostCard(1, 78, ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL'], '9.4', 71, '0.34')}
+          {ghostCard(2, 72, ['XOM', 'CVX', 'JPM', 'BAC', 'PFE'], '7.1', 67, '0.41')}
+        </div>
+
+        {/* Voile + cadenas */}
+        <div style={{ position: 'absolute', inset: 0 }}>
+          <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-base)', opacity: 0.42 }} />
+          <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
+            <div style={{ width: '100%', maxWidth: 440, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', padding: '28px 26px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+              <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent-hover)' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+              </div>
+              <div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Fonction Pro</h2>
+                  <Badge tone="accent" size="sm">Pro</Badge>
+                </div>
+                <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, maxWidth: 360 }}>
+                  Débloquez l'auto-chercheur d'opportunités : les meilleurs paniers de dispersion, prêts à construire.
+                </p>
+              </div>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 7, font: 'var(--type-body-sm)', color: 'var(--text-soft)', textAlign: 'left' }}>
+                <li>✓ Meilleurs paniers par indice (5 à 20 actions)</li>
+                <li>✓ Sizing vega-neutre + 3 scénarios de stress</li>
+                <li>✓ Backtest historique de la prime capturée</li>
+              </ul>
+              <button onClick={goPro} disabled={checkoutBusy}
+                style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 26px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: checkoutBusy ? 'default' : 'pointer', opacity: checkoutBusy ? 0.7 : 1 }}>
+                {checkoutBusy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
+              </button>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Abonnement mensuel · paiement sécurisé Stripe · résiliable à tout moment</div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }

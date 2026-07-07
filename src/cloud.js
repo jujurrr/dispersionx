@@ -25,12 +25,14 @@ try {
 let currentUser = null;
 let proAccess = false;      // accès au module « Opportunités Pro » (table pro_access)
 let proSubscribed = false;  // Pro issu d'un abonnement Stripe (a un customer) → portail dispo
+let proStatus = null;       // statut d'abonnement ('active', 'canceled', …) si connu
+let proPeriodEnd = null;    // fin de période en cours (ISO) si abonnement
 
 // Vérifie l'accès Pro de l'utilisateur courant (RLS : il ne lit que sa ligne).
 // Un abonnement Stripe écrit status + current_period_end (via webhook, service
 // role). Compat : les octrois manuels en SQL (sans statut) restent actifs.
 async function checkPro() {
-  proSubscribed = false;
+  proSubscribed = false; proStatus = null; proPeriodEnd = null;
   if (!supa || !currentUser) return false;
   try {
     const { data, error } = await supa.from('pro_access')
@@ -40,6 +42,7 @@ async function checkPro() {
     if (status !== 'active' && status !== 'trialing') return false;
     if (data.current_period_end && new Date(data.current_period_end).getTime() < Date.now()) return false;
     proSubscribed = !!data.stripe_customer_id;                    // abonnement Stripe → portail dispo
+    proStatus = status; proPeriodEnd = data.current_period_end || null;
     return true;
   } catch { return false; }
 }
@@ -117,6 +120,14 @@ const auth = {
   async updatePassword(password) {
     const { error } = await supa.auth.updateUser({ password });
     if (error) throw error;
+  },
+  // Met à jour le pseudo (user_metadata.name) et rafraîchit currentUser.
+  async updateProfile(name) {
+    const { data, error } = await supa.auth.updateUser({ data: { name } });
+    if (error) throw error;
+    currentUser = userFromSession({ user: data.user });
+    window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
+    return currentUser;
   },
   async signOut() { if (supa) await supa.auth.signOut(); },
 };
@@ -434,6 +445,8 @@ window.DXCloud = {
   auth: supa ? auth : null,
   get pro() { return proAccess; },
   get proSubscribed() { return proSubscribed; },
+  get proStatus() { return proStatus; },
+  get proPeriodEnd() { return proPeriodEnd; },
   isPro: () => checkPro(),
   startProCheckout: () => proApi.startCheckout(),
   refreshPro: () => proApi.refresh(),

@@ -251,7 +251,8 @@ function Sidebar({ active, onNav, lists, user, pro }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-soft)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: cloudOn ? 'var(--pos)' : 'var(--warn)', boxShadow: cloudOn ? '0 0 0 3px var(--pos-soft)' : 'none' }} />
             {cloudOn ? (
-              <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span onClick={() => onNav && onNav('preferences')} title="Préférences du compte"
+                style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
                 Mode réel · <span style={{ textTransform: 'none', color: 'var(--text)', fontWeight: 600 }}>{who}</span>
               </span>
             ) : (
@@ -472,7 +473,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
         })()}
         <SectionToggle to="landing" />
         <ThemeToggle />
-        <div onClick={() => onNav && onNav('login')} title={user ? `${user.name} — profil` : 'Connexion'}
+        <div onClick={() => onNav && onNav(user ? 'preferences' : 'login')} title={user ? `${user.name} — préférences` : 'Connexion'}
           style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
             background: user ? 'var(--accent-soft)' : 'var(--bg-elevated)',
             border: `1px solid ${user ? 'var(--accent-border)' : 'var(--border)'}`,

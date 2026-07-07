@@ -49,6 +49,7 @@ import '../js/screens/PositionDetail.jsx';
 import '../js/screens/Docs.jsx';
 import '../js/screens/Landing.jsx';
 import '../js/screens/Auth.jsx';
+import '../js/screens/Preferences.jsx';   // window.Preferences (compte / abonnement)
 
 // 6) Point d'entrée applicatif — monte React (doit être en DERNIER).
 import '../js/app.jsx';

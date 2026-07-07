@@ -1,0 +1,214 @@
+/* ─── Préférences : compte, sécurité, abonnement Pro, apparence ───
+   Page de réglages classique (dans le shell de l'app). Non-cassant : tout passe
+   par window.DXCloud (Supabase) ; en mode invité, on invite à se connecter. */
+
+// Champ mot de passe avec œil (afficher/masquer) — même DA que l'écran Auth.
+function PrefPwField({ value, onChange, placeholder, style }) {
+  const [show, setShow] = React.useState(false);
+  return (
+    <div style={{ position: 'relative' }}>
+      <input style={{ ...style, paddingRight: 44 }} type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} autoComplete="new-password" />
+      <button type="button" onClick={() => setShow(s => !s)} title={show ? 'Masquer' : 'Afficher'}
+        style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', padding: 6, cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex' }}>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          {show
+            ? <><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" /><line x1="1" y1="1" x2="23" y2="23" /></>
+            : <><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" /><circle cx="12" cy="12" r="3" /></>}
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// Carte de section réutilisable.
+function PrefSection({ title, desc, children, right }) {
+  return (
+    <section style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{title}</div>
+          {desc && <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 3 }}>{desc}</div>}
+        </div>
+        {right}
+      </div>
+      <div style={{ padding: '18px 20px' }}>{children}</div>
+    </section>
+  );
+}
+
+function Preferences({ user, onNav, onAuth, addToast, mode }) {
+  const DS = window.DispersionXDesignSystem_cb86be;
+  const { Button, Badge } = DS;
+  const C = window.DXCloud;
+  const configured = !!(C && C.configured);
+
+  const [name, setName] = React.useState(user ? user.name : '');
+  const [savingName, setSavingName] = React.useState(false);
+  const [newPw, setNewPw] = React.useState('');
+  const [savingPw, setSavingPw] = React.useState(false);
+  const [busyPro, setBusyPro] = React.useState(false);
+
+  React.useEffect(() => { setName(user ? user.name : ''); }, [user && user.name]);
+
+  const input = {
+    width: '100%', background: 'var(--bg-base)', border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)', padding: '10px 13px', color: 'var(--text)',
+    font: 'var(--type-body-sm)', outline: 'none',
+  };
+  const label = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 6, display: 'block' };
+
+  // ── Mode invité : pas de compte ──
+  if (!user) {
+    return (
+      <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: 0 }}>Préférences</h1>
+        <PrefSection title="Connectez-vous" desc="Créez un compte (gratuit) pour sauvegarder vos réglages, vos listes et gérer votre abonnement.">
+          <Button variant="primary" size="lg" onClick={() => onNav('login')}>Se connecter / créer un compte</Button>
+        </PrefSection>
+      </div>
+    );
+  }
+
+  const isPro = !!(C && C.pro);
+  const subscribed = !!(C && C.proSubscribed);
+  const periodEnd = C && C.proPeriodEnd;
+  const canceling = C && C.proStatus === 'canceled';
+  const periodTxt = periodEnd ? new Date(periodEnd).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+
+  async function saveName() {
+    const nm = name.trim();
+    if (!nm) { addToast && addToast('Le pseudo ne peut pas être vide.', 'error'); return; }
+    if (nm === user.name) return;
+    setSavingName(true);
+    try {
+      if (configured && C.auth) { const u = await C.auth.updateProfile(nm); onAuth && onAuth(u); }
+      else { onAuth && onAuth({ ...user, name: nm }); }
+      addToast && addToast('Pseudo mis à jour.', 'ok');
+    } catch (e) { addToast && addToast('Échec : ' + (e && e.message ? e.message : ''), 'error'); }
+    finally { setSavingName(false); }
+  }
+  async function savePw() {
+    if (newPw.length < 6) { addToast && addToast('Le mot de passe doit faire au moins 6 caractères.', 'error'); return; }
+    setSavingPw(true);
+    try { await C.auth.updatePassword(newPw); setNewPw(''); addToast && addToast('Mot de passe mis à jour.', 'ok'); }
+    catch (e) { addToast && addToast('Échec : ' + (e && e.message ? e.message : ''), 'error'); }
+    finally { setSavingPw(false); }
+  }
+  async function goPro() {
+    setBusyPro(true);
+    try { await C.startProCheckout(); }
+    catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setBusyPro(false); }
+  }
+  async function managePortal() {
+    setBusyPro(true);
+    try { await C.openProPortal(); }
+    catch (e) {
+      const m = e && e.message === 'aucun_abonnement' ? 'Aucun abonnement Stripe (accès accordé manuellement).' : 'Portail indisponible : ' + (e && e.message ? e.message : '');
+      addToast && addToast(m, 'error'); setBusyPro(false);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+      <div>
+        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Préférences</h1>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '6px 0 0' }}>Compte, sécurité, abonnement et apparence.</p>
+      </div>
+
+      {/* ── Compte ── */}
+      <PrefSection title="Compte" desc="Votre pseudo est affiché dans l'app et sur les listes partagées.">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', flexShrink: 0, background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 20px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>
+            {window.initialsOf ? window.initialsOf(user.name) : 'DX'}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Connecté en tant que</div>
+            <div style={{ font: 'var(--type-body)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+          </div>
+        </div>
+        <label style={label}>Pseudo</label>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <input style={{ ...input, flex: 1, minWidth: 200 }} value={name} onChange={e => setName(e.target.value)} placeholder="Votre pseudo" maxLength={40} />
+          <Button variant="primary" size="md" onClick={saveName} disabled={savingName || name.trim() === user.name || !name.trim()}>
+            {savingName ? 'Enregistrement…' : 'Enregistrer'}
+          </Button>
+        </div>
+        <label style={{ ...label, marginTop: 16 }}>E-mail</label>
+        <input style={{ ...input, color: 'var(--text-muted)', cursor: 'not-allowed' }} value={user.email} readOnly disabled />
+      </PrefSection>
+
+      {/* ── Sécurité ── */}
+      {configured && (
+        <PrefSection title="Sécurité" desc="Définir ou changer votre mot de passe.">
+          <label style={label}>Nouveau mot de passe</label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <PrefPwField style={input} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Au moins 6 caractères" />
+            </div>
+            <Button variant="outline" size="md" onClick={savePw} disabled={savingPw || newPw.length < 6}>
+              {savingPw ? 'Mise à jour…' : 'Mettre à jour'}
+            </Button>
+          </div>
+        </PrefSection>
+      )}
+
+      {/* ── Abonnement ── */}
+      <PrefSection
+        title="Abonnement"
+        desc="Le module Pro : auto-chercheur d'opportunités, risque & sizing inline, backtest historique."
+        right={isPro
+          ? <Badge tone={canceling ? 'warn' : 'pos'} size="sm">{canceling ? 'Se termine bientôt' : 'Pro actif'}</Badge>
+          : <Badge tone="neutral" size="sm">Gratuit</Badge>}
+      >
+        {isPro ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+              {subscribed
+                ? (canceling
+                    ? <>Votre abonnement est <strong style={{ color: 'var(--warn)' }}>résilié</strong>{periodTxt ? <> et restera actif jusqu'au <strong style={{ color: 'var(--text)' }}>{periodTxt}</strong></> : null}.</>
+                    : <>Abonnement mensuel <strong style={{ color: 'var(--pos-bright)' }}>actif</strong>{periodTxt ? <> — prochain renouvellement le <strong style={{ color: 'var(--text)' }}>{periodTxt}</strong></> : null}.</>)
+                : <>Accès Pro actif <span style={{ color: 'var(--text-muted)' }}>(accordé manuellement — pas d'abonnement Stripe).</span></>}
+            </div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <Button variant="primary" size="md" onClick={() => onNav('opportunities')}>Ouvrir les Opportunités</Button>
+              {subscribed && (
+                <Button variant="outline" size="md" onClick={managePortal} disabled={busyPro}>
+                  {busyPro ? 'Ouverture…' : 'Gérer l\'abonnement'}
+                </Button>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 7, font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+              <li>✓ Meilleurs paniers de dispersion par indice (5 à 20 actions)</li>
+              <li>✓ Sizing vega-neutre + 3 scénarios de stress, comme le Risk Lab</li>
+              <li>✓ Backtest historique de la prime de corrélation capturée</li>
+            </ul>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button variant="primary" size="lg" onClick={goPro} disabled={busyPro}>{busyPro ? 'Redirection…' : 'Passer Pro →'}</Button>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Abonnement mensuel · paiement sécurisé Stripe · résiliable à tout moment</span>
+            </div>
+          </div>
+        )}
+      </PrefSection>
+
+      {/* ── Apparence ── */}
+      <PrefSection title="Apparence" desc="Thème clair ou sombre." right={window.ThemeToggle ? <window.ThemeToggle /> : null}>
+        <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+          Le thème est mémorisé sur cet appareil. Le mode d'affichage (Débutant / Avancé) se règle en haut à droite de l'app.
+        </div>
+      </PrefSection>
+
+      {/* ── Session ── */}
+      <PrefSection title="Session" desc="Se déconnecter de ce compte sur cet appareil.">
+        <Button variant="danger" size="md" onClick={async () => {
+          try { if (configured) await C.auth.signOut(); } catch {}
+          onAuth && onAuth(null); onNav('landing');
+        }}>Se déconnecter</Button>
+      </PrefSection>
+    </div>
+  );
+}
+
+window.Preferences = Preferences;
