@@ -525,8 +525,9 @@ function useToasts() {
 }
 
 /* ─── Autocomplete ticker (partagé par Picker et Bar) ─────────────── */
-function useTickerCatalog(lists) {
-  return React.useMemo(() => {
+// Catalogue de tickers (composants de tous les indices + actions des listes) —
+// fonction pure réutilisable (voir window.DXTickerSearch).
+function buildTickerCatalog(lists) {
     const map = {};
 
     // 1. Pré-remplir avec TOUS les composants connus des indices (noms inclus)
@@ -567,8 +568,8 @@ function useTickerCatalog(lists) {
     });
 
     return Object.values(map).sort((a, b) => a.ticker.localeCompare(b.ticker));
-  }, [lists]);
 }
+function useTickerCatalog(lists) { return React.useMemo(() => buildTickerCatalog(lists), [lists]); }
 
 function filterCatalog(catalog, q) {
   if (!q) return [];
@@ -584,6 +585,9 @@ function filterCatalog(catalog, q) {
   });
   return res.slice(0, 5);
 }
+
+// Réutilisable ailleurs (ex. recherche earnings de Marché Pro).
+window.DXTickerSearch = { build: buildTickerCatalog, filter: filterCatalog };
 
 function SuggestionItem({ item, focused, onPick }) {
   const score = item.score;

@@ -53,6 +53,9 @@ function EarningsPanel({ lists }) {
   const [q, setQ] = React.useState('');
   const [searchBusy, setSearchBusy] = React.useState(false);
   const [searchRes, setSearchRes] = React.useState(null);   // { ticker, event|null }
+  const [sugs, setSugs] = React.useState([]);
+  // Catalogue partagé (composants de tous les indices + actions des listes).
+  const catalog = React.useMemo(() => (window.DXTickerSearch ? window.DXTickerSearch.build(lists) : []), [lists]);
 
   async function loadMine(tickers) {
     setLoading(true); setUnavailable(false);
@@ -66,11 +69,11 @@ function EarningsPanel({ lists }) {
   }
   React.useEffect(() => { loadMine(myTickers); /* eslint-disable-next-line */ }, [myTickers.join(',')]);
 
-  async function search(e) {
+  async function search(e, explicit) {
     if (e && e.preventDefault) e.preventDefault();
-    const t = q.trim().toUpperCase();
+    const t = (explicit || q).trim().toUpperCase();
     if (!t) return;
-    setSearchBusy(true); setSearchRes(null);
+    setSugs([]); setSearchBusy(true); setSearchRes(null);
     try {
       const d = await DXApi.earningsCalendar([t], 180);
       if (d && d.unavailable) setSearchRes({ ticker: t, event: null, unavailable: true });
@@ -78,6 +81,8 @@ function EarningsPanel({ lists }) {
     } catch { setSearchRes({ ticker: t, event: null }); }
     finally { setSearchBusy(false); }
   }
+  function onType(v) { setQ(v); setSugs(window.DXTickerSearch ? window.DXTickerSearch.filter(catalog, v) : []); }
+  function pick(item) { setQ(item.ticker); setSugs([]); search(null, item.ticker); }
 
   const box = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden' };
   const list = events || [];
@@ -95,9 +100,24 @@ function EarningsPanel({ lists }) {
       </div>
 
       <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        {/* Recherche par ticker */}
+        {/* Recherche par ticker (avec suggestions intelligentes) */}
         <form onSubmit={search} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher une action (ex. AAPL)" style={inputStyle} />
+          <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+            <input value={q} onChange={e => onType(e.target.value)} onBlur={() => setTimeout(() => setSugs([]), 120)}
+              placeholder="Rechercher une action (ticker ou nom)…" style={{ ...inputStyle, width: '100%', boxSizing: 'border-box', minWidth: 0 }} />
+            {sugs.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50, marginTop: 4, background: 'var(--bg-card)', border: '1px solid var(--accent)', borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', overflow: 'hidden' }}>
+                {sugs.map(s => (
+                  <button key={s.ticker} type="button" onMouseDown={e => { e.preventDefault(); pick(s); }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', textAlign: 'left' }}>
+                    <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--text)' }}>{s.ticker}</span>
+                    <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                    {(s.indices || []).slice(0, 3).map(ix => <span key={ix} style={{ font: '9px/1 var(--font-mono)', padding: '1px 5px', borderRadius: 3, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-dim)' }}>{ix}</span>)}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <Button variant="outline" size="md" type="submit" disabled={searchBusy || !q.trim()}>{searchBusy ? 'Recherche…' : 'Prochains résultats'}</Button>
         </form>
         {searchRes && (
