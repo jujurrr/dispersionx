@@ -286,6 +286,10 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
             <span style={{ font: '9px/1', color: 'var(--text-muted)', flexShrink: 0 }}>ⓘ</span>
             <span>Données différées 15 min — analyse pédagogique, pas un conseil en investissement.</span>
           </div>
+          {/* Lien légal */}
+          <div style={{ font: '10px/1.4 var(--font-sans)' }}>
+            <a onClick={() => onNav && onNav('privacy')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>Confidentialité</a>
+          </div>
         </div>
       </div>
     </aside>

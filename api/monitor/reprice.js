@@ -15,6 +15,11 @@ export default async (req) => {
   if (!strategy || !Array.isArray(strategy.components)) {
     return Response.json({ error: 'no_strategy' }, { status: 400 });
   }
+  // Anti-abus : une reprise = un appel Cboe par jambe. On borne le nombre de
+  // composants pour éviter qu'une charge forgée déclenche des centaines d'appels.
+  if (strategy.components.length > 60) {
+    return Response.json({ error: 'too_many_components' }, { status: 413 });
+  }
   try {
     const v = await repriceStrategy(strategy, cboeMarket);
     return Response.json(v, {

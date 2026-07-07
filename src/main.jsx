@@ -53,6 +53,7 @@ import '../js/screens/Checklist.jsx';
 import '../js/screens/MonitorList.jsx';
 import '../js/screens/PositionDetail.jsx';
 import '../js/screens/Docs.jsx';
+import '../js/screens/Privacy.jsx';        // window.Privacy (politique de confidentialité)
 import '../js/screens/Landing.jsx';
 import '../js/screens/Auth.jsx';
 import '../js/screens/Preferences.jsx';   // window.Preferences (compte / abonnement)

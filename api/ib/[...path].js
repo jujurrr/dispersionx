@@ -7,6 +7,12 @@ export default async (req) => {
 
   const url = new URL(req.url);
   const sub = url.pathname.replace(/^\/api\/ib\/?/, '');
+  // Durcissement : l'hôte cible est fixe (BACKEND_URL), mais on refuse toute
+  // tentative de traversée de chemin (../, encodé) pour ne pas sortir du préfixe
+  // /ib/ côté backend.
+  if (/(^|\/|%2e|\.)\.(\/|%2f|$)/i.test(sub) || sub.includes('..')) {
+    return Response.json({ error: 'bad_path' }, { status: 400 });
+  }
   const target = base.replace(/\/$/, '') + '/ib/' + sub + url.search;
 
   const headers = { 'Content-Type': req.headers.get('content-type') || 'application/json' };

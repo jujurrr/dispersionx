@@ -311,7 +311,10 @@ function Landing() {
             <window.Logo size={24} wordmark={false} />
             <span style={{ font: '700 13px/1 var(--font-sans)', color: 'var(--text-soft)' }}>DispersionX</span>
           </span>
-          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Outil d'analyse — ne constitue pas un conseil en investissement.</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+            <a onClick={() => window.__dxNav && window.__dxNav('privacy')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>Confidentialité</a>
+            <span>Outil d'analyse — ne constitue pas un conseil en investissement.</span>
+          </span>
         </div>
       </footer>
     );
