@@ -460,19 +460,34 @@
       { symbol: s.indexEtf || s.index || 'SPX', side: 'short', quantity: s.nIndex || 1, role: 'index_leg', pnl: null },
       ...(s.components || []).map(c => ({ symbol: c.ticker, side: 'long', quantity: c.nContracts, current_iv: c.iv, role: 'component', pnl: null })),
     ];
+    // Dernier snapshot mark-to-market (rempli par le cron ou le bouton Snapshot).
+    // S'il existe, le P&L et les grecs affichés reflètent le MARCHÉ RÉEL (spot +
+    // IV Cboe) plutôt que la seule projection √T.
+    const snaps = p.snapshots || [];
+    let mtm = null;
+    for (let i = snaps.length - 1; i >= 0; i--) { if (snaps[i] && snaps[i].mtm) { mtm = snaps[i]; break; } }
+    const hasMtm = !!(mtm && typeof mtm.total_pnl === 'number');
+    const curVega  = hasMtm && mtm.net_vega  != null ? mtm.net_vega  : m.netVega;
+    const curTheta = hasMtm && mtm.net_theta != null ? mtm.net_theta : m.netTheta;
     return {
-      theoretical: true,
+      theoretical: !hasMtm,   // bannière « théorique » seulement sans reprise réelle
+      strategy: s,            // stratégie brute → permet la reprise LIVE à l'ouverture
+      last_mtm_pnl: hasMtm ? mtm.total_pnl : null,
+      mtm: hasMtm ? { total_pnl: mtm.total_pnl, daily_pnl: mtm.daily_pnl, coverage: mtm.coverage, asof: mtm.taken_at, dte: mtm.dte } : null,
       position: { id: p.id, name: p.name || m.name, index_symbol: s.index || 'SPX', strategy_type: 'dispersion', status: p.status, committed_at: p.committed_at, list_id: p.list_id },
       monitoring: {
-        total_pnl: null, exit_cost_estimate: null, net_pnl_after_exit: null,
-        n_legs_priced: 0, n_legs_total: legs.length,
+        total_pnl: hasMtm ? mtm.total_pnl : null,
+        daily_pnl: hasMtm ? mtm.daily_pnl : null,
+        exit_cost_estimate: null, net_pnl_after_exit: null,
+        n_legs_priced: hasMtm && mtm.coverage ? mtm.coverage.priced : 0,
+        n_legs_total: hasMtm && mtm.coverage ? mtm.coverage.total : legs.length,
         entry_greeks:   { delta: entryDelta, vega: Math.round(port.netVega || 0), theta: Math.round(port.netTheta || 0) },
-        current_greeks: { delta: m.netDelta, vega: m.netVega, theta: m.netTheta },
-        greek_changes:  { delta: m.netDelta - entryDelta, vega: m.netVega - Math.round(port.netVega || 0), theta: m.netTheta - Math.round(port.netTheta || 0) },
+        current_greeks: { delta: m.netDelta, vega: curVega, theta: curTheta },
+        greek_changes:  { delta: m.netDelta - entryDelta, vega: curVega - Math.round(port.netVega || 0), theta: curTheta - Math.round(port.netTheta || 0) },
         legs,
       },
       correlation_change: null,
-      snapshots: p.snapshots || [],
+      snapshots: snaps,
     };
   }
 
@@ -521,21 +536,55 @@
     try { return await _get('/monitor/position/' + cid); }
     catch { return _positionDetail(_loadPositions().find(x => x.id === cid)); }
   }
+  // Dernier P&L mark-to-market déjà enregistré (pour le P&L quotidien).
+  function _lastMtmPnl(snaps) {
+    for (let i = (snaps || []).length - 1; i >= 0; i--) {
+      if (snaps[i] && snaps[i].mtm && typeof snaps[i].total_pnl === 'number') return snaps[i].total_pnl;
+    }
+    return null;
+  }
+  // Construit un snapshot pour une stratégie : tente une reprise RÉELLE au marché
+  // (spot + IV Cboe via /api/monitor/reprice) ; à défaut, repli THÉORIQUE (√T,
+  // sans P&L de marché) — jamais de P&L inventé.
+  async function _buildSnapshot(strategy, prevSnaps) {
+    try {
+      const v = await _postRetry('/monitor/reprice', { strategy }, { retries: 1, timeoutMs: 15000 });
+      if (v && typeof v.total_pnl === 'number') {
+        const prev = _lastMtmPnl(prevSnaps);
+        return {
+          taken_at: v.asof || new Date().toISOString(),
+          total_pnl: v.total_pnl,
+          daily_pnl: prev == null ? null : Math.round((v.total_pnl - prev) * 100) / 100,
+          net_vega: v.net_vega, net_theta: v.net_theta, dte: v.dte,
+          coverage: v.coverage, mtm: true,
+        };
+      }
+    } catch { /* repli théorique ci-dessous */ }
+    const m = strategyMetrics(strategy || {});
+    return { taken_at: new Date().toISOString(), total_pnl: null, daily_pnl: null, dte: m.dte, netVega: m.netVega, netTheta: m.netTheta };
+  }
+  // Reprise LIVE (affichage seul, non persistée) : renvoie la valorisation
+  // mark-to-market actuelle d'une stratégie. Utilisée à l'ouverture d'une
+  // position pour montrer des chiffres frais (≤ 15 min) sans créer de snapshot.
+  async function reprice(strategy) {
+    return _postRetry('/monitor/reprice', { strategy }, { retries: 1, timeoutMs: 15000 });
+  }
   async function snapshotPosition(cid) {
     if (_isLocalPos(cid)) {
       const arr = _loadPositions(); const p = arr.find(x => x.id === cid);
       if (!p) return { success: false };
-      const m = strategyMetrics(p.strategy || {});
-      (p.snapshots = p.snapshots || []).push({ taken_at: new Date().toISOString(), total_pnl: null, daily_pnl: null, dte: m.dte, netVega: m.netVega, netTheta: m.netTheta });
+      const snap = await _buildSnapshot(p.strategy || {}, p.snapshots);
+      (p.snapshots = p.snapshots || []).push(snap);
       _savePositions(arr);
-      return { success: true, local: true };
+      return { success: true, local: true, total_pnl: snap.total_pnl };
     }
     const c = _cloud();
     if (c && c.positions) {
       try {
         const p = await c.positions.get(cid);
-        const m = strategyMetrics(p.strategy || {});
-        return await c.positions.addSnapshot(cid, { taken_at: new Date().toISOString(), total_pnl: null, daily_pnl: null, dte: m.dte, netVega: m.netVega, netTheta: m.netTheta });
+        const snap = await _buildSnapshot(p.strategy || {}, p.snapshots);
+        await c.positions.addSnapshot(cid, snap);
+        return { success: true, total_pnl: snap.total_pnl };
       } catch (e) { console.warn('cloud snapshotPosition', e); }
     }
     try { return await _post('/monitor/position/' + cid + '/snapshot', {}); }
@@ -580,7 +629,7 @@
     localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
     getRisk,
     getChecklist, commitPosition,
-    getPositions, getPosition, snapshotPosition, closePosition, deletePosition,
+    getPositions, getPosition, snapshotPosition, closePosition, deletePosition, reprice,
   };
 
   // Auto-health-check on load, then every 15s

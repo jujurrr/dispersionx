@@ -160,6 +160,35 @@ local sont **remontées automatiquement** vers ton compte (une seule fois), puis
 l'app lit/écrit côté serveur. Les positions créées hors-ligne restent gérées en
 local et n'interfèrent pas.
 
+### 8b. Suivi quotidien automatique des positions (mark-to-market)
+Un **relevé quotidien** (snapshot) reprend chaque position **ouverte** au marché
+réel Cboe (spot + IV ATM par jambe, différé 15 min) et l'ajoute à l'historique
+`snapshots` — d'où la **courbe P&L** et les Δ **vs entrée** / **vs veille** dans
+l'écran de suivi. Le P&L est théorique au mid (relation de Brenner–Subrahmanyam
+sur les straddles ATM), piloté par les vraies variations de spot et d'IV.
+
+**Cron externe** (comme le réchauffeur d'IV et les alertes) — ex. cron-job.org :
+```
+GET https://TON-DOMAINE/api/monitor/snapshot-run?key=LA_CLE
+```
+- **Cadence au choix** : `1×/jour` après clôture US (historique quotidien propre)
+  ou **toutes les 15 min pendant la séance** (suivi intraday). `15 min` est le
+  **plancher utile** (les données Cboe sont différées de 15 min ; plus fréquent =
+  mêmes données). L'historique est **compacté** automatiquement (tous les points
+  du jour + 1 point de clôture par jour antérieur) → le stockage reste borné même
+  à 15 min.
+- Clé = `ALERTS_KEY` si définie, sinon `WARM_KEY` (déjà en place).
+- Nécessite `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` (déjà présents si le cache IV
+  ou les alertes sont configurés) : le cron lit/écrit **toutes** les positions
+  ouvertes via la clé service role (bypass RLS).
+- Couverture : indices US + composants US = valorisés au marché ; composants
+  **européens** (CAC/DAX, sans options US) → estimés en décroissance temporelle
+  et marqués non couverts. Aucune config n'est requise côté client.
+- **Affichage temps réel indépendant du cron** : à l'ouverture d'une position,
+  l'app fait une **reprise live** (≤ 15 min) pour afficher des chiffres frais sans
+  rien persister (bouton **« Actualiser »**). Le bouton **« Snapshot »** enregistre
+  un point à la demande. Le cron n'est donc utile que pour bâtir l'**historique**.
+
 ## 9. Partage de listes (tranche 3)
 Permet de partager une de tes listes avec un(e) autre utilisateur **par son
 e-mail** (il doit avoir un compte), en **lecture seule** (`viewer`) ou avec

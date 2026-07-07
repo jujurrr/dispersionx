@@ -274,6 +274,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         netDelta: deltaHedge !== 'none' ? 0 : sized.netDelta,
         netDeltaRaw: sized.netDelta,
         idxVegaPerLot: base.idxG.vega, idxThetaPerLot: -base.idxG.theta, idxPremPerLot: base.idxG.premium,
+        idxIV: base.indexIV,   // IV d'entrée de l'indice — pour la reprise réelle (mark-to-market)
       },
     };
   }
