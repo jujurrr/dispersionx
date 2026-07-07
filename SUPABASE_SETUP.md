@@ -535,6 +535,53 @@ Redéploie. Teste d'abord en **mode test** Stripe (carte `4242 4242 4242 4242`).
 écrit `status='active'` + `current_period_end`. À la résiliation, Stripe envoie
 `customer.subscription.deleted` → `status='canceled'` → le Pro se retire tout seul.
 
+## 14. Alertes de corrélation (optionnel)
+Permet à un utilisateur d'être prévenu quand la corrélation implicite d'un indice
+dépasse un percentile (le moment où une dispersion devient attractive). Chacun
+gère ses alertes (RLS). Un cron externe les évalue ; l'e-mail est facultatif.
+
+**1) Table + RLS** (SQL Editor → Run) :
+```sql
+create table if not exists public.alerts (
+  id             bigint generated always as identity primary key,
+  user_id        uuid not null references auth.users(id) on delete cascade,
+  email          text,
+  index_symbol   text not null,
+  kind           text not null default 'impl_corr_pct',
+  threshold      int  not null default 80,
+  tickers        jsonb not null default '[]',
+  active         boolean not null default true,
+  last_percentile int,
+  triggered_at   timestamptz,
+  notified_at    timestamptz,
+  created_at     timestamptz not null default now()
+);
+alter table public.alerts enable row level security;
+drop policy if exists "alerts_rw" on public.alerts;
+create policy "alerts_rw" on public.alerts
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+> Les écritures du cron passent par la clé **service role** (bypass RLS). Le
+> navigateur ne lit/écrit que ses propres alertes.
+
+**2) Cron externe** (comme le réchauffeur d'IV) — ex. cron-job.org, **~1×/jour
+après la clôture US** :
+```
+GET https://TON-DOMAINE/api/alerts/run?key=LA_CLE
+```
+La clé = `ALERTS_KEY` si définie, sinon `WARM_KEY` (déjà en place). Déclenchement
+sur **front** : un e-mail est envoyé au passage au-dessus du seuil, pas à chaque
+exécution ; l'alerte se ré-arme quand la corrélation repasse sous le seuil.
+
+**3) E-mail (facultatif, via Resend)** — variables d'env Vercel :
+```
+RESEND_API_KEY = re_…                    (https://resend.com, offre gratuite)
+ALERTS_FROM    = alertes@ton-domaine     (expéditeur vérifié chez Resend)
+APP_URL        = https://ton-domaine     (lien dans l'e-mail)
+```
+Sans ces variables, l'alerte se déclenche quand même et reste **visible dans
+l'app** (statut « Déclenchée le … ») — seul l'e-mail est désactivé.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

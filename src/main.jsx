@@ -44,6 +44,7 @@ import '../js/screens/Builder.jsx';
 import '../js/screens/StrategyMonitor.jsx';
 import '../js/screens/OpportunityFinder.jsx';   // window.OpportunityFinder (module Pro)
 import '../js/screens/CorrelationPro.jsx';       // window.CorrelationBarometer (intégré aux Opportunités)
+import '../js/screens/AlertsPanel.jsx';           // window.AlertsPanel (alertes de corrélation, Pro)
 import '../js/screens/Checklist.jsx';
 import '../js/screens/MonitorList.jsx';
 import '../js/screens/PositionDetail.jsx';

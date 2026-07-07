@@ -396,6 +396,9 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
       {/* Baromètre de corrélation implicite pour l'indice courant (intégré) */}
       {window.CorrelationBarometer && <window.CorrelationBarometer index={index} />}
 
+      {/* Alertes de corrélation (Pro) */}
+      {window.AlertsPanel && <window.AlertsPanel index={index} addToast={addToast} />}
+
       {error && (
         <div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '10px 14px' }}>{error}</div>
       )}

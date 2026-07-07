@@ -437,6 +437,35 @@ const audit = {
   },
 };
 
+// ── Alertes de corrélation (Pro) : chacun gère les siennes (RLS) ────────────
+const alerts = {
+  async list() {
+    const { data, error } = await supa.from('alerts').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async create({ index, threshold, tickers }) {
+    const row = {
+      user_id: currentUser.id, email: currentUser.email,
+      index_symbol: index, kind: 'impl_corr_pct',
+      threshold: Math.max(1, Math.min(99, Math.round(threshold))),
+      tickers: Array.isArray(tickers) ? tickers.slice(0, 20) : [],
+      active: true,
+    };
+    const { data, error } = await supa.from('alerts').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async setActive(id, active) {
+    const { error } = await supa.from('alerts').update({ active, triggered_at: null }).eq('id', id).eq('user_id', currentUser.id);
+    if (error) throw error;
+  },
+  async remove(id) {
+    const { error } = await supa.from('alerts').delete().eq('id', id).eq('user_id', currentUser.id);
+    if (error) throw error;
+  },
+};
+
 // ── API publique exposée au reste de l'app (js/api.js, Auth.jsx, app.jsx) ────
 window.DXCloud = {
   configured: !!supa,
@@ -456,6 +485,7 @@ window.DXCloud = {
   positions: supa ? positions : null,
   shares: supa ? shares : null,
   audit: supa ? audit : null,
+  alerts: supa ? alerts : null,
 };
 
 // ── Suivi de session : maintient currentUser + prévient l'app ───────────────
