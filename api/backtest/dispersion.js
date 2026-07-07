@@ -104,6 +104,18 @@ export default async (req) => {
   }
   if (!windows.length) return Response.json({ error: 'no_windows' }, { status: 502 });
 
+  // Percentile de ρ implicite À L'ENTRÉE, en WALK-FORWARD (rang vs les seules
+  // fenêtres PASSÉES → pas de look-ahead). Permet le backtest « filtré par
+  // signal » : n'entrer que quand la corrélation est chère. `pct=null` tant
+  // qu'il n'y a pas assez d'historique.
+  const MIN_PRIOR = 6;
+  windows.forEach((w, i) => {
+    if (i < MIN_PRIOR) { w.pct = null; return; }
+    const priors = windows.slice(0, i).map(x => x.rho_impl);
+    const below = priors.filter(v => v <= w.rho_impl).length;
+    w.pct = Math.round((below / priors.length) * 100);
+  });
+
   let cum = 0;
   const cumulative = windows.map(w => { cum += w.edge; return { date: w.date, cum: Number(cum.toFixed(2)) }; });
   const edges = windows.map(w => w.edge);

@@ -98,6 +98,15 @@ function oppScoreOf(o) {
 const _btCache = {};
 function btKey(members, index, dur) { return index + '|' + dur + '|' + members.slice().sort().join(','); }
 
+// Stats d'un ensemble de fenêtres (edges en pts) : nombre, réussite, moyenne, cumul.
+function btStatsOf(edges) {
+  const n = edges.length;
+  if (!n) return { n: 0, hit: 0, avg: 0, cum: 0 };
+  const wins = edges.filter(e => e > 0).length;
+  const cum = edges.reduce((a, b) => a + b, 0);
+  return { n, hit: Math.round((wins / n) * 100), avg: cum / n, cum };
+}
+
 // Mini courbe d'équité (prime cumulée capturée) en SVG, largeur fluide.
 function BtChart({ pts }) {
   if (!pts || pts.length < 2) return null;
@@ -238,13 +247,13 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
     if (cur && cur.open) { setBt(p => ({ ...p, [i]: { ...p[i], open: false } })); return; }
     if (cur && (cur.data || cur.error)) { setBt(p => ({ ...p, [i]: { ...p[i], open: true } })); return; }
     const k = btKey(o.members, index, duration);
-    if (_btCache[k]) { setBt(p => ({ ...p, [i]: { open: true, loading: false, data: _btCache[k] } })); return; }
+    if (_btCache[k]) { setBt(p => ({ ...p, [i]: { open: true, loading: false, data: _btCache[k], thr: 60 } })); return; }
     setBt(p => ({ ...p, [i]: { open: true, loading: true } }));
     try {
       const data = await DXApi.backtestDispersion(o.members, index, duration);
       if (!data || data.error || !data.cumulative) throw new Error(data && data.error ? 'Historique insuffisant pour ce panier.' : 'Backtest indisponible.');
       _btCache[k] = data;
-      setBt(p => ({ ...p, [i]: { open: true, loading: false, data } }));
+      setBt(p => ({ ...p, [i]: { open: true, loading: false, data, thr: 60 } }));
     } catch (e) {
       const msg = e && /HTTP (4|5)\d\d/.test(e.message || '')
         ? 'Historique insuffisant ou indisponible pour ce panier (certaines valeurs manquent de données sur ~2 ans).'
@@ -515,6 +524,54 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                               </div>
                             ))}
                           </div>
+                          {/* ── Backtest filtré par signal (corrélation chère) ── */}
+                          {(() => {
+                            const scored = (D.windows || []).filter(w => w.pct != null);
+                            if (scored.length < 4) return null;
+                            const thr = bt[i].thr != null ? bt[i].thr : 60;
+                            const always = btStatsOf(scored.map(w => w.edge));
+                            const filtered = btStatsOf(scored.filter(w => w.pct >= thr).map(w => w.edge));
+                            const better = filtered.n > 0 && filtered.avg > always.avg;
+                            const cell = (l, v, c) => (
+                              <div><div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{l}</div>
+                                <div style={{ font: 'var(--type-data-sm)', color: c || 'var(--text-soft)', marginTop: 2 }}>{v}</div></div>
+                            );
+                            const box = (title, s, hero) => (
+                              <div style={{ flex: '1 1 190px', padding: '12px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-card)', border: `1px solid ${hero ? 'var(--accent-border)' : 'var(--border)'}` }}>
+                                <div style={{ font: '600 12px/1 var(--font-sans)', color: hero ? 'var(--accent-hover)' : 'var(--text-muted)', marginBottom: 10 }}>{title}</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                                  {cell('Fenêtres', s.n)}
+                                  {cell('Réussite', s.hit + '%', s.hit >= 55 ? 'var(--pos-bright)' : 'var(--text)')}
+                                  {cell('Prime moy.', fmtP(s.avg) + ' pts', s.avg >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)')}
+                                  {cell('Cumul', fmtP(s.cum) + ' pts', s.cum >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)')}
+                                </div>
+                              </div>
+                            );
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '12px 14px', borderRadius: 'var(--radius-lg)', background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                                  <span style={{ font: '600 12px/1 var(--font-sans)', color: 'var(--text-soft)' }}>N'entrer qu'au-dessus du</span>
+                                  <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--accent-hover)', minWidth: 52 }}>{thr}<sup>e</sup> pct</span>
+                                  <input type="range" min={0} max={90} step={5} value={thr}
+                                    onChange={e => { const v = Number(e.target.value); setBt(p => ({ ...p, [i]: { ...p[i], thr: v } })); }}
+                                    style={{ flex: 1, minWidth: 140, accentColor: 'var(--accent)' }} />
+                                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>de corrélation implicite</span>
+                                </div>
+                                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                  {box('Toujours investi', always, false)}
+                                  {box(`Filtré · ≥ ${thr}e pct`, filtered, true)}
+                                </div>
+                                <div style={{ font: 'var(--type-caption)', color: better ? 'var(--pos-bright)' : 'var(--text-dim)', lineHeight: 1.5 }}>
+                                  {filtered.n === 0
+                                    ? 'Aucune fenêtre au-dessus de ce seuil — baissez le percentile.'
+                                    : better
+                                      ? `✓ Entrer seulement quand la corrélation est chère améliore la prime moyenne par fenêtre (${fmtP(always.avg)} → ${fmtP(filtered.avg)} pts) : le signal a un edge.`
+                                      : 'À ce seuil, le filtre n\'améliore pas la prime moyenne — essayez un autre percentile.'}
+                                  {' '}<span style={{ color: 'var(--text-dim)' }}>Walk-forward (rang vs passé, sans look-ahead), sur ~2 ans.</span>
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {D.skipped && D.skipped.length > 0 && (
                             <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Sans historique exploitable : {D.skipped.join(', ')}</div>
                           )}
