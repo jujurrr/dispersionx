@@ -310,30 +310,35 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
       </div>
     );
     return (
-      <div style={{ position: 'relative' }}>
-        {/* Aperçu grisé/flouté de la fonction */}
-        <div aria-hidden style={{ filter: 'blur(3.5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
-              <Badge tone="accent" size="sm">Pro</Badge>
-            </div>
-            <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>Teste des milliers de paniers pour trouver les meilleures dispersions d'un indice.</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {/* Titre net, en haut à gauche — cohérent avec les autres modules Pro */}
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
+            <Badge tone="accent" size="sm">Pro</Badge>
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map((s, i) => (
-              <span key={s} style={{ padding: '7px 14px', font: '700 12px/1 var(--font-mono)', borderRadius: 'var(--radius)', background: i === 0 ? 'var(--accent)' : 'var(--bg-elevated)', color: i === 0 ? '#fff' : 'var(--text-soft)', border: `1px solid ${i === 0 ? 'var(--accent)' : 'var(--border)'}` }}>{s}</span>
-            ))}
-          </div>
-          {ghostCard(1, 78, ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL'], '9.4', 71, '0.34')}
-          {ghostCard(2, 72, ['XOM', 'CVX', 'JPM', 'BAC', 'PFE'], '7.1', 67, '0.41')}
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 640 }}>
+            Teste des milliers de paniers pour trouver les meilleures dispersions — un aperçu de ce que Pro débloque.
+          </p>
         </div>
+        <div style={{ position: 'relative' }}>
+          {/* Aperçu grisé/flouté de la fonction */}
+          <div aria-hidden style={{ filter: 'blur(3.5px)', opacity: 0.5, pointerEvents: 'none', userSelect: 'none', display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {['SPX', 'NDX', 'DJI', 'CAC', 'DAX'].map((s, i) => (
+                <span key={s} style={{ padding: '7px 14px', font: '700 12px/1 var(--font-mono)', borderRadius: 'var(--radius)', background: i === 0 ? 'var(--accent)' : 'var(--bg-elevated)', color: i === 0 ? '#fff' : 'var(--text-soft)', border: `1px solid ${i === 0 ? 'var(--accent)' : 'var(--border)'}` }}>{s}</span>
+              ))}
+            </div>
+            {ghostCard(1, 78, ['AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL'], '9.4', 71, '0.34')}
+            {ghostCard(2, 72, ['XOM', 'CVX', 'JPM', 'BAC', 'PFE'], '7.1', 67, '0.41')}
+          </div>
 
-        {/* Voile + cadenas */}
-        <div style={{ position: 'absolute', inset: 0 }}>
-          <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-base)', opacity: 0.42 }} />
-          <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
-            <window.ProUpsellCard context="opportunities" onNav={onNav} addToast={addToast} />
+          {/* Voile + cadenas */}
+          <div style={{ position: 'absolute', inset: 0 }}>
+            <div style={{ position: 'absolute', inset: 0, background: 'var(--bg-base)', opacity: 0.42 }} />
+            <div style={{ position: 'relative', display: 'flex', justifyContent: 'center', paddingTop: 48 }}>
+              <window.ProUpsellCard context="opportunities" onNav={onNav} addToast={addToast} />
+            </div>
           </div>
         </div>
       </div>
