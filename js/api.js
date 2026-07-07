@@ -313,6 +313,12 @@
     return await _postRetry('/backtest/dispersion', body, { retries: 1, timeoutMs: 22000 });
   }
 
+  /* ── Baromètre de corrélation implicite (Pro) ─────────────────── */
+  async function correlationBarometer(tickers, index_symbol) {
+    const body = { tickers: tickers || [], index: index_symbol || 'SPX' };
+    return await _postRetry('/correlation/barometer', body, { retries: 1, timeoutMs: 22000 });
+  }
+
   /* ── Strategy ────────────────────────────────────────────────── */
   async function buildStrategy(list_id, strategy_type, sizing_method, index_contracts, duration_days, delta_neutral) {
     try {
@@ -562,7 +568,7 @@
     exportList, exportAllLists, importLists,
     getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity,
     createShareLink, getShareLinks, revokeShareLink, redeemShareLink,
-    getCorrelation, backtestDispersion,
+    getCorrelation, backtestDispersion, correlationBarometer,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
     localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
