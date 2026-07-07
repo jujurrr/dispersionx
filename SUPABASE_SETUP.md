@@ -516,6 +516,9 @@ create index if not exists pro_access_sub_idx
 - Crée un **webhook** vers `https://TON-DOMAINE/api/pro/webhook`, événements :
   `checkout.session.completed`, `customer.subscription.updated`,
   `customer.subscription.deleted` → note le **signing secret** (`whsec_…`).
+- Active le **Customer Portal** (Settings → Billing → Customer portal) : c'est ce
+  qui alimente le bouton « Gérer l'abonnement » (`/api/pro/portal`, résiliation /
+  carte / factures depuis l'app). Aucune clé supplémentaire.
 
 **3) Variables d'environnement Vercel** (Project → Settings → Environment
 Variables) — **jamais** exposées au client :

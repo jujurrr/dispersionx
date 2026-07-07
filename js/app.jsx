@@ -146,6 +146,11 @@ function App() {
     const clean = () => { try { sp.delete('pro'); const q = sp.toString(); history.replaceState(null, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash); } catch {} };
     clean();
     if (p === 'cancel') { addToast && addToast('Paiement annulé — vous pouvez réessayer à tout moment.', 'info'); return; }
+    if (p === 'managed') {   // retour du portail de facturation : l'accès a pu changer
+      if (window.DXCloud && window.DXCloud.refreshPro) window.DXCloud.refreshPro().catch(() => {});
+      addToast && addToast('Abonnement mis à jour.', 'ok');
+      return;
+    }
     if (p !== 'success' || !(window.DXCloud && window.DXCloud.refreshPro)) return;
     addToast && addToast('Merci ! Activation de votre accès Pro…', 'ok');
     let n = 0, done = false;

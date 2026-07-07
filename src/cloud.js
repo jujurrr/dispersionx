@@ -23,20 +23,23 @@ try {
 } catch (e) { console.warn('[cloud] init Supabase échouée :', e?.message); supa = null; }
 
 let currentUser = null;
-let proAccess = false;   // accès au module « Opportunités Pro » (table pro_access)
+let proAccess = false;      // accès au module « Opportunités Pro » (table pro_access)
+let proSubscribed = false;  // Pro issu d'un abonnement Stripe (a un customer) → portail dispo
 
 // Vérifie l'accès Pro de l'utilisateur courant (RLS : il ne lit que sa ligne).
 // Un abonnement Stripe écrit status + current_period_end (via webhook, service
 // role). Compat : les octrois manuels en SQL (sans statut) restent actifs.
 async function checkPro() {
+  proSubscribed = false;
   if (!supa || !currentUser) return false;
   try {
     const { data, error } = await supa.from('pro_access')
-      .select('status,current_period_end').eq('user_id', currentUser.id).maybeSingle();
+      .select('status,current_period_end,stripe_customer_id').eq('user_id', currentUser.id).maybeSingle();
     if (error || !data) return false;
     const status = data.status || 'active';                       // octroi manuel = actif
     if (status !== 'active' && status !== 'trialing') return false;
     if (data.current_period_end && new Date(data.current_period_end).getTime() < Date.now()) return false;
+    proSubscribed = !!data.stripe_customer_id;                    // abonnement Stripe → portail dispo
     return true;
   } catch { return false; }
 }
@@ -59,6 +62,22 @@ const proApi = {
     proAccess = await checkPro();
     window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: proAccess }));
     return proAccess;
+  },
+  // Portail de facturation Stripe (résilier, carte, factures). L'endpoint valide
+  // le JWT Supabase → on lui transmet le token de session, pas le user_id.
+  async openPortal() {
+    if (!currentUser) throw new Error('not_signed_in');
+    const { data } = await supa.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('not_signed_in');
+    const r = await fetch('/api/pro/portal', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.url) throw new Error(j.error || 'portail_indisponible');
+    window.location.href = j.url;
   },
 };
 
@@ -414,9 +433,11 @@ window.DXCloud = {
   get user() { return currentUser; },
   auth: supa ? auth : null,
   get pro() { return proAccess; },
+  get proSubscribed() { return proSubscribed; },
   isPro: () => checkPro(),
   startProCheckout: () => proApi.startCheckout(),
   refreshPro: () => proApi.refresh(),
+  openProPortal: () => proApi.openPortal(),
   lists: supa ? lists : null,
   strategies: supa ? strategies : null,
   positions: supa ? positions : null,

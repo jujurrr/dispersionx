@@ -190,6 +190,16 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
   const [error, setError] = React.useState('');
   const [bt, setBt] = React.useState({});   // i -> { open, loading, data, error }
   const [checkoutBusy, setCheckoutBusy] = React.useState(false);
+  const [manageBusy, setManageBusy] = React.useState(false);
+  const subscribed = !!(window.DXCloud && window.DXCloud.proSubscribed);
+  async function manageSub() {
+    setManageBusy(true);
+    try { await window.DXCloud.openProPortal(); }
+    catch (e) {
+      const m = e && e.message === 'aucun_abonnement' ? 'Aucun abonnement Stripe (accès accordé manuellement).' : ('Portail indisponible : ' + (e && e.message ? e.message : ''));
+      addToast && addToast(m, 'error'); setManageBusy(false);
+    }
+  }
 
   // Changer d'indice ou d'horizon efface les anciens résultats (pas de confusion).
   function clearResults() { setResults(null); setError(''); setCtx(null); setBt({}); }
@@ -279,14 +289,22 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* En-tête */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
-          <Badge tone="accent" size="sm">Pro</Badge>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
+            <Badge tone="accent" size="sm">Pro</Badge>
+          </div>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 680 }}>
+            Teste des milliers de paniers pour trouver les meilleures dispersions d'un indice : score de dispersion élevé + forte prime de corrélation + diversification.
+          </p>
         </div>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 680 }}>
-          Teste des milliers de paniers pour trouver les meilleures dispersions d'un indice : score de dispersion élevé + forte prime de corrélation + diversification.
-        </p>
+        {subscribed && (
+          <button onClick={manageSub} disabled={manageBusy} title="Résilier, changer de carte, factures"
+            style={{ flexShrink: 0, font: '600 12px/1 var(--font-sans)', padding: '9px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-soft)', cursor: manageBusy ? 'default' : 'pointer', opacity: manageBusy ? 0.7 : 1 }}>
+            {manageBusy ? 'Ouverture…' : 'Gérer l\'abonnement'}
+          </button>
+        )}
       </div>
 
       {/* Bandeau honnête */}

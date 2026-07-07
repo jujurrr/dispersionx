@@ -153,10 +153,10 @@ const NAV = [
 function Sidebar({ active, onNav, lists, user, pro }) {
   const listCount = lists ? lists.length : 0;
   const recent = lists ? lists.slice(0, 5) : [];
-  // Entrée « Opportunités Pro » ajoutée uniquement pour les comptes Pro.
-  const navGroups = pro
-    ? [...NAV, { group: 'Pro', items: [{ id: 'opportunities', label: 'Opportunités', icon: 'opp' }] }]
-    : NAV;
+  // Entrée « Opportunités Pro » TOUJOURS visible (sinon impossible de découvrir
+  // et de payer l'offre Pro). Marquée « Pro » tant que l'accès n'est pas actif ;
+  // le clic mène à l'écran qui propose « Passer Pro ».
+  const navGroups = [...NAV, { group: 'Pro', items: [{ id: 'opportunities', label: 'Opportunités', icon: 'opp', locked: !pro }] }];
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const cloudUser = window.DXCloud && window.DXCloud.user;
   const who = (user && (user.name || user.email)) || (cloudUser && (cloudUser.name || cloudUser.email)) || 'Mon compte';
@@ -201,6 +201,13 @@ function Sidebar({ active, onNav, lists, user, pro }) {
                 }}>
                   <Icon d={ICONS[it.icon]} />
                   <span style={{ flex: 1 }}>{it.label}</span>
+                  {it.locked && (
+                    <span style={{
+                      font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8,
+                      background: 'var(--accent-soft)', color: 'var(--accent-hover)',
+                      border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                    }}>Pro</span>
+                  )}
                   {it.id === 'lists' && listCount > 0 && (
                     <span style={{
                       font: '500 10px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8,
