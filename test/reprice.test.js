@@ -54,7 +54,8 @@ test('compactSnapshots : plafonne les points intraday du jour', () => {
 
 test('repriceStrategy : P&L signé par jambe + couverture partielle', async () => {
   const strategy = {
-    index: 'SPX', indexPrice: 5000, nIndex: 1, duration: 30,
+    // indexPrice = prix de l'ETF négociable (SPY), PAS le niveau d'indice.
+    index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
     builtAt: new Date().toISOString(),
     portfolio: { idxPrem: 20000, idxIV: 20, netVega: -50, netTheta: 100 },
     components: [
@@ -62,9 +63,10 @@ test('repriceStrategy : P&L signé par jambe + couverture partielle', async () =
       { ticker: 'MSFT', price: 400, iv: 25, premium: 4000, nContracts: 2 },
     ],
   };
-  // Marché mocké : SPX via proxy SPY (×10) IV 20→22 ; AAPL IV 30→33 ; MSFT indisponible.
+  // Marché mocké (base ETF, sans mise à l'échelle) : SPY spot inchangé IV 20→22 ;
+  // AAPL IV 30→33 ; MSFT indisponible.
   const market = {
-    SPY:  { spot: 500, iv: 22 },   // 500 × 10 = 5000 (spot inchangé), IV +2 pts
+    SPY:  { spot: 500, iv: 22 },
     AAPL: { spot: 200, iv: 33 },
   };
   const getMarket = async (sym) => market[sym] || null;
@@ -88,4 +90,23 @@ test('repriceStrategy : P&L signé par jambe + couverture partielle', async () =
   assert.equal(v.coverage.priced, 2);
   assert.equal(v.coverage.total, 3);
   assert.ok(Math.abs(v.total_pnl - (-1400)) < 2);
+});
+
+test('repriceStrategy : jambe indice NON mise à l’échelle proxy (régression)', async () => {
+  // Bug historique : le spot ETF (SPY ~550) était multiplié par l’échelle proxy
+  // (×10) alors que la prime d’entrée est calculée sur le prix ETF → prime
+  // actuelle ×10 et P&L indice de plusieurs centaines de k$. Ici, spot et IV
+  // strictement inchangés → le P&L de l’indice doit être ~0 (pas ×10).
+  const strategy = {
+    index: 'SPX', indexEtf: 'SPY', indexPrice: 550, nIndex: 2, duration: 30,
+    builtAt: new Date().toISOString(),
+    portfolio: { idxPrem: 60000, idxIV: 18, netVega: 0, netTheta: 0 },
+    components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 1 }],
+  };
+  const getMarket = async (sym) => ({ SPY: { spot: 550, iv: 18 }, AAPL: { spot: 200, iv: 30 } }[sym] || null);
+  const v = await repriceStrategy(strategy, getMarket);
+  const idx = v.legs.find(l => l.role === 'index');
+  assert.ok(idx.covered);
+  assert.ok(Math.abs(idx.pnl) < 1, `P&L indice attendu ~0, obtenu ${idx.pnl}`);
+  assert.ok(Math.abs(idx.current_prem - 60000) < 1, `prime actuelle attendue ~60000, obtenue ${idx.current_prem}`);
 });

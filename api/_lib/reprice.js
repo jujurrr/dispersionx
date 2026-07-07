@@ -18,8 +18,8 @@
 // Les composants européens (CAC/DAX) n'ont pas d'options US : leur jambe
 // retombe sur une reprise purement temporelle (√T) et est marquée non couverte.
 
-import { cboeIvBundle, cboeSymbol } from './cboe.js';
-import { PROXY_SCALE, proxyEtf, proxyScale } from './proxy-scale.js';
+import { cboeIvBundle } from './cboe.js';
+import { proxyEtf } from './proxy-scale.js';
 
 export const BRENNER = 0.7978845608;   // √(2/π) — coefficient straddle ATM
 const CONTRACT = 100;                  // multiplicateur standard des options
@@ -105,16 +105,15 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
     // IV d'entrée : stockée si dispo, sinon implicite via Brenner.
     let ivEntry = port.idxIV || s.indexIV || null;
     if (!ivEntry) ivEntry = impliedEntryIv(premEntry, spotEntry, dteEntry / 365, nIndex);
-    // Marché actuel : chaîne de l'ETF proxy (ou indice pur), spot ramené au
-    // niveau indice via l'échelle proxy (SPY×10 ≈ SPX, EWQ×196 ≈ CAC…).
+    // Marché actuel : on reprend EXACTEMENT le sous-jacent négociable utilisé à
+    // l'entrée — l'ETF proxy (SPY, QQQ, DIA, EWQ, EWG) dont le prix EST déjà
+    // s.indexPrice. AUCUNE mise à l'échelle : entrée et actuel sur la même base
+    // (l'échelle proxy sert au notionnel/vega « niveau indice », pas à la prime).
     let mk = null;
     if (getMarket) {
-      const scaled = PROXY_SCALE[idxSym.toUpperCase()];
-      const fetchSym = scaled ? proxyEtf(idxSym) : cboeSymbol(idxSym);
+      const fetchSym = s.indexEtf || proxyEtf(idxSym) || idxSym;
       const raw = await getMarket(fetchSym, dteNow);
-      if (raw && raw.spot > 0 && raw.iv > 0) {
-        mk = { spot: raw.spot * (scaled ? proxyScale(idxSym) : 1), iv: raw.iv };
-      }
+      if (raw && raw.spot > 0 && raw.iv > 0) mk = { spot: raw.spot, iv: raw.iv };
     }
     const covered = !!(mk && ivEntry > 0 && spotEntry > 0);
     const factor = straddleFactor({ spotNow: mk?.spot, spotEntry, ivNow: mk?.iv, ivEntry, dteNow, dteEntry, covered });
