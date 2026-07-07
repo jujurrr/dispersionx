@@ -156,7 +156,10 @@ function Sidebar({ active, onNav, lists, user, pro }) {
   // Entrée « Opportunités Pro » TOUJOURS visible (sinon impossible de découvrir
   // et de payer l'offre Pro). Marquée « Pro » tant que l'accès n'est pas actif ;
   // le clic mène à l'écran qui propose « Passer Pro ».
-  const navGroups = [...NAV, { group: 'Pro', items: [{ id: 'opportunities', label: 'Opportunités', icon: 'opp', locked: !pro }] }];
+  const navGroups = [...NAV, { group: 'Pro', items: [
+    { id: 'opportunities', label: 'Opportunités', icon: 'opp', locked: !pro },
+    { id: 'market-pro', label: 'Marché Pro', icon: 'corr', locked: !pro },
+  ] }];
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const cloudUser = window.DXCloud && window.DXCloud.user;
   const who = (user && (user.name || user.email)) || (cloudUser && (cloudUser.name || cloudUser.email)) || 'Mon compte';

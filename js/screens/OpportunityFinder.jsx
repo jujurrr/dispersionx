@@ -402,11 +402,8 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
         )}
       </div>
 
-      {/* Baromètre de corrélation implicite pour l'indice courant (intégré) */}
-      {window.CorrelationBarometer && <window.CorrelationBarometer index={index} />}
-
-      {/* Alertes de corrélation (Pro) */}
-      {window.AlertsPanel && <window.AlertsPanel index={index} addToast={addToast} />}
+      {/* Baromètre compact (le détail + alertes + earnings sont dans Marché Pro) */}
+      {window.CorrelationBarometer && <window.CorrelationBarometer index={index} compact onNav={onNav} />}
 
       {error && (
         <div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '10px 14px' }}>{error}</div>

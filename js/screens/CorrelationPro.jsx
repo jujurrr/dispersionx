@@ -133,7 +133,8 @@ async function baroGather(index) {
 }
 
 // Panneau intégrable : suit l'indice fourni par le parent (Opportunités).
-function CorrelationBarometer({ index }) {
+// `compact` → un simple bandeau (percentile + verdict) avec lien vers Marché Pro.
+function CorrelationBarometer({ index, compact, onNav }) {
   const [loading, setLoading] = React.useState(false);
   const [data, setData] = React.useState(null);
   const [error, setError] = React.useState('');
@@ -155,6 +156,24 @@ function CorrelationBarometer({ index }) {
 
   const cur = data && data.current;
   const toneVar = cur ? { pos: 'var(--pos-bright)', warn: 'var(--warn)', neg: 'var(--neg-bright)' }[cur.tone] : 'var(--text)';
+
+  // Bandeau compact (Opportunités) : percentile + verdict + lien « Détails ».
+  if (compact) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '10px 16px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: `3px solid ${toneVar}`, borderRadius: 'var(--radius-lg)' }}>
+        <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Corrélation implicite · {index}</span>
+        {loading && <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>calcul…</span>}
+        {cur && !loading && (
+          <>
+            <span style={{ font: '700 15px/1 var(--font-mono)', color: toneVar }}>{cur.percentile}<sup>e</sup> pct</span>
+            <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{cur.verdict}</span>
+          </>
+        )}
+        {error && !loading && <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-dim)' }}>baromètre indisponible</span>}
+        {onNav && <a onClick={() => onNav('market-pro')} style={{ marginLeft: 'auto', font: '600 12px/1 var(--font-sans)', color: 'var(--accent-hover)', cursor: 'pointer', flexShrink: 0 }}>Détails · Marché Pro →</a>}
+      </div>
+    );
+  }
 
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden' }}>

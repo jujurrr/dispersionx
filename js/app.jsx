@@ -212,6 +212,7 @@ function App() {
     builder: ['Strategy Builder'],
     monitor: ['Strategy Monitor'],
     opportunities: ['Opportunités Pro'],
+    'market-pro': ['Marché Pro'],
     preferences: ['Préférences'],
     checklist: ['Mes listes', '…', 'Checklist'],
     'monitor-list': ['Mes listes', '…', 'Positions'],
@@ -257,6 +258,9 @@ function App() {
       break;
     case 'opportunities':
       screenEl = <window.OpportunityFinder onNav={onNav} lists={lists} addToast={addToast} pro={pro} />;
+      break;
+    case 'market-pro':
+      screenEl = <window.MarketPro onNav={onNav} addToast={addToast} pro={pro} />;
       break;
     case 'preferences':
       screenEl = <window.Preferences user={user} onNav={onNav} onAuth={handleAuth} addToast={addToast} mode={mode} />;

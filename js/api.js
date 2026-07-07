@@ -319,6 +319,12 @@
     return await _postRetry('/correlation/barometer', body, { retries: 1, timeoutMs: 22000 });
   }
 
+  /* ── Calendrier des résultats (Pro) ───────────────────────────── */
+  async function earningsCalendar(tickers, days) {
+    const body = { tickers: tickers || [], days: days || 45 };
+    return await _postRetry('/earnings/calendar', body, { retries: 1, timeoutMs: 12000 });
+  }
+
   /* ── Strategy ────────────────────────────────────────────────── */
   async function buildStrategy(list_id, strategy_type, sizing_method, index_contracts, duration_days, delta_neutral) {
     try {
@@ -568,7 +574,7 @@
     exportList, exportAllLists, importLists,
     getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity,
     createShareLink, getShareLinks, revokeShareLink, redeemShareLink,
-    getCorrelation, backtestDispersion, correlationBarometer,
+    getCorrelation, backtestDispersion, correlationBarometer, earningsCalendar,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
     localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
