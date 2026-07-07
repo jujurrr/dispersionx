@@ -358,15 +358,25 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
               })}
             </tbody>
           </table>
-          {/* Delta $ directionnel — traité à part car ~neutre à l'entrée */}
+          {/* Delta $ directionnel — dérive réelle (Black-Scholes à strike fixe) */}
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline', padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-            <span style={{ font: 'var(--type-body-sm)', color: 'var(--text)' }}>
-              Delta $ net <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· $ / +1 %</span> :
-              <strong style={{ color: 'var(--text)', marginLeft: 6 }}>{deltaInfo ? dxUsd(deltaInfo.entry, { sign: false }) : (gEntry ? '—' : '—')}</strong>
-              {deltaInfo && deltaInfo.hedged && <span style={{ font: 'var(--type-caption)', color: 'var(--pos-bright)', marginLeft: 6 }}>couvert ≈ 0</span>}
-            </span>
+            {deltaInfo ? (() => {
+              const drift = deltaInfo.current - deltaInfo.entry;
+              return (
+                <span style={{ font: 'var(--type-body-sm)', color: 'var(--text)' }}>
+                  Delta $ net <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· $ / +1 %</span> :
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>entrée</span> <strong style={{ color: 'var(--text-soft)' }}>{dxUsd(deltaInfo.entry, { sign: false })}</strong>
+                  <span style={{ color: 'var(--text-dim)', margin: '0 4px' }}>→</span>
+                  <span style={{ color: 'var(--text-muted)' }}>actuel</span> <strong style={{ color: 'var(--text)' }}>{dxUsd(deltaInfo.current, { sign: false })}</strong>
+                  <span style={{ font: 'var(--type-caption)', color: Math.abs(drift) < 1 ? 'var(--text-dim)' : drift >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginLeft: 6 }}>(dérive {dxUsd(drift)})</span>
+                  {deltaInfo.hedged && <span style={{ font: 'var(--type-caption)', color: 'var(--pos-bright)', marginLeft: 6 }}>· couvert</span>}
+                </span>
+              );
+            })() : (
+              <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Delta $ net : — <span style={{ font: 'var(--type-caption)' }}>(disponible après une reprise au marché)</span></span>
+            )}
             <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-              Une dispersion est ~delta-neutre : le delta dérive avec le sous-jacent (gamma). Le suivi exact du delta courant demanderait une revalorisation par strike (non disponible).
+              Revalorisé en Black-Scholes à strike fixe : part ~neutre et dérive avec le sous-jacent (gamma).
             </span>
           </div>
         </div>

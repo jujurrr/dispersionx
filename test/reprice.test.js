@@ -4,6 +4,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { straddleFactor, impliedEntryIv, remainingDte, repriceStrategy, compactSnapshots, BRENNER } from '../api/_lib/reprice.js';
+import { bsStraddle, normCdf } from '../api/_lib/bs.js';
+
+test('bsStraddle : ATM delta ~0, gamma/vega > 0, ITM delta > 0, OTM delta < 0', () => {
+  const T = 30 / 365;
+  const atm = bsStraddle(100, 100, 0.30, T);
+  assert.ok(Math.abs(atm.delta) < 0.05, `ATM delta ~0, obtenu ${atm.delta}`);
+  assert.ok(atm.value > 0 && atm.gamma > 0 && atm.vega > 0 && atm.thetaYr < 0);
+  // Spot au-dessus du strike → delta du straddle positif ; en dessous → négatif.
+  assert.ok(bsStraddle(120, 100, 0.30, T).delta > 0.3);
+  assert.ok(bsStraddle(80, 100, 0.30, T).delta < -0.3);
+  // Cohérence de N(x).
+  assert.ok(Math.abs(normCdf(0) - 0.5) < 1e-6);
+});
 
 test('straddleFactor : produit spot × IV × √temps quand couvert', () => {
   // spot +10 %, IV ×1.2, temps inchangé → 1.1 × 1.2 = 1.32
@@ -77,54 +90,56 @@ test('repriceStrategy : P&L signé par jambe + couverture partielle', async () =
   const aapl = v.legs.find(l => l.symbol === 'AAPL');
   const msft = v.legs.find(l => l.symbol === 'MSFT');
 
-  // Indice SHORT : IV monte (20→22, ×1.1) → prime 22000 → P&L = −(22000−20000) = −2000
+  // Indice SHORT : IV monte (20→22) → valeur BS ×~1.10 → P&L ≈ −2000 (tolérance BS).
   assert.ok(idx.covered);
-  assert.ok(Math.abs(idx.pnl - (-2000)) < 1);
-  // AAPL LONG : IV monte (30→33, ×1.1) → prime 6600 → P&L = +600
+  assert.ok(Math.abs(idx.pnl - (-2000)) < 40, `idx ${idx.pnl}`);
+  // AAPL LONG : IV monte (30→33) → P&L ≈ +600.
   assert.ok(aapl.covered);
-  assert.ok(Math.abs(aapl.pnl - 600) < 1);
-  // MSFT non couvert : temps ≈ inchangé → P&L ≈ 0, marqué non couvert
+  assert.ok(Math.abs(aapl.pnl - 600) < 40, `aapl ${aapl.pnl}`);
+  // MSFT non couvert : temps ≈ inchangé → P&L ≈ 0, marqué non couvert.
   assert.equal(msft.covered, false);
   assert.ok(Math.abs(msft.pnl) < 1);
 
   assert.equal(v.coverage.priced, 2);
   assert.equal(v.coverage.total, 3);
-  assert.ok(Math.abs(v.total_pnl - (-1400)) < 2);
+  assert.ok(Math.abs(v.total_pnl - (-1400)) < 80, `total ${v.total_pnl}`);
 });
 
-test('repriceStrategy : gamma net + delta $ couvert + P&L de couverture', async () => {
+test('repriceStrategy : delta $ DÉRIVE avec le spot (Black-Scholes) + P&L couverture', async () => {
   const strategy = {
     index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
     builtAt: new Date().toISOString(), deltaHedge: 'legs',
-    portfolio: { idxPrem: 20000, idxIV: 20, netVega: -50, netTheta: 100, netGamma: 8000, netDeltaRaw: 200, netDelta: 0 },
+    portfolio: { idxPrem: 20000, idxIV: 20, netVega: -50, netTheta: 100 },
     components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 3, hedgeShares: -150 }],
   };
   // SPY inchangé ; AAPL spot +5 % (IV inchangée).
   const getMarket = async (sym) => ({ SPY: { spot: 500, iv: 20 }, AAPL: { spot: 210, iv: 30 } }[sym] || null);
   const v = await repriceStrategy(strategy, getMarket);
 
-  // Gamma net exposé (entrée) + mis à l'échelle (actuel).
-  assert.equal(v.greeks.entry.gamma, 8000);
-  assert.ok(Math.abs(v.greeks.current.gamma - 8200) < 5, `gamma actuel ~8200, obtenu ${v.greeks.current.gamma}`);
-  // Delta marqué couvert.
+  // Grecs calculés en BS (nombres, plus jamais « — »).
+  assert.equal(typeof v.greeks.entry.gamma, 'number');
+  assert.equal(typeof v.greeks.current.gamma, 'number');
+  // Delta couvert ET qui DÉRIVE : AAPL monte → le straddle long gagne du delta +.
   assert.equal(v.delta_dollar.hedged, true);
-  // AAPL long +5 % → straddle +300 ; couverture short 150 actions → −1500.
-  assert.ok(Math.abs(v.straddle_pnl - 300) < 1, `straddle ${v.straddle_pnl}`);
-  assert.ok(Math.abs(v.hedge_pnl - (-1500)) < 1, `hedge ${v.hedge_pnl}`);
-  assert.ok(Math.abs(v.total_pnl - (-1200)) < 2, `total ${v.total_pnl}`);
+  assert.ok(v.delta_dollar.current > v.delta_dollar.entry, `delta doit dériver à la hausse (${v.delta_dollar.entry} → ${v.delta_dollar.current})`);
+  // Straddle AAPL gagne (mouvement + hausse de valeur convexe) ; couverture short → perte.
+  assert.ok(v.straddle_pnl > 0, `straddle ${v.straddle_pnl}`);
+  assert.ok(Math.abs(v.hedge_pnl - (-1500)) < 5, `hedge ${v.hedge_pnl}`);
+  assert.ok(Math.abs(v.total_pnl - (v.straddle_pnl + v.hedge_pnl)) < 1);
 });
 
-test('repriceStrategy : gamma null si non stocké (rétro-compat)', async () => {
+test('repriceStrategy : grecs BS calculés même sans netGamma stocké', async () => {
   const strategy = {
     index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
     builtAt: new Date().toISOString(),
-    portfolio: { idxPrem: 20000, idxIV: 20, netVega: -50, netTheta: 100 },   // pas de netGamma
+    portfolio: { idxPrem: 20000, idxIV: 20 },   // pas de netVega/netGamma stockés
     components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 3 }],
   };
   const getMarket = async (sym) => ({ SPY: { spot: 500, iv: 20 }, AAPL: { spot: 200, iv: 30 } }[sym] || null);
   const v = await repriceStrategy(strategy, getMarket);
-  assert.equal(v.greeks.entry.gamma, null);
-  assert.equal(v.greeks.current.gamma, null);
+  // Les grecs viennent de BS → toujours des nombres, pas du portfolio stocké.
+  assert.equal(typeof v.greeks.entry.gamma, 'number');
+  assert.equal(typeof v.greeks.entry.vega, 'number');
   assert.equal(v.hedge_pnl, 0);                 // pas de couverture → 0
   assert.equal(v.total_pnl, v.straddle_pnl);    // total = straddles seuls
 });

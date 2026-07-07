@@ -20,9 +20,26 @@
 
 import { cboeIvBundle } from './cboe.js';
 import { proxyEtf } from './proxy-scale.js';
+import { bsStraddle } from './bs.js';
 
 export const BRENNER = 0.7978845608;   // √(2/π) — coefficient straddle ATM
 const CONTRACT = 100;                  // multiplicateur standard des options
+
+// Grecs d'une jambe convertis en $ de position (sens dir, qté, multiplicateur).
+//   delta  : $ par +1 %      = Δ_action · S · 0.01 · 100 · qté
+//   gamma  : Δ(delta $/+1%)  par +1 % = Γ_action · S² · 1e-4 · 100 · qté
+//   vega   : $ par +1 pt IV  = vega_action · 0.01 · 100 · qté
+//   theta  : $ par jour      = theta_an/365 · 100 · qté
+function dollarGreeks(dir, qty, S, bs) {
+  if (!bs || !(S > 0)) return null;
+  const m = dir * qty * CONTRACT;
+  return {
+    delta: m * bs.delta * S * 0.01,
+    gamma: m * bs.gamma * S * S * 1e-4,
+    vega:  m * bs.vega * 0.01,
+    theta: m * bs.thetaYr / 365,
+  };
+}
 
 // ── Fonctions pures (testables sans réseau) ────────────────────────────────
 
@@ -86,129 +103,111 @@ export function compactSnapshots(snaps, now = Date.now(), todayCap = 40) {
   return out;
 }
 
-// Les jambes normalisées d'une stratégie : indice (short) + composants (long).
-// getMarket(symbol, dte) → { spot, iv } | null (injecté pour les tests).
+// Reprise d'une stratégie : indice (short) + composants (long), revalorisés en
+// Black-Scholes à STRIKE FIXE (K = spot ATM d'entrée). Le P&L reste ancré sur la
+// prime d'entrée stockée (× ratio de valeur BS), et les grecs nets $ (delta qui
+// dérive, gamma, vega, theta) viennent directement de BS. getMarket(symbol, dte)
+// → { spot, iv } | null (injecté pour les tests).
 export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
   const s = strategy || {};
   const port = s.portfolio || {};
   const dteNow = remainingDte(s, now);
   const dteEntry = Math.max(1, s.duration || 30);
-  const nIndex = s.nIndex || 1;
+  const Te = dteEntry / 365, Tn = Math.max(1, dteNow) / 365;
 
   const legs = [];
+  const accE = { delta: 0, gamma: 0, vega: 0, theta: 0 };   // grecs $ nets à l'entrée
+  const accC = { delta: 0, gamma: 0, vega: 0, theta: 0 };   // grecs $ nets actuels
 
-  // ── Jambe indice (short straddle) ──
-  {
-    const idxSym = s.index || 'SPX';
-    const spotEntry = s.indexPrice || 0;
-    const premEntry = port.idxPrem || 0;
-    // IV d'entrée : stockée si dispo, sinon implicite via Brenner.
-    let ivEntry = port.idxIV || s.indexIV || null;
-    if (!ivEntry) ivEntry = impliedEntryIv(premEntry, spotEntry, dteEntry / 365, nIndex);
-    // Marché actuel : on reprend EXACTEMENT le sous-jacent négociable utilisé à
-    // l'entrée — l'ETF proxy (SPY, QQQ, DIA, EWQ, EWG) dont le prix EST déjà
-    // s.indexPrice. AUCUNE mise à l'échelle : entrée et actuel sur la même base
-    // (l'échelle proxy sert au notionnel/vega « niveau indice », pas à la prime).
-    let mk = null;
-    if (getMarket) {
-      const fetchSym = s.indexEtf || proxyEtf(idxSym) || idxSym;
-      const raw = await getMarket(fetchSym, dteNow);
-      if (raw && raw.spot > 0 && raw.iv > 0) mk = { spot: raw.spot, iv: raw.iv };
-    }
-    const covered = !!(mk && ivEntry > 0 && spotEntry > 0);
-    const factor = straddleFactor({ spotNow: mk?.spot, spotEntry, ivNow: mk?.iv, ivEntry, dteNow, dteEntry, covered });
-    const premNow = premEntry * factor;
+  function processLeg({ symbol, role, side, qty, spotEntry, ivEntry, premEntry, mk }) {
+    const covered = !!(mk && mk.spot > 0 && mk.iv > 0 && ivEntry > 0 && spotEntry > 0);
+    const dir = side === 'short' ? -1 : 1;                  // sens (P&L et grecs)
+    const K = spotEntry;                                    // strike = spot ATM à l'entrée
+    const bsE = bsStraddle(spotEntry, K, (ivEntry || 0) / 100, Te);
+    const bsN = covered ? bsStraddle(mk.spot, K, mk.iv / 100, Tn) : null;
+    // Facteur = ratio de valeur BS (strike fixe) ; repli temporel si non couvert.
+    const factor = (covered && bsE && bsE.value > 0 && bsN) ? bsN.value / bsE.value
+      : Math.sqrt(Math.max(0, dteNow) / Math.max(1, dteEntry));
+    const premNow = (premEntry || 0) * factor;
+    const pnl = dir * (premNow - (premEntry || 0));
+    // Accumule les grecs $ (entrée BS ; actuel BS courant, ou entrée time-decay si non couvert).
+    const gE = dollarGreeks(dir, qty, spotEntry, bsE);
+    if (gE) { accE.delta += gE.delta; accE.gamma += gE.gamma; accE.vega += gE.vega; accE.theta += gE.theta; }
+    const bsCur = covered ? bsN : bsStraddle(spotEntry, K, (ivEntry || 0) / 100, Tn);
+    const gC = dollarGreeks(dir, qty, covered ? mk.spot : spotEntry, bsCur);
+    if (gC) { accC.delta += gC.delta; accC.gamma += gC.gamma; accC.vega += gC.vega; accC.theta += gC.theta; }
+    const spotNow = covered ? mk.spot : spotEntry;
     legs.push({
-      symbol: idxSym, role: 'index', side: 'short', qty: nIndex,
-      entry_prem: round2(premEntry), current_prem: round2(premNow),
-      pnl: round2(-1 * (premNow - premEntry)),          // short → profit si la prime baisse
+      symbol, role, side, qty,
+      entry_prem: round2(premEntry), current_prem: round2(premNow), pnl: round2(pnl),
       entry_iv: ivEntry != null ? round1(ivEntry) : null,
       current_iv: mk ? round1(mk.iv) : null,
       iv_change: (mk && ivEntry) ? round1(mk.iv - ivEntry) : null,
       spot_change_pct: (mk && spotEntry) ? round1((mk.spot / spotEntry - 1) * 100) : null,
-      covered,
+      spot_now: spotNow, spot_entry: spotEntry, covered,
     });
   }
 
-  // ── Jambes composants (long straddles) ──
+  // ── Jambe indice (short straddle) — sous-jacent = ETF proxy, même base qu'à l'entrée. ──
+  {
+    const idxSym = s.index || 'SPX';
+    let ivEntry = port.idxIV || s.indexIV || null;
+    if (!ivEntry) ivEntry = impliedEntryIv(port.idxPrem || 0, s.indexPrice || 0, Te, s.nIndex || 1);
+    let mk = null;
+    if (getMarket) {
+      const raw = await getMarket(s.indexEtf || proxyEtf(idxSym) || idxSym, dteNow);
+      if (raw && raw.spot > 0 && raw.iv > 0) mk = { spot: raw.spot, iv: raw.iv };
+    }
+    processLeg({ symbol: idxSym, role: 'index', side: 'short', qty: s.nIndex || 1, spotEntry: s.indexPrice || 0, ivEntry, premEntry: port.idxPrem || 0, mk });
+  }
+
+  // ── Jambes composants (long straddles). ──
   for (const c of (s.components || [])) {
-    const spotEntry = c.price || 0;
-    const ivEntry = c.iv || null;
-    const premEntry = c.premium || 0;
-    const qty = c.nContracts || 1;
     let mk = null;
     if (getMarket) {
       const raw = await getMarket(String(c.ticker).toUpperCase(), dteNow);
       if (raw && raw.spot > 0 && raw.iv > 0) mk = { spot: raw.spot, iv: raw.iv };
     }
-    const covered = !!(mk && ivEntry > 0 && spotEntry > 0);
-    const factor = straddleFactor({ spotNow: mk?.spot, spotEntry, ivNow: mk?.iv, ivEntry, dteNow, dteEntry, covered });
-    const premNow = premEntry * factor;
-    legs.push({
-      symbol: c.ticker, role: 'component', side: 'long', qty,
-      entry_prem: round2(premEntry), current_prem: round2(premNow),
-      pnl: round2(premNow - premEntry),                 // long → profit si la prime monte
-      entry_iv: ivEntry != null ? round1(ivEntry) : null,
-      current_iv: mk ? round1(mk.iv) : null,
-      iv_change: (mk && ivEntry) ? round1(mk.iv - ivEntry) : null,
-      spot_change_pct: (mk && spotEntry) ? round1((mk.spot / spotEntry - 1) * 100) : null,
-      covered,
-    });
+    processLeg({ symbol: c.ticker, role: 'component', side: 'long', qty: c.nContracts || 1, spotEntry: c.price || 0, ivEntry: c.iv || null, premEntry: c.premium || 0, mk });
   }
 
   const straddle_pnl = round2(legs.reduce((a, l) => a + (l.pnl || 0), 0));
   const priced = legs.filter(l => l.covered).length;
 
-  // ── Facteurs de marché agrégés (jambes couvertes uniquement) ──
-  const cov = legs.filter(l => l.covered && l.spot_change_pct != null);
-  const avgSpotRatio = cov.length ? 1 + (cov.reduce((a, l) => a + l.spot_change_pct, 0) / cov.length) / 100 : 1;
-  const ivR = legs.filter(l => l.covered && l.current_iv > 0 && l.entry_iv > 0);
-  const avgIvRatio = ivR.length ? ivR.reduce((a, l) => a + l.current_iv / l.entry_iv, 0) / ivR.length : 1;
-  const kT = Math.sqrt(Math.max(1, dteNow) / dteEntry);
-  const g = v => (v == null || !isFinite(v)) ? null : Math.round(v);
-
-  // ── Grecs nets THÉORIQUES : entrée (stockés) vs actuel, mis à l'échelle par le
-  // marché réel. Lois ATM : Vega ∝ S·√T ; Theta ∝ S·σ/√T ; Gamma$ ∝ S/(σ·√T). ──
-  const entryGreeks = {
-    vega: g(port.netVega), theta: g(port.netTheta),
-    gamma: port.netGamma != null ? g(port.netGamma) : null,
-  };
-  const currentGreeks = {
-    vega: g((port.netVega || 0) * avgSpotRatio * kT),
-    theta: g((port.netTheta || 0) * avgSpotRatio * avgIvRatio / kT),
-    gamma: port.netGamma != null ? g(port.netGamma * avgSpotRatio / (avgIvRatio * kT)) : null,
-  };
-
-  // ── Delta $ net à l'entrée (par +1%). Une dispersion est ~delta-neutre :
-  // net ≈ 0 (a fortiori si delta-couverte), et il dérive avec le spot (gamma). ──
-  const hedged = !!(s.deltaHedge && s.deltaHedge !== 'none');
-  const deltaEntry = g(hedged ? (port.netDelta != null ? port.netDelta : 0) : (port.netDeltaRaw != null ? port.netDeltaRaw : (port.netDelta || 0)));
-
-  // ── P&L des jambes de couverture (actions par jambe, ou future indice) ──
-  let hedge_pnl = 0;
+  // ── Jambes de couverture Δ : P&L + delta $ (entrée & actuel). ──
+  let hedge_pnl = 0, hedgeDeltaE = 0, hedgeDeltaC = 0;
   if (s.deltaHedge === 'legs') {
     for (const c of (s.components || [])) {
+      if (!c.hedgeShares) continue;
       const leg = legs.find(l => l.symbol === c.ticker);
-      if (leg && leg.covered && leg.spot_change_pct != null && c.hedgeShares) {
-        hedge_pnl += c.hedgeShares * (c.price || 0) * (leg.spot_change_pct / 100);
-      }
+      const sE = c.price || 0, sN = leg ? leg.spot_now : sE;
+      hedgeDeltaE += c.hedgeShares * sE * 0.01;
+      hedgeDeltaC += c.hedgeShares * sN * 0.01;
+      if (leg && leg.covered) hedge_pnl += c.hedgeShares * (sN - sE);
     }
   } else if (s.deltaHedge === 'index' && s.hedgeUnits) {
     const idxLeg = legs.find(l => l.role === 'index');
-    if (idxLeg && idxLeg.covered && idxLeg.spot_change_pct != null) {
-      hedge_pnl += s.hedgeUnits * ((s.indexPrice || 0) * 0.01 * CONTRACT) * idxLeg.spot_change_pct;
-    }
+    const sE = s.indexPrice || 0, sN = idxLeg ? idxLeg.spot_now : sE;
+    hedgeDeltaE += s.hedgeUnits * sE * 0.01 * CONTRACT;
+    hedgeDeltaC += s.hedgeUnits * sN * 0.01 * CONTRACT;
+    if (idxLeg && idxLeg.covered) hedge_pnl += s.hedgeUnits * (sN - sE) * CONTRACT;
   }
   hedge_pnl = round2(hedge_pnl);
   const total_pnl = round2(straddle_pnl + hedge_pnl);
 
+  const g = v => (v == null || !isFinite(v)) ? null : Math.round(v);
+  const hedged = !!(s.deltaHedge && s.deltaHedge !== 'none');
   return {
     asof: new Date(now).toISOString(),
     dte: dteNow,
     total_pnl, straddle_pnl, hedge_pnl,
-    net_vega: currentGreeks.vega, net_theta: currentGreeks.theta,   // rétro-compat snapshots
-    greeks: { entry: entryGreeks, current: currentGreeks },
-    delta_dollar: { entry: deltaEntry, hedged },
+    net_vega: g(accC.vega), net_theta: g(accC.theta),   // rétro-compat snapshots
+    greeks: {
+      entry:   { vega: g(accE.vega), theta: g(accE.theta), gamma: g(accE.gamma) },
+      current: { vega: g(accC.vega), theta: g(accC.theta), gamma: g(accC.gamma) },
+    },
+    // Delta $ net (par +1 %) INCLUANT la couverture → dérive réellement avec le spot.
+    delta_dollar: { entry: g(accE.delta + hedgeDeltaE), current: g(accC.delta + hedgeDeltaC), hedged },
     coverage: { priced, total: legs.length },
     legs,
   };
