@@ -202,11 +202,16 @@ function Sidebar({ active, onNav, lists, user, pro }) {
                   <Icon d={ICONS[it.icon]} />
                   <span style={{ flex: 1 }}>{it.label}</span>
                   {it.locked && (
-                    <span style={{
-                      font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8,
-                      background: 'var(--accent-soft)', color: 'var(--accent-hover)',
-                      border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em',
-                    }}>Pro</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Réservé au forfait Pro">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent-hover)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                      </svg>
+                      <span style={{
+                        font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8,
+                        background: 'var(--accent-soft)', color: 'var(--accent-hover)',
+                        border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em',
+                      }}>Pro</span>
+                    </span>
                   )}
                   {it.id === 'lists' && listCount > 0 && (
                     <span style={{
