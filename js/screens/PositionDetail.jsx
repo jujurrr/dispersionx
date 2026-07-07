@@ -267,29 +267,25 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         </div>
       )}
 
-      {/* Évolution du P&L — courbe des snapshots mark-to-market (axes + grille) */}
+      {/* Évolution du P&L — hauteur fixe, axes en HTML (pas de distorsion ni chevauchement) */}
       {(() => {
         const raw = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: s.taken_at, v: s.total_pnl }));
         if (raw.length < 2) return null;
         const vals = raw.map(p => p.v);
         let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
-        const pad0 = (hi - lo) * 0.12 || 1; lo -= pad0; hi += pad0;
+        const pad0 = (hi - lo) * 0.14 || 1; lo -= pad0; hi += pad0;
         const span = (hi - lo) || 1;
-        // Géométrie (viewBox non étiré : preserveAspectRatio par défaut).
-        const W = 760, H = 240, mL = 62, mR = 14, mT = 12, mB = 30;
-        const pw = W - mL - mR, ph = H - mT - mB;
-        const x = i => mL + (i / (raw.length - 1)) * pw;
-        const y = v => mT + (hi - v) / span * ph;
-        // Ticks Y « ronds » (5 niveaux).
-        const ticks = Array.from({ length: 5 }, (_, i) => lo + (i / 4) * span);
+        const PH = 150, VW = 1000;                         // hauteur px fixe ; largeur viewBox
+        const x = i => (i / (raw.length - 1)) * VW;
+        const y = v => (hi - v) / span * PH;
+        const ticks = Array.from({ length: 4 }, (_, i) => hi - (i / 3) * span);   // haut → bas
         const axisFmt = v => Math.round(v).toLocaleString('fr-FR');
-        // X : heure si tout le même jour (intraday), sinon date.
         const days = new Set(raw.map(p => (p.t || '').slice(0, 10)));
-        const fmtX = iso => { const d = new Date(iso); if (isNaN(d)) return ''; return days.size <= 1 ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }); };
-        const xi = [0, Math.floor((raw.length - 1) / 2), raw.length - 1];
+        const fmtX = iso => { const dd = new Date(iso); if (isNaN(dd)) return ''; return days.size <= 1 ? dd.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : dd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }); };
+        let xIdx = raw.length <= 2 ? [0, raw.length - 1] : [0, Math.floor((raw.length - 1) / 2), raw.length - 1];
+        xIdx = [...new Set(xIdx)];                          // dédup → pas de dates superposées
         const d = raw.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
         const last = vals[vals.length - 1];
-        const zeroY = y(0);
         const col = last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
         return (
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
@@ -297,90 +293,89 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
               <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L ($)</span>
               <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{raw.length} points · depuis l'entrée</span>
             </div>
-            <div style={{ padding: '14px 12px 8px' }}>
-              <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
-                <defs>
-                  <linearGradient id="dxpnl" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={col} stopOpacity="0.28" />
-                    <stop offset="100%" stopColor={col} stopOpacity="0.02" />
-                  </linearGradient>
-                </defs>
-                {/* Grille + axe Y */}
-                {ticks.map((tv, i) => (
-                  <g key={i}>
-                    <line x1={mL} y1={y(tv)} x2={W - mR} y2={y(tv)} stroke="var(--border-subtle)" strokeWidth="1" />
-                    <text x={mL - 8} y={y(tv) + 3.5} textAnchor="end" style={{ font: '10px/1 var(--font-mono)', fill: 'var(--text-dim)' }}>{axisFmt(tv)}</text>
-                  </g>
+            <div style={{ padding: '12px 16px 10px' }}>
+              <div style={{ display: 'flex' }}>
+                {/* Axe Y (HTML) */}
+                <div style={{ position: 'relative', width: 52, height: PH, flexShrink: 0 }}>
+                  {ticks.map((tv, i) => (
+                    <span key={i} style={{ position: 'absolute', right: 8, top: y(tv), transform: 'translateY(-50%)', font: '10px/1 var(--font-mono)', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{axisFmt(tv)}</span>
+                  ))}
+                </div>
+                {/* Tracé (SVG, hauteur fixe) */}
+                <div style={{ position: 'relative', flex: 1, height: PH }}>
+                  <svg viewBox={`0 0 ${VW} ${PH}`} width="100%" height={PH} preserveAspectRatio="none" style={{ display: 'block' }}>
+                    <defs>
+                      <linearGradient id="dxpnl" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={col} stopOpacity="0.26" />
+                        <stop offset="100%" stopColor={col} stopOpacity="0.02" />
+                      </linearGradient>
+                    </defs>
+                    {ticks.map((tv, i) => (
+                      <line key={i} x1="0" y1={y(tv)} x2={VW} y2={y(tv)} stroke="var(--border-subtle)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
+                    ))}
+                    <line x1="0" y1={y(0)} x2={VW} y2={y(0)} stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />
+                    <path d={`${d} L${VW},${y(0).toFixed(1)} L0,${y(0).toFixed(1)} Z`} fill="url(#dxpnl)" />
+                    <path d={d} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+                  </svg>
+                  {/* Dernier point (HTML → pas d'ellipse) */}
+                  <span style={{ position: 'absolute', left: '100%', top: y(last), transform: 'translate(-50%, -50%)', width: 9, height: 9, borderRadius: '50%', background: col, border: '2px solid var(--bg-card)' }} />
+                </div>
+              </div>
+              {/* Axe X (HTML) */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 52, marginTop: 8, font: '10px/1 var(--font-mono)', color: 'var(--text-dim)' }}>
+                {xIdx.map((idx, i) => (
+                  <span key={i} style={{ textAlign: i === 0 ? 'left' : i === xIdx.length - 1 ? 'right' : 'center' }}>{fmtX(raw[idx].t)}</span>
                 ))}
-                {/* Ligne zéro */}
-                <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke="var(--border-strong)" strokeWidth="1.5" strokeDasharray="4 3" />
-                {/* Aire + courbe */}
-                <path d={`${d} L${x(raw.length - 1).toFixed(1)},${zeroY.toFixed(1)} L${x(0).toFixed(1)},${zeroY.toFixed(1)} Z`} fill="url(#dxpnl)" />
-                <path d={d} fill="none" stroke={col} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
-                {/* Dernier point marqué */}
-                <circle cx={x(raw.length - 1)} cy={y(last)} r="3.5" fill={col} stroke="var(--bg-card)" strokeWidth="1.5" />
-                {/* Axe X */}
-                {xi.map((idx, i) => (
-                  <text key={i} x={x(idx)} y={H - 10} textAnchor={i === 0 ? 'start' : i === xi.length - 1 ? 'end' : 'middle'} style={{ font: '10px/1 var(--font-mono)', fill: 'var(--text-dim)' }}>{fmtX(raw[idx].t)}</text>
-                ))}
-              </svg>
+              </div>
             </div>
           </div>
         );
       })()}
 
-      {/* Grecs nets — vega / theta / gamma (le delta net est ~neutre : traité à part) */}
-      {hasGreeks && (
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-            Grecs nets — actuels vs entrée <span style={{ textTransform: 'none', color: 'var(--text-dim)' }}>· théoriques, échelle marché</span>
+      {/* Grecs nets — delta (dérive), vega, theta, gamma — actuels vs entrée */}
+      {hasGreeks && (() => {
+        const rows = [
+          { label: 'Delta', hint: '$ / +1 %', e: deltaInfo ? deltaInfo.entry : null, c: deltaInfo ? deltaInfo.current : null, tag: deltaInfo && deltaInfo.hedged ? 'couvert' : null },
+          { label: 'Vega', hint: '$ / +1 pt IV', e: gEntry.vega, c: gCur.vega },
+          { label: 'Theta', hint: '$ / jour', e: gEntry.theta, c: gCur.theta },
+          { label: 'Gamma', hint: '$ · convexité', e: gEntry.gamma, c: gCur.gamma },
+        ];
+        return (
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+              Grecs nets — actuels vs entrée <span style={{ textTransform: 'none', color: 'var(--text-dim)' }}>· Black-Scholes, strike fixe</span>
+            </div>
+            <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-elevated)' }}>
+                  {['Grec', 'Entrée', 'Actuel', 'Variation'].map((h, i) => (
+                    <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ label, hint, e, c, tag }) => {
+                  const chg = (e != null && c != null) ? c - e : null;
+                  return (
+                    <tr key={label} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                      <td style={{ padding: '11px 16px', color: 'var(--text)' }}>
+                        {label} <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· {hint}</span>
+                        {tag && <span style={{ font: 'var(--type-caption)', color: 'var(--pos-bright)', marginLeft: 6 }}>· {tag}</span>}
+                      </td>
+                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{e != null ? dxUsd(e, { sign: false }) : '—'}</td>
+                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c != null ? dxUsd(c, { sign: false }) : '—'}</td>
+                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: chg == null ? 'var(--text-dim)' : chg >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{chg != null ? dxUsd(chg) : '—'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={{ padding: '10px 16px', font: 'var(--type-caption)', color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
+              Le delta part ~neutre et <strong style={{ color: 'var(--text-soft)' }}>dérive avec le sous-jacent</strong> (gamma){deltaInfo && deltaInfo.hedged ? ', couverture Δ incluse' : ''}.
+            </div>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-elevated)' }}>
-                {['Grec', 'Entrée', 'Actuel', 'Variation'].map((h, i) => (
-                  <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[['vega', 'Vega', '$ / +1 pt IV'], ['theta', 'Theta', '$ / jour'], ['gamma', 'Gamma', '$ · convexité']].map(([k, label, hint]) => {
-                const e = gEntry[k], c = gCur[k];
-                const chg = (e != null && c != null) ? c - e : null;
-                return (
-                  <tr key={k} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '11px 16px', color: 'var(--text)' }}>{label} <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· {hint}</span></td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{e != null ? dxUsd(e, { sign: false }) : '—'}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c != null ? dxUsd(c, { sign: false }) : '—'}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: chg == null ? 'var(--text-dim)' : chg >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{chg != null ? dxUsd(chg) : '—'}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          {/* Delta $ directionnel — dérive réelle (Black-Scholes à strike fixe) */}
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline', padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-            {deltaInfo ? (() => {
-              const drift = deltaInfo.current - deltaInfo.entry;
-              return (
-                <span style={{ font: 'var(--type-body-sm)', color: 'var(--text)' }}>
-                  Delta $ net <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· $ / +1 %</span> :
-                  <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>entrée</span> <strong style={{ color: 'var(--text-soft)' }}>{dxUsd(deltaInfo.entry, { sign: false })}</strong>
-                  <span style={{ color: 'var(--text-dim)', margin: '0 4px' }}>→</span>
-                  <span style={{ color: 'var(--text-muted)' }}>actuel</span> <strong style={{ color: 'var(--text)' }}>{dxUsd(deltaInfo.current, { sign: false })}</strong>
-                  <span style={{ font: 'var(--type-caption)', color: Math.abs(drift) < 1 ? 'var(--text-dim)' : drift >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginLeft: 6 }}>(dérive {dxUsd(drift)})</span>
-                  {deltaInfo.hedged && <span style={{ font: 'var(--type-caption)', color: 'var(--pos-bright)', marginLeft: 6 }}>· couvert</span>}
-                </span>
-              );
-            })() : (
-              <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Delta $ net : — <span style={{ font: 'var(--type-caption)' }}>(disponible après une reprise au marché)</span></span>
-            )}
-            <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-              Revalorisé en Black-Scholes à strike fixe : part ~neutre et dérive avec le sous-jacent (gamma).
-            </span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Correlation premium */}
       {cc && (
