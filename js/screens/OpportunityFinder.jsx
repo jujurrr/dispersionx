@@ -255,7 +255,8 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
       for (const t of o.members) { await DXApi.addListItem(l.id, t, null); }
       window.dispatchEvent(new CustomEvent('dx-lists-changed'));
       addToast && addToast('Liste créée — ouverture de la Construction.');
-      onNav('construction', { listId: l.id });
+      // Reporte l'échéance choisie ici (ex. 45 j) → Construction la présélectionne.
+      onNav('construction', { listId: l.id, duration });
     } catch (e) { addToast && addToast('Création impossible : ' + (e && e.message ? e.message : ''), 'error'); }
   }
 
