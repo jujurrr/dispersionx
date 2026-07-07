@@ -184,7 +184,26 @@ function oppRisk(members, ctx, dur) {
   const scen = OPP_SCEN.map(s => ({ name: s.name, tone: s.tone, pnl: Math.round(R.scenarioPnL(m, s.params).total) }));
   const selloff = scen[0].pnl, disp = scen[1].pnl;
   const edgeRisk = selloff < 0 ? disp / Math.abs(selloff) : null;
-  return { netVega: m.netVega, netTheta: m.netTheta, netDelta: m.netDelta, netPremium: m.netPremium, totalContracts, scen, edgeRisk };
+  const cost = oppCost(m, totalContracts, R);
+  return { netVega: m.netVega, netTheta: m.netTheta, netDelta: m.netDelta, netPremium: m.netPremium, totalContracts, scen, edgeRisk, cost };
+}
+
+// Coûts & capital d'entrée ESTIMÉS (les primes du moteur sont déjà en $ ×100).
+// Débours net = prime des straddles longs − prime reçue du short indice.
+// Exécution ≈ fraction de la prime brute (bid/ask) + commissions par jambe.
+// Capital ≈ débours long + marge du short indice (naked straddle, ~15% notionnel).
+function oppCost(m, totalContracts, R) {
+  const CONTRACT = (R && R.CONTRACT) || 100;
+  const compPrem = m.compPrem, idxPrem = m.idxPrem;         // $ (long composants, short indice)
+  const grossPrem = compPrem + idxPrem;
+  const netDebit = compPrem - idxPrem;
+  const optionLegs = (totalContracts + m.nIndex) * 2;        // call + put par straddle
+  const commission = optionLegs * 0.65;                      // ~0,65 $/jambe à l'entrée
+  const spreadCost = grossPrem * 0.025;                      // ~2,5% de prime brute (croisement bid/ask)
+  const execCost = spreadCost + commission;
+  const marginIdx = idxPrem + 0.15 * m.indexPrice * CONTRACT * m.nIndex;
+  const capitalEst = netDebit + marginIdx;
+  return { netDebit, execCost, marginIdx, capitalEst, grossPrem };
 }
 
 function OpportunityFinder({ onNav, lists, addToast, pro }) {
@@ -454,6 +473,12 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                   </div>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  {window.DXReport && (
+                    <button onClick={() => window.DXReport.opportunity({ index, duration, o })} title="Rapport PDF de cette opportunité"
+                      style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+                      Rapport
+                    </button>
+                  )}
                   <button onClick={() => journalize(o)} title="Enregistrer dans le journal de trades"
                     style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
                     Journaliser
@@ -480,6 +505,13 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                       <span>Edge/risque <strong style={{ color: o.risk.edgeRisk >= 1 ? 'var(--pos-bright)' : 'var(--warn)' }}>{o.risk.edgeRisk.toFixed(2)}×</strong></span>
                     )}
                   </div>
+                  {o.risk.cost && (
+                    <div title="Estimations : bid/ask ~2,5% de la prime brute, commissions ~0,65 $/jambe, marge short indice ~15% du notionnel." style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'baseline', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                      <span>Débours net <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.cost.netDebit)} $</strong></span>
+                      <span>Coût d'exécution est. <strong style={{ color: 'var(--warn)' }}>{fmtS(o.risk.cost.execCost)} $</strong></span>
+                      <span>Capital estimé <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.cost.capitalEst)} $</strong></span>
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {o.risk.scen.map(s => (
                       <div key={s.name} style={{ flex: '1 1 150px', minWidth: 130, padding: '8px 12px', borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: `3px solid var(--${s.tone})` }}>

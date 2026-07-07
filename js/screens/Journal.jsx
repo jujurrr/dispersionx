@@ -232,6 +232,9 @@ function Journal({ onNav, addToast, pro, lists, prefill }) {
                       </div>
                     )}
                     <div style={{ display: 'flex', gap: 6 }}>
+                      {window.DXReport && (
+                        <button onClick={() => window.DXReport.trade(t)} title="Rapport PDF" style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Rapport</button>
+                      )}
                       {t.status === 'open'
                         ? <button onClick={() => setClosing({ id: t.id, exit_date: todayISO(), pnl: '', outcome: 'win', notes: t.notes || '' })} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Clôturer</button>
                         : <button onClick={() => reopen(t)} style={{ font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Rouvrir</button>}
