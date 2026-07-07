@@ -156,21 +156,59 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
     });
   }
 
-  const total_pnl = round2(legs.reduce((a, l) => a + (l.pnl || 0), 0));
+  const straddle_pnl = round2(legs.reduce((a, l) => a + (l.pnl || 0), 0));
   const priced = legs.filter(l => l.covered).length;
 
-  // Grecs nets au DTE restant (loi √T, cohérent avec strategyMetrics du client) —
-  // secondaire : le « réel » ici c'est le P&L piloté par spot/IV.
-  const k = Math.sqrt(Math.max(1, dteNow) / dteEntry);
-  const netVega = Math.round((port.netVega || 0) * k);
-  const netTheta = Math.round((port.netTheta || 0) / k);
+  // ── Facteurs de marché agrégés (jambes couvertes uniquement) ──
+  const cov = legs.filter(l => l.covered && l.spot_change_pct != null);
+  const avgSpotRatio = cov.length ? 1 + (cov.reduce((a, l) => a + l.spot_change_pct, 0) / cov.length) / 100 : 1;
+  const ivR = legs.filter(l => l.covered && l.current_iv > 0 && l.entry_iv > 0);
+  const avgIvRatio = ivR.length ? ivR.reduce((a, l) => a + l.current_iv / l.entry_iv, 0) / ivR.length : 1;
+  const kT = Math.sqrt(Math.max(1, dteNow) / dteEntry);
+  const g = v => (v == null || !isFinite(v)) ? null : Math.round(v);
+
+  // ── Grecs nets THÉORIQUES : entrée (stockés) vs actuel, mis à l'échelle par le
+  // marché réel. Lois ATM : Vega ∝ S·√T ; Theta ∝ S·σ/√T ; Gamma$ ∝ S/(σ·√T). ──
+  const entryGreeks = {
+    vega: g(port.netVega), theta: g(port.netTheta),
+    gamma: port.netGamma != null ? g(port.netGamma) : null,
+  };
+  const currentGreeks = {
+    vega: g((port.netVega || 0) * avgSpotRatio * kT),
+    theta: g((port.netTheta || 0) * avgSpotRatio * avgIvRatio / kT),
+    gamma: port.netGamma != null ? g(port.netGamma * avgSpotRatio / (avgIvRatio * kT)) : null,
+  };
+
+  // ── Delta $ net à l'entrée (par +1%). Une dispersion est ~delta-neutre :
+  // net ≈ 0 (a fortiori si delta-couverte), et il dérive avec le spot (gamma). ──
+  const hedged = !!(s.deltaHedge && s.deltaHedge !== 'none');
+  const deltaEntry = g(hedged ? (port.netDelta != null ? port.netDelta : 0) : (port.netDeltaRaw != null ? port.netDeltaRaw : (port.netDelta || 0)));
+
+  // ── P&L des jambes de couverture (actions par jambe, ou future indice) ──
+  let hedge_pnl = 0;
+  if (s.deltaHedge === 'legs') {
+    for (const c of (s.components || [])) {
+      const leg = legs.find(l => l.symbol === c.ticker);
+      if (leg && leg.covered && leg.spot_change_pct != null && c.hedgeShares) {
+        hedge_pnl += c.hedgeShares * (c.price || 0) * (leg.spot_change_pct / 100);
+      }
+    }
+  } else if (s.deltaHedge === 'index' && s.hedgeUnits) {
+    const idxLeg = legs.find(l => l.role === 'index');
+    if (idxLeg && idxLeg.covered && idxLeg.spot_change_pct != null) {
+      hedge_pnl += s.hedgeUnits * ((s.indexPrice || 0) * 0.01 * CONTRACT) * idxLeg.spot_change_pct;
+    }
+  }
+  hedge_pnl = round2(hedge_pnl);
+  const total_pnl = round2(straddle_pnl + hedge_pnl);
 
   return {
     asof: new Date(now).toISOString(),
     dte: dteNow,
-    total_pnl,
-    net_vega: netVega,
-    net_theta: netTheta,
+    total_pnl, straddle_pnl, hedge_pnl,
+    net_vega: currentGreeks.vega, net_theta: currentGreeks.theta,   // rétro-compat snapshots
+    greeks: { entry: entryGreeks, current: currentGreeks },
+    delta_dollar: { entry: deltaEntry, hedged },
     coverage: { priced, total: legs.length },
     legs,
   };

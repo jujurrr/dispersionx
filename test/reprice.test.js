@@ -92,6 +92,43 @@ test('repriceStrategy : P&L signé par jambe + couverture partielle', async () =
   assert.ok(Math.abs(v.total_pnl - (-1400)) < 2);
 });
 
+test('repriceStrategy : gamma net + delta $ couvert + P&L de couverture', async () => {
+  const strategy = {
+    index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
+    builtAt: new Date().toISOString(), deltaHedge: 'legs',
+    portfolio: { idxPrem: 20000, idxIV: 20, netVega: -50, netTheta: 100, netGamma: 8000, netDeltaRaw: 200, netDelta: 0 },
+    components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 3, hedgeShares: -150 }],
+  };
+  // SPY inchangé ; AAPL spot +5 % (IV inchangée).
+  const getMarket = async (sym) => ({ SPY: { spot: 500, iv: 20 }, AAPL: { spot: 210, iv: 30 } }[sym] || null);
+  const v = await repriceStrategy(strategy, getMarket);
+
+  // Gamma net exposé (entrée) + mis à l'échelle (actuel).
+  assert.equal(v.greeks.entry.gamma, 8000);
+  assert.ok(Math.abs(v.greeks.current.gamma - 8200) < 5, `gamma actuel ~8200, obtenu ${v.greeks.current.gamma}`);
+  // Delta marqué couvert.
+  assert.equal(v.delta_dollar.hedged, true);
+  // AAPL long +5 % → straddle +300 ; couverture short 150 actions → −1500.
+  assert.ok(Math.abs(v.straddle_pnl - 300) < 1, `straddle ${v.straddle_pnl}`);
+  assert.ok(Math.abs(v.hedge_pnl - (-1500)) < 1, `hedge ${v.hedge_pnl}`);
+  assert.ok(Math.abs(v.total_pnl - (-1200)) < 2, `total ${v.total_pnl}`);
+});
+
+test('repriceStrategy : gamma null si non stocké (rétro-compat)', async () => {
+  const strategy = {
+    index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
+    builtAt: new Date().toISOString(),
+    portfolio: { idxPrem: 20000, idxIV: 20, netVega: -50, netTheta: 100 },   // pas de netGamma
+    components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 3 }],
+  };
+  const getMarket = async (sym) => ({ SPY: { spot: 500, iv: 20 }, AAPL: { spot: 200, iv: 30 } }[sym] || null);
+  const v = await repriceStrategy(strategy, getMarket);
+  assert.equal(v.greeks.entry.gamma, null);
+  assert.equal(v.greeks.current.gamma, null);
+  assert.equal(v.hedge_pnl, 0);                 // pas de couverture → 0
+  assert.equal(v.total_pnl, v.straddle_pnl);    // total = straddles seuls
+});
+
 test('repriceStrategy : jambe indice NON mise à l’échelle proxy (régression)', async () => {
   // Bug historique : le spot ETF (SPY ~550) était multiplié par l’échelle proxy
   // (×10) alors que la prime d’entrée est calculée sur le prix ETF → prime

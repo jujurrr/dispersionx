@@ -1,4 +1,11 @@
 /* ─── Position Detail: live P&L tracking for a position ────────── */
+// Format $ cohérent partout : entier, séparateur fr-FR, signe explicite.
+function dxUsd(n, { sign = true } = {}) {
+  if (n == null || !isFinite(n)) return '—';
+  const r = Math.round(n);
+  const s = r < 0 ? '−' : (sign ? '+' : '');
+  return s + Math.abs(r).toLocaleString('fr-FR');
+}
 function PositionDetail({ positionId, onNav, addToast, mode }) {
   const { MetricCard, WarningPanel, Badge } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
@@ -137,6 +144,14 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   const liveLegs  = liveOn ? live.legs : null;
   const legs = m.legs || pos.legs || [];
 
+  // Grecs & delta $ de la reprise réelle (sinon repli théorique de _positionDetail).
+  const gEntry = liveOn && live.greeks ? live.greeks.entry : { vega: eg.vega, theta: eg.theta, gamma: null };
+  const gCur   = liveOn && live.greeks ? live.greeks.current : { vega: cg.vega, theta: cg.theta, gamma: null };
+  const deltaInfo = liveOn && live.delta_dollar ? live.delta_dollar : null;
+  const hedgePnl  = liveOn && typeof live.hedge_pnl === 'number' ? live.hedge_pnl : null;
+  const straddlePnl = liveOn && typeof live.straddle_pnl === 'number' ? live.straddle_pnl : null;
+  const hasGreeks = gEntry.vega != null || gEntry.theta != null || gEntry.gamma != null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
@@ -237,51 +252,88 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
       {/* P&L summary — P&L réel (vs entrée) + variation depuis le dernier relevé */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <MetricCard label="P&L total (vs entrée)" value={totalPnl != null ? (totalPnl >= 0 ? '+' : '') + totalPnl.toLocaleString('fr-FR') : '—'} unit={totalPnl != null ? '$' : ''} accent={totalPnl == null ? 'var(--info)' : totalPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
-        <MetricCard label="P&L depuis dernier relevé" value={dailyPnl != null ? (dailyPnl >= 0 ? '+' : '') + dailyPnl.toLocaleString('fr-FR') : '—'} unit={dailyPnl != null ? '$' : ''} accent={dailyPnl == null ? 'var(--info)' : dailyPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
+        <MetricCard label="P&L total (vs entrée)" value={dxUsd(totalPnl)} unit={totalPnl != null ? '$' : ''} accent={totalPnl == null ? 'var(--info)' : totalPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
+        <MetricCard label="P&L depuis dernier relevé" value={dxUsd(dailyPnl)} unit={dailyPnl != null ? '$' : ''} accent={dailyPnl == null ? 'var(--info)' : dailyPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
         <MetricCard label="DTE restant" value={dteVal != null ? String(dteVal) : '—'} unit={dteVal != null ? 'j' : ''} accent="var(--info)" />
         <MetricCard label="Jambes valorisées (réel)" value={coverage ? `${coverage.priced}/${coverage.total}` : (m.n_legs_priced != null ? `${m.n_legs_priced}/${m.n_legs_total}` : String(legs.length))} accent="var(--info)" />
       </div>
 
-      {/* Évolution du P&L — courbe des snapshots mark-to-market */}
+      {/* Décomposition P&L : straddles + couverture Δ (actions/future) */}
+      {(straddlePnl != null && hedgePnl != null && Math.abs(hedgePnl) >= 1) && (
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', font: 'var(--type-body-sm)', color: 'var(--text-muted)', padding: '4px 2px' }}>
+          <span>Straddles : <strong style={{ color: straddlePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(straddlePnl)} $</strong></span>
+          <span>· Couverture Δ (actions) : <strong style={{ color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(hedgePnl)} $</strong></span>
+          <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxUsd(totalPnl)} $</strong></span>
+        </div>
+      )}
+
+      {/* Évolution du P&L — courbe des snapshots mark-to-market (axes + grille) */}
       {(() => {
-        const pts = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: (s.taken_at || '').slice(0, 10), v: s.total_pnl }));
-        if (pts.length < 2) return null;
-        const vals = pts.map(p => p.v);
-        const min = Math.min(0, ...vals), max = Math.max(0, ...vals);
-        const span = (max - min) || 1;
-        const W = 640, H = 120, pad = 6;
-        const x = i => pad + (i / (pts.length - 1)) * (W - 2 * pad);
-        const y = v => H - pad - ((v - min) / span) * (H - 2 * pad);
-        const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+        const raw = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: s.taken_at, v: s.total_pnl }));
+        if (raw.length < 2) return null;
+        const vals = raw.map(p => p.v);
+        let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
+        const pad0 = (hi - lo) * 0.12 || 1; lo -= pad0; hi += pad0;
+        const span = (hi - lo) || 1;
+        // Géométrie (viewBox non étiré : preserveAspectRatio par défaut).
+        const W = 760, H = 240, mL = 62, mR = 14, mT = 12, mB = 30;
+        const pw = W - mL - mR, ph = H - mT - mB;
+        const x = i => mL + (i / (raw.length - 1)) * pw;
+        const y = v => mT + (hi - v) / span * ph;
+        // Ticks Y « ronds » (5 niveaux).
+        const ticks = Array.from({ length: 5 }, (_, i) => lo + (i / 4) * span);
+        const axisFmt = v => Math.round(v).toLocaleString('fr-FR');
+        // X : heure si tout le même jour (intraday), sinon date.
+        const days = new Set(raw.map(p => (p.t || '').slice(0, 10)));
+        const fmtX = iso => { const d = new Date(iso); if (isNaN(d)) return ''; return days.size <= 1 ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }); };
+        const xi = [0, Math.floor((raw.length - 1) / 2), raw.length - 1];
+        const d = raw.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
         const last = vals[vals.length - 1];
         const zeroY = y(0);
+        const col = last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
         return (
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L</span>
-              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{pts.length} points · depuis l'entrée</span>
+              <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L ($)</span>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{raw.length} points · depuis l'entrée</span>
             </div>
-            <div style={{ padding: 16 }}>
-              <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none" style={{ display: 'block' }}>
-                <line x1={pad} y1={zeroY} x2={W - pad} y2={zeroY} stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="3 3" />
-                <path d={`${d} L${x(pts.length - 1).toFixed(1)},${zeroY.toFixed(1)} L${x(0).toFixed(1)},${zeroY.toFixed(1)} Z`} fill={last >= 0 ? 'var(--pos-soft)' : 'var(--neg-soft)'} opacity="0.5" />
-                <path d={d} fill="none" stroke={last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)'} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
+            <div style={{ padding: '14px 12px 8px' }}>
+              <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block', overflow: 'visible' }}>
+                <defs>
+                  <linearGradient id="dxpnl" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={col} stopOpacity="0.28" />
+                    <stop offset="100%" stopColor={col} stopOpacity="0.02" />
+                  </linearGradient>
+                </defs>
+                {/* Grille + axe Y */}
+                {ticks.map((tv, i) => (
+                  <g key={i}>
+                    <line x1={mL} y1={y(tv)} x2={W - mR} y2={y(tv)} stroke="var(--border-subtle)" strokeWidth="1" />
+                    <text x={mL - 8} y={y(tv) + 3.5} textAnchor="end" style={{ font: '10px/1 var(--font-mono)', fill: 'var(--text-dim)' }}>{axisFmt(tv)}</text>
+                  </g>
+                ))}
+                {/* Ligne zéro */}
+                <line x1={mL} y1={zeroY} x2={W - mR} y2={zeroY} stroke="var(--border-strong)" strokeWidth="1.5" strokeDasharray="4 3" />
+                {/* Aire + courbe */}
+                <path d={`${d} L${x(raw.length - 1).toFixed(1)},${zeroY.toFixed(1)} L${x(0).toFixed(1)},${zeroY.toFixed(1)} Z`} fill="url(#dxpnl)" />
+                <path d={d} fill="none" stroke={col} strokeWidth="2.2" strokeLinejoin="round" strokeLinecap="round" />
+                {/* Dernier point marqué */}
+                <circle cx={x(raw.length - 1)} cy={y(last)} r="3.5" fill={col} stroke="var(--bg-card)" strokeWidth="1.5" />
+                {/* Axe X */}
+                {xi.map((idx, i) => (
+                  <text key={i} x={x(idx)} y={H - 10} textAnchor={i === 0 ? 'start' : i === xi.length - 1 ? 'end' : 'middle'} style={{ font: '10px/1 var(--font-mono)', fill: 'var(--text-dim)' }}>{fmtX(raw[idx].t)}</text>
+                ))}
               </svg>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
-                <span>{pts[0].t}</span>
-                <span>{pts[pts.length - 1].t}</span>
-              </div>
             </div>
           </div>
         );
       })()}
 
-      {/* Greeks comparison */}
-      {(Object.keys(cg).length > 0 || Object.keys(eg).length > 0) && (
+      {/* Grecs nets — vega / theta / gamma (le delta net est ~neutre : traité à part) */}
+      {hasGreeks && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-            Grecs — actuels vs entrée
+            Grecs nets — actuels vs entrée <span style={{ textTransform: 'none', color: 'var(--text-dim)' }}>· théoriques, échelle marché</span>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
             <thead>
@@ -292,20 +344,31 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
               </tr>
             </thead>
             <tbody>
-              {['delta', 'gamma', 'vega', 'theta'].map(g => {
-                const dp = g === 'gamma' ? 2 : 0;
-                const chg = gc[g] ?? 0;
+              {[['vega', 'Vega', '$ / +1 pt IV'], ['theta', 'Theta', '$ / jour'], ['gamma', 'Gamma', '$ · convexité']].map(([k, label, hint]) => {
+                const e = gEntry[k], c = gCur[k];
+                const chg = (e != null && c != null) ? c - e : null;
                 return (
-                  <tr key={g} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '11px 16px', font: 'var(--type-body-sm)', color: 'var(--text)', textTransform: 'capitalize' }}>{g}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{eg[g] != null ? eg[g].toFixed(dp) : '—'}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{cg[g] != null ? cg[g].toFixed(dp) : '—'}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: chg >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{chg != null ? (chg >= 0 ? '+' : '') + chg.toFixed(dp) : '—'}</td>
+                  <tr key={k} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '11px 16px', color: 'var(--text)' }}>{label} <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· {hint}</span></td>
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{e != null ? dxUsd(e, { sign: false }) : '—'}</td>
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c != null ? dxUsd(c, { sign: false }) : '—'}</td>
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: chg == null ? 'var(--text-dim)' : chg >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{chg != null ? dxUsd(chg) : '—'}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          {/* Delta $ directionnel — traité à part car ~neutre à l'entrée */}
+          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'baseline', padding: '12px 16px', borderTop: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
+            <span style={{ font: 'var(--type-body-sm)', color: 'var(--text)' }}>
+              Delta $ net <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· $ / +1 %</span> :
+              <strong style={{ color: 'var(--text)', marginLeft: 6 }}>{deltaInfo ? dxUsd(deltaInfo.entry, { sign: false }) : (gEntry ? '—' : '—')}</strong>
+              {deltaInfo && deltaInfo.hedged && <span style={{ font: 'var(--type-caption)', color: 'var(--pos-bright)', marginLeft: 6 }}>couvert ≈ 0</span>}
+            </span>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+              Une dispersion est ~delta-neutre : le delta dérive avec le sous-jacent (gamma). Le suivi exact du delta courant demanderait une revalorisation par strike (non disponible).
+            </span>
+          </div>
         </div>
       )}
 
@@ -360,11 +423,19 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                       {l.iv_change != null && <span style={{ color: l.iv_change >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginLeft: 6, fontSize: 10 }}>{l.iv_change > 0 ? '+' : ''}{l.iv_change}</span>}
                     </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: l.pnl == null ? 'var(--text-muted)' : lpnlPos ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>
-                      {l.pnl != null ? (l.pnl >= 0 ? '+' : '') + Math.round(l.pnl).toLocaleString('fr-FR') + ' $' : '—'}
+                      {l.pnl != null ? dxUsd(l.pnl) + ' $' : '—'}
                     </td>
                   </tr>
                 );
               })}
+              {hedgePnl != null && Math.abs(hedgePnl) >= 1 && (
+                <tr style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+                  <td style={{ padding: '11px 16px', color: 'var(--text)' }}>Couverture Δ <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· actions / future</span></td>
+                  <td style={{ padding: '11px 16px', textAlign: 'right' }}><span style={{ color: 'var(--text-muted)', font: '600 11px/1 var(--font-sans)', textTransform: 'uppercase' }}>hedge</span></td>
+                  <td colSpan={4} style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>P&L des actions/future de couverture du delta</td>
+                  <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>{dxUsd(hedgePnl)} $</td>
+                </tr>
+              )}
             </tbody>
           </table>
           {coverage && coverage.priced < coverage.total && (
@@ -426,8 +497,8 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
               {snaps.map((s, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                   <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{(s.taken_at || '').slice(0, 16).replace('T', ' ')}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.total_pnl != null ? s.total_pnl.toLocaleString('fr-FR') + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? s.daily_pnl.toLocaleString('fr-FR') + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.total_pnl != null ? dxUsd(s.total_pnl) + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}</td>
+                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? dxUsd(s.daily_pnl) + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
                 </tr>
               ))}
             </tbody>

@@ -208,7 +208,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       return {
         ...t, weightUsed: resolveW[i].w / sumLin * 100, weightEst: resolveW[i].est, share: wNorm * 100,
         nContracts: n, vega: t.g.vega * n, theta: t.g.theta * n, premium: t.g.premium * n,
-        delta: t.g.delta1pct * n, notional: t.price * CONTRACT * n,
+        delta: t.g.delta1pct * n, gamma: t.g.gammaK * n, notional: t.price * CONTRACT * n,
         // Couverture par jambe : actions du sous-jacent à trader pour annuler
         // le delta de ce straddle (long straddle → delta positif → vendre).
         hedgeShares: -(t.g.deltaSh * CONTRACT * n),
@@ -217,10 +217,12 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     });
     const compVega  = comps.reduce((s, c) => s + c.vega, 0);
     const compTheta = comps.reduce((s, c) => s + c.theta, 0);
+    const compGamma = comps.reduce((s, c) => s + c.gamma, 0);
     const compPrem  = comps.reduce((s, c) => s + c.premium, 0);
     const compDelta = comps.reduce((s, c) => s + c.delta, 0);
     const idxVega      = base.idxG.vega * nIndex;         // magnitude (jambe short)
     const idxThetaGain = -base.idxG.theta * nIndex;       // short → theta positif
+    const idxGamma     = base.idxG.gammaK * nIndex;       // convexité de la jambe indice (short)
     const idxPrem      = base.idxG.premium * nIndex;
     const idxDelta     = -base.idxG.delta1pct * nIndex;   // short → delta opposé
     const netDelta     = compDelta + idxDelta;
@@ -243,6 +245,8 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       topVegaShare: compVega > 0 ? Math.max(...comps.map(c => c.vega)) / compVega : 0,
       netVega: compVega - idxVega,
       netTheta: compTheta + idxThetaGain,
+      // Gamma net $ : long composants (+convexité) − short indice (−convexité).
+      compGamma, idxGamma, netGamma: compGamma - idxGamma,
       netPremium: idxPrem - compPrem,
       idxNotional: base.indexPrice * CONTRACT * nIndex,
       compNotional: comps.reduce((s, c) => s + c.notional, 0),
@@ -270,7 +274,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       portfolio: {
         idxVega: sized.idxVega, idxTheta: sized.idxThetaGain, idxPrem: sized.idxPrem,
         compVega: sized.compVega, compTheta: sized.compTheta, compPrem: sized.compPrem,
-        netVega: sized.netVega, netTheta: sized.netTheta, netPremium: sized.netPremium,
+        netVega: sized.netVega, netTheta: sized.netTheta, netGamma: sized.netGamma, netPremium: sized.netPremium,
         idxDelta: sized.idxDelta, compDelta: sized.compDelta,
         netDelta: deltaHedge !== 'none' ? 0 : sized.netDelta,
         netDeltaRaw: sized.netDelta,
