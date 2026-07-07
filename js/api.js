@@ -495,24 +495,51 @@
   // entre appareils ; sinon store local 'dx-positions' (comportement historique).
   // Les positions créées hors-ligne (id « loc-… ») restent gérées en local même
   // une fois le cloud actif. La forme renvoyée est identique dans les deux cas.
+  // Nom par défaut UNIQUE et parlant quand l'utilisateur n'en saisit pas :
+  // « <indice> <durée>j · dispersion · <liste> · JJ/MM » — inclut la liste et la
+  // date pour ne pas se retrouver avec des positions homonymes.
+  function _defaultPositionName(s) {
+    if (!s) return null;
+    const m = strategyMetrics(s);
+    const d = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+    return m.name + ' · ' + d;
+  }
   async function commitPosition(list_id, name) {
     let s = null;
     try { s = JSON.parse(localStorage.getItem('dx-strategy-' + list_id) || 'null'); } catch {}
+    const finalName = (name && name.trim()) || _defaultPositionName(s);
     const c = _cloud();
     if (c && c.positions) {
       if (!s || !s.components) throw new Error("aucune stratégie construite pour cette liste — construisez-la d'abord (Builder ou Construction)");
-      try { return await c.positions.commit(list_id, name || null, s); }
+      try { return await c.positions.commit(list_id, finalName, s); }
       catch (e) { console.warn('cloud commitPosition', e); }
     }
-    try { return await _post('/monitor/commit', { list_id, name }); }
+    try { return await _post('/monitor/commit', { list_id, name: finalName }); }
     catch {
       if (!s || !s.components) throw new Error("aucune stratégie construite pour cette liste — construisez-la d'abord (Builder ou Construction)");
       const id = 'loc-' + Date.now();
       const arr = _loadPositions();
-      arr.push({ id, list_id, name: name || null, strategy: s, committed_at: new Date().toISOString(), status: 'open', snapshots: [] });
+      arr.push({ id, list_id, name: finalName, strategy: s, committed_at: new Date().toISOString(), status: 'open', snapshots: [] });
       _savePositions(arr);
       return { success: true, commitment_id: id, local: true };
     }
+  }
+  // Renomme une position suivie (local ou cloud). name vide → repli sur le nom
+  // dérivé de la stratégie à l'affichage.
+  async function renamePosition(cid, name) {
+    const nm = (name || '').trim() || null;
+    if (_isLocalPos(cid)) {
+      const arr = _loadPositions(); const p = arr.find(x => x.id === cid);
+      if (p) { p.name = nm; _savePositions(arr); }
+      return { success: true, local: true, name: nm };
+    }
+    const c = _cloud();
+    if (c && c.positions && c.positions.rename) {
+      try { await c.positions.rename(cid, nm); return { success: true, name: nm }; }
+      catch (e) { console.warn('cloud renamePosition', e); }
+    }
+    try { return await _post('/monitor/position/' + cid + '/rename', { name: nm }); }
+    catch { return { success: true, name: nm }; }
   }
   async function getPositions(list_id) {
     const c = _cloud();
@@ -629,7 +656,7 @@
     localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
     getRisk,
     getChecklist, commitPosition,
-    getPositions, getPosition, snapshotPosition, closePosition, deletePosition, reprice,
+    getPositions, getPosition, snapshotPosition, closePosition, deletePosition, reprice, renamePosition,
   };
 
   // Auto-health-check on load, then every 15s

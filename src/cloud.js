@@ -333,6 +333,11 @@ const positions = {
     if (error) throw error;
     return { success: true };
   },
+  async rename(id, name) {
+    const { error } = await supa.from('positions').update({ name: name || null }).eq('id', id);
+    if (error) throw error;
+    return { success: true };
+  },
   async remove(id) {
     const { error } = await supa.from('positions').delete().eq('id', id);
     if (error) throw error;

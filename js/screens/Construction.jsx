@@ -253,7 +253,8 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   function buildStrategy() {
     if (!base || !sized) return null;
     return {
-      listId, index: base.indexSym, indexEtf: base.indexEtf, indexPrice: base.indexPrice,
+      listId, listName: (lists || []).find(l => l.id === listId)?.name || (moduleCtx && moduleCtx.listName) || null,
+      index: base.indexSym, indexEtf: base.indexEtf, indexPrice: base.indexPrice,
       duration, expiry, builtAt: new Date().toISOString(),
       nIndex, sizingMethod: sizing, weightBasis, deltaHedge,
       // Contrats de future indice à trader : couverture globale (index) ou de la

@@ -8,6 +8,10 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   // chaque ouverture. Le cron, lui, persiste l'historique.
   const [live, setLive] = React.useState(null);
   const [liveLoading, setLiveLoading] = React.useState(false);
+  // Édition du nom de la position.
+  const [editingName, setEditingName] = React.useState(false);
+  const [nameInput, setNameInput] = React.useState('');
+  const [renaming, setRenaming] = React.useState(false);
   // Confirmation in-app (ConfirmDialog) — plus de popup navigateur.
   const [dialog, setDialog] = React.useState(null);
   const [dialogBusy, setDialogBusy] = React.useState(false);
@@ -57,6 +61,20 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
       addToast && addToast(`Erreur : ${err.message}`, 'error');
     } finally {
       setSnapLoading(false);
+    }
+  }
+
+  async function handleRename() {
+    setRenaming(true);
+    try {
+      const r = await DXApi.renamePosition(positionId, nameInput);
+      addToast && addToast('Nom mis à jour.', 'ok');
+      setEditingName(false);
+      load();
+    } catch (err) {
+      addToast && addToast(`Erreur : ${err.message}`, 'error');
+    } finally {
+      setRenaming(false);
     }
   }
 
@@ -123,9 +141,37 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>
-            {pos.name || 'Position'}
-          </h1>
+          {editingName ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+              <input
+                autoFocus
+                value={nameInput}
+                onChange={e => setNameInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleRename(); if (e.key === 'Escape') setEditingName(false); }}
+                placeholder="Nom de la position"
+                maxLength={80}
+                style={{ font: '600 20px/1.2 var(--font-sans)', minWidth: 260, padding: '6px 10px', background: 'var(--bg-base)', border: '1px solid var(--accent)', borderRadius: 'var(--radius)', color: 'var(--text)', outline: 'none' }}
+              />
+              <button onClick={handleRename} disabled={renaming}
+                style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+                {renaming ? '…' : 'Enregistrer'}
+              </button>
+              <button onClick={() => setEditingName(false)}
+                style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+                Annuler
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+              <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>
+                {pos.name || 'Position'}
+              </h1>
+              <button onClick={() => { setNameInput(pos.name || ''); setEditingName(true); }} title="Renommer la position"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', flexShrink: 0 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" /></svg>
+              </button>
+            </div>
+          )}
           <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
             {pos.index_symbol || pos.idx} · {pos.strategy_type || 'dispersion'} · {isOpen ? 'Ouverte' : 'Fermée'}
             {(pos.committed_at || pos.opened) && ` · depuis le ${(pos.committed_at || pos.opened).slice(0, 10)}`}
