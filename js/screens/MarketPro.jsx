@@ -3,7 +3,7 @@
    alertes, et calendrier des résultats. Gated Pro (écran cadenas sinon).
    Réutilise window.CorrelationBarometer / AlertsPanel / EarningsPanel. */
 
-function MarketPro({ onNav, addToast, pro }) {
+function MarketPro({ onNav, addToast, pro, lists }) {
   const DS = window.DispersionXDesignSystem_cb86be;
   const { Badge } = DS;
   const INDICES = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
@@ -76,7 +76,7 @@ function MarketPro({ onNav, addToast, pro }) {
       </div>
 
       {window.CorrelationBarometer && <window.CorrelationBarometer index={index} />}
-      {window.EarningsPanel && <window.EarningsPanel index={index} />}
+      {window.EarningsPanel && <window.EarningsPanel lists={lists} />}
       {window.AlertsPanel && <window.AlertsPanel index={index} addToast={addToast} />}
     </div>
   );

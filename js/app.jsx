@@ -260,7 +260,7 @@ function App() {
       screenEl = <window.OpportunityFinder onNav={onNav} lists={lists} addToast={addToast} pro={pro} />;
       break;
     case 'market-pro':
-      screenEl = <window.MarketPro onNav={onNav} addToast={addToast} pro={pro} />;
+      screenEl = <window.MarketPro onNav={onNav} addToast={addToast} pro={pro} lists={lists} />;
       break;
     case 'preferences':
       screenEl = <window.Preferences user={user} onNav={onNav} onAuth={handleAuth} addToast={addToast} mode={mode} />;
