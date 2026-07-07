@@ -17,6 +17,7 @@ function Landing() {
     ['workflow', 'Workflow'],
     ['risques', 'Risques'],
     ['execution', 'Exécution'],
+    ['pro', 'Pro'],
   ];
   function scrollTo(id) {
     const el = document.getElementById(id);
@@ -291,6 +292,24 @@ function Landing() {
     );
   }
 
+  // ═══════════════════════ 6. PRO (démo visuelle) ═══════════════════════
+  function ProSection() {
+    return (
+      <section id="pro" style={{ ...sectionPad, background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div style={wrap}>
+          <div style={{ textAlign: 'center', marginBottom: 34 }}>
+            <div style={{ ...eyebrow, textAlign: 'center' }}>DispersionX Pro</div>
+            <h2 style={{ ...h2, maxWidth: 780, margin: '0 auto 16px' }}>Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel.</h2>
+            <p style={{ ...lede, margin: '0 auto', textAlign: 'center' }}>
+              Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur <strong style={{ color: 'var(--text-soft)' }}>construit les meilleures dispersions tout seul</strong>, et le suivi valorise vos positions au marché réel, jour après jour.
+            </p>
+          </div>
+          {window.ProBenefits ? <window.ProBenefits onNav={window.__dxNav} /> : null}
+        </div>
+      </section>
+    );
+  }
+
   // ═══════════════════════ CTA FINAL + FOOTER ═══════════════════════
   function FinalCTA() {
     return (
@@ -329,6 +348,7 @@ function Landing() {
       <Workflow />
       <Risques />
       <Execution />
+      <ProSection />
       <FinalCTA />
       <Footer />
     </div>

@@ -31,7 +31,7 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
           </p>
         </div>
         <window.ProLockedPreview context="positions" onNav={onNav} addToast={addToast} minHeight={430}>
-          {SampleSuivi()}
+          {window.ProDemoSuivi()}
         </window.ProLockedPreview>
       </div>
     );
@@ -150,46 +150,6 @@ function PositionCard({ pos, onNav, lists }) {
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
           {pos.n_snapshots || 0} snapshot(s)
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* Aperçu représentatif (non interactif) affiché flouté sous le soft-paywall. */
-function SampleSuivi() {
-  const cards = [
-    { name: 'Tech US · 14/07', idx: 'NDX', pnl: 1840, dte: 22, snaps: 6, up: true },
-    { name: 'Value SPX · 09/07', idx: 'SPX', pnl: -520, dte: 15, snaps: 4, up: false },
-    { name: 'Semis · 02/07', idx: 'NDX', pnl: 3110, dte: 31, snaps: 9, up: true },
-  ];
-  const pts = [0, 6, 3, 9, 7, 14, 11, 18];
-  const W = 520, H = 96, max = Math.max(...pts), min = Math.min(...pts, 0);
-  const x = i => (i / (pts.length - 1)) * W;
-  const y = v => H - ((v - min) / ((max - min) || 1)) * H;
-  const d = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(0)},${y(v).toFixed(0)}`).join(' ');
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
-        {cards.map((c, i) => (
-          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: `3px solid ${c.up ? 'var(--pos)' : 'var(--neg)'}`, borderRadius: 'var(--radius-lg)', padding: 16 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{c.name}</span>
-              <span style={{ font: '500 10px/1 var(--font-mono)', padding: '3px 8px', borderRadius: 'var(--radius-pill)', background: 'var(--pos-soft)', color: 'var(--pos-bright)', border: '1px solid var(--pos)' }}>Ouverte</span>
-            </div>
-            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginBottom: 10 }}>{c.idx} · dispersion · {c.dte} DTE</div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ font: 'var(--type-data)', color: c.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{c.up ? '+' : ''}{c.pnl.toLocaleString('fr-FR')} $</span>
-              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{c.snaps} snapshots</span>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
-        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>Évolution du P&L</div>
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
-          <path d={`${d} L${W},${H} L0,${H} Z`} fill="var(--pos-soft)" opacity="0.5" />
-          <path d={d} fill="none" stroke="var(--pos-bright)" strokeWidth="2" />
-        </svg>
       </div>
     </div>
   );
