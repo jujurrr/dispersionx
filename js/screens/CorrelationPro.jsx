@@ -1,10 +1,92 @@
-/* ─── Corrélation Pro : baromètre de corrélation implicite (module Pro) ───
-   Répond à « la corrélation est-elle chère en ce moment ? » — le signal clé
-   d'une dispersion. Pour un indice : ρ_implicite actuelle, son RANG PERCENTILE
-   sur ~2 ans, un verdict, et l'historique. Percentile élevé = corrélation chère
-   = dispersion (short corrélation) attractive. Données estimées/différées. */
+/* ─── Baromètre de corrélation implicite (panneau intégré aux Opportunités) ───
+   Répond à « la corrélation est-elle chère ? » pour l'indice courant : ρ_implicite
+   actuelle, son RANG PERCENTILE sur ~2 ans, verdict, et historique. Percentile
+   élevé = corrélation chère = dispersion (short corrélation) attractive.
+   Données estimées/différées. Exporté comme window.CorrelationBarometer. */
 
 const _baroCache = {};   // index -> { at, data }
+
+/* Jauge prime de corrélation — RÉPLIQUE EXACTE du Correlation Lab (PrimeGauge)
+   pour un affichage identique et sans bug (viewBox 0 0 200 118, overflow
+   visible, aiguille en coordonnées directes, animation RAF). */
+function PrimeGauge({ implied, realized, size = 240 }) {
+  const premium = (implied - realized) * 100;
+  const target  = Math.max(0, Math.min(1, (premium + 20) / 40));
+  const [anim, setAnim] = React.useState(0);
+  const rafRef  = React.useRef(null);
+  const t0Ref   = React.useRef(null);
+
+  React.useEffect(() => {
+    t0Ref.current = null;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    const from = 0, to = target, DUR = 1100;
+    function tick(ts) {
+      if (!t0Ref.current) t0Ref.current = ts;
+      const p = Math.min(1, (ts - t0Ref.current) / DUR);
+      const e = 1 - Math.pow(1 - p, 3);
+      setAnim(from + (to - from) * e);
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+    }
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [target]);
+
+  let tone, verdict;
+  if (premium >= 6)      { tone = '#26a69a'; verdict = 'Favorable'; }
+  else if (premium >= 0) { tone = '#ffa726'; verdict = 'Neutre'; }
+  else                   { tone = '#ef5350'; verdict = 'Défavorable'; }
+
+  const W = 200, CX = 100, CY = 100, R = 76;
+  const angle = Math.PI * (1 - anim);
+  const NX = CX + (R - 8) * Math.cos(angle);
+  const NY = CY - (R - 8) * Math.sin(angle);
+  const arcD = `M ${CX - R} ${CY} A ${R} ${R} 0 0 1 ${CX + R} ${CY}`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: size }}>
+      <svg viewBox={`0 0 ${W} 118`} width={size} height={size * 118 / W} style={{ display: 'block', overflow: 'visible' }}>
+        <defs>
+          <linearGradient id="baroPgGrad" x1={CX - R} y1="0" x2={CX + R} y2="0" gradientUnits="userSpaceOnUse">
+            <stop offset="0%"   stopColor="#ef5350" />
+            <stop offset="48%"  stopColor="#ffa726" />
+            <stop offset="56%"  stopColor="#ffc107" />
+            <stop offset="100%" stopColor="#26a69a" />
+          </linearGradient>
+        </defs>
+        <path d={arcD} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="13" strokeLinecap="round" />
+        <path d={arcD} fill="none" stroke="url(#baroPgGrad)" strokeWidth="13" strokeLinecap="round" opacity="0.88" />
+        {[0, 0.25, 0.5, 0.75, 1].map(n => {
+          const a = Math.PI * (1 - n);
+          const ix = CX + (R - 7) * Math.cos(a), iy = CY - (R - 7) * Math.sin(a);
+          const ox = CX + (R + 7) * Math.cos(a), oy = CY - (R + 7) * Math.sin(a);
+          return <line key={n} x1={ix} y1={iy} x2={ox} y2={oy} stroke="rgba(0,0,0,0.3)" strokeWidth={n === 0.5 ? 2 : 1} />;
+        })}
+        {[{ n: 0, l: '−20' }, { n: 0.5, l: '0' }, { n: 1, l: '+20' }].map(({ n, l }) => {
+          const a = Math.PI * (1 - n);
+          return <text key={l} x={CX + (R + 15) * Math.cos(a)} y={CY - (R + 15) * Math.sin(a)}
+            textAnchor="middle" dominantBaseline="middle" fontSize="8"
+            fontFamily="var(--font-mono)" fill="var(--text-dim)">{l}</text>;
+        })}
+        <line x1={CX + 10 * Math.cos(angle)} y1={CY - 10 * Math.sin(angle)} x2={NX} y2={NY} stroke={tone} strokeWidth="2.5" strokeLinecap="round" />
+        <circle cx={CX} cy={CY} r="7" fill="var(--bg-card)" stroke={tone} strokeWidth="2.5" />
+        <text x={CX} y={CY + 22} textAnchor="middle" fontSize="12" fontFamily="var(--font-mono)" fontWeight="700" fill={tone}>
+          {premium >= 0 ? '+' : ''}{premium.toFixed(1)} pts
+        </text>
+      </svg>
+      <div style={{ textAlign: 'center', marginTop: 6 }}>
+        <div style={{ font: '700 11px/1 var(--font-sans)', color: tone, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 12 }}>{verdict}</div>
+        <div style={{ display: 'flex', gap: 22 }}>
+          {[{ label: 'ρ implicite', val: implied, c: 'var(--accent-hover)' }, { label: 'ρ̂ réalisée', val: realized, c: 'var(--info)' }].map(d => (
+            <div key={d.label} style={{ textAlign: 'center' }}>
+              <div style={{ font: '10px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 3 }}>{d.label}</div>
+              <div style={{ font: '700 15px/1 var(--font-mono)', color: d.c }}>{d.val.toFixed(2)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Courbe historique ρ implicite (accent) vs réalisée (atténuée).
 function BaroChart({ series }) {
@@ -44,21 +126,17 @@ async function baroGather(index) {
   await window.DXStore.loadIndex(index);
   const d = window.DXStore.getIndexData(index) || {};
   const comps = (d.components || []).map(c => c.ticker).filter(Boolean).slice(0, 20);
-  if (comps.length < 2) throw new Error('composants indisponibles pour cet indice — réessayez dans quelques secondes.');
+  if (comps.length < 2) throw new Error('composants indisponibles');
   const data = await DXApi.correlationBarometer(comps, index);
-  if (!data || data.error || !data.current) throw new Error('Baromètre indisponible pour cet indice (historique insuffisant).');
+  if (!data || data.error || !data.current) throw new Error('baromètre indisponible');
   return data;
 }
 
-function CorrelationPro({ onNav, addToast, pro }) {
-  const DS = window.DispersionXDesignSystem_cb86be;
-  const { Badge, CorrelationGauge } = DS;
-  const INDICES = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
-  const [index, setIndex] = React.useState('SPX');
+// Panneau intégrable : suit l'indice fourni par le parent (Opportunités).
+function CorrelationBarometer({ index }) {
   const [loading, setLoading] = React.useState(false);
   const [data, setData] = React.useState(null);
   const [error, setError] = React.useState('');
-  const [checkoutBusy, setCheckoutBusy] = React.useState(false);
 
   async function load(idx, force) {
     setError(''); setData(null); setLoading(true);
@@ -70,139 +148,59 @@ function CorrelationPro({ onNav, addToast, pro }) {
       _baroCache[idx] = { at: Date.now(), data: d };
       setData(d);
     } catch (e) {
-      const msg = e && /HTTP (4|5)\d\d/.test(e.message || '') ? 'Historique insuffisant ou indisponible pour cet indice.' : (e && e.message ? e.message : 'Chargement impossible.');
-      setError(msg);
+      setError(e && e.message ? e.message : 'baromètre indisponible');
     } finally { setLoading(false); }
   }
-  React.useEffect(() => { if (pro) load(index); /* eslint-disable-next-line */ }, [index, pro]);
-
-  // ── Écran verrouillé (non Pro) ──
-  if (!pro) {
-    const signedIn = !!(window.DXCloud && window.DXCloud.user);
-    async function goPro() {
-      if (!signedIn) { onNav('login'); return; }
-      setCheckoutBusy(true);
-      try { await window.DXCloud.startProCheckout(); }
-      catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setCheckoutBusy(false); }
-    }
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}>
-        <div style={{ width: '100%', maxWidth: 440, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', padding: '28px 26px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent-hover)' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-          </div>
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Corrélation Pro</h2>
-              <Badge tone="accent" size="sm">Pro</Badge>
-            </div>
-            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, maxWidth: 360 }}>
-              Le baromètre de corrélation implicite : sachez si la corrélation est <strong style={{ color: 'var(--text-soft)' }}>chère</strong> — le moment où une dispersion est attractive.
-            </p>
-          </div>
-          <button onClick={goPro} disabled={checkoutBusy}
-            style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 26px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: checkoutBusy ? 'default' : 'pointer', opacity: checkoutBusy ? 0.7 : 1 }}>
-            {checkoutBusy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
-          </button>
-          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Abonnement mensuel · paiement sécurisé Stripe · résiliable à tout moment</div>
-        </div>
-      </div>
-    );
-  }
+  React.useEffect(() => { load(index); /* eslint-disable-next-line */ }, [index]);
 
   const cur = data && data.current;
   const toneVar = cur ? { pos: 'var(--pos-bright)', warn: 'var(--warn)', neg: 'var(--neg-bright)' }[cur.tone] : 'var(--text)';
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* En-tête */}
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Corrélation Pro</h1>
-          <Badge tone="accent" size="sm">Pro</Badge>
-        </div>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 720 }}>
-          Baromètre de corrélation implicite : la corrélation que le marché price aujourd'hui, comparée à ses 2 dernières années. Corrélation <strong style={{ color: 'var(--text-soft)' }}>chère</strong> = dispersion attractive.
-        </p>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '13px 20px', borderBottom: '1px solid var(--border-subtle)' }}>
+        <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>Baromètre de corrélation implicite</span>
+        <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-muted)' }}>· {index}</span>
+        {cur && <span style={{ marginLeft: 'auto', font: '700 12px/1 var(--font-mono)', color: toneVar }}>{cur.percentile}<sup>e</sup> pct</span>}
       </div>
 
-      {/* Bandeau honnête */}
-      <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--info)', borderRadius: 'var(--radius-lg)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-        <span style={{ color: 'var(--info)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>i</span>
-        <span>ρ implicite estimée (méthode VIX/HV, cohérente passé/présent). Signal <strong style={{ color: 'var(--text)' }}>indicatif</strong> sur données différées — pas un conseil.</span>
-      </div>
-
-      {/* Sélecteur d'indice */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Indice</span>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          {INDICES.map(s => (
-            <button key={s} onClick={() => setIndex(s)} disabled={loading}
-              style={{ padding: '7px 14px', font: '700 12px/1 var(--font-mono)', borderRadius: 'var(--radius)', cursor: loading ? 'default' : 'pointer',
-                background: index === s ? 'var(--accent)' : 'var(--bg-elevated)', color: index === s ? '#fff' : 'var(--text-soft)', border: `1px solid ${index === s ? 'var(--accent)' : 'var(--border)'}` }}>{s}</button>
-          ))}
-        </div>
-        {data && !loading && (
-          <button onClick={() => load(index, true)} title="Recharger" style={{ marginLeft: 'auto', font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↻</button>
-        )}
-      </div>
-
-      {error && <div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '10px 14px' }}>{error}</div>}
-      {loading && <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul de la corrélation implicite sur ~2 ans…</div>}
+      {loading && <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Calcul de la corrélation implicite sur ~2 ans…</div>}
+      {error && !loading && <div style={{ padding: '18px 20px', font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Baromètre indisponible pour cet indice ({error}).</div>}
 
       {cur && !loading && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Verdict + percentile */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: `3px solid ${toneVar}`, borderRadius: 20, padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap' }}>
-              <div style={{ font: '800 40px/1 var(--font-mono)', color: toneVar }}>{cur.percentile}<span style={{ font: '600 16px/1 var(--font-mono)', color: 'var(--text-muted)' }}>e pct</span></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, borderLeft: `3px solid ${toneVar}`, paddingLeft: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ font: '800 34px/1 var(--font-mono)', color: toneVar }}>{cur.percentile}<span style={{ font: '600 14px/1 var(--font-mono)', color: 'var(--text-muted)' }}>e pct</span></div>
               <div style={{ flex: 1, minWidth: 200 }}>
                 <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{cur.verdict}</div>
-                <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>ρ implicite actuelle au {cur.percentile}<sup>e</sup> percentile de ses 2 dernières années · {index}</div>
+                <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>ρ implicite au {cur.percentile}<sup>e</sup> percentile de ses 2 dernières années</div>
               </div>
             </div>
             <PercentileBar pct={cur.percentile} />
           </div>
 
-          {/* Jauge de prime + chiffres + historique */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 260px) 1fr', gap: 16, alignItems: 'stretch' }}>
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '16px 18px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-              <CorrelationGauge implied={cur.impl} realized={cur.real} size={210} />
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Prime = ρ implicite − ρ réalisée</div>
+          {/* Jauge (réplique Correlation Lab) + historique */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(230px, 270px) 1fr', gap: 16, alignItems: 'center' }}>
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <PrimeGauge implied={cur.impl} realized={cur.real} size={230} />
             </div>
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 20, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                <div><div style={{ font: 'var(--type-data)', color: 'var(--accent-hover)' }}>{cur.impl.toFixed(2)}</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ρ implicite</div></div>
-                <div><div style={{ font: 'var(--type-data)', color: 'var(--info)' }}>{cur.real.toFixed(2)}</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ρ réalisée</div></div>
-                <div><div style={{ font: 'var(--type-data)', color: cur.prime >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{(cur.prime >= 0 ? '+' : '') + cur.prime} pts</div><div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Prime</div></div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Historique · ρ implicite (—) vs réalisée (- -)</span>
+                <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>2 ans</span>
               </div>
-              <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 10 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Historique · ρ implicite (—) vs réalisée (- -)</span>
-                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>2 ans</span>
-                </div>
-                <BaroChart series={data.series} />
+              <BaroChart series={data.series} />
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                Une dispersion (long composants / short indice) profite quand la corrélation réalisée finit sous l'implicite. Plus le percentile est haut, plus la corrélation est chère à vendre. <em>Estimé — indicatif.</em>
               </div>
             </div>
           </div>
-
-          {/* Explication + action */}
-          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '14px 18px' }}>
-            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', maxWidth: 620 }}>
-              Une dispersion est <strong style={{ color: 'var(--text)' }}>long les composants / short l'indice</strong> : elle profite quand la corrélation réalisée finit <em>sous</em> l'implicite. Plus le percentile est élevé, plus la corrélation implicite est chère à vendre.
-            </div>
-            <button onClick={() => onNav('opportunities')} style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>
-              Voir les opportunités {index} →
-            </button>
-          </div>
-
-          {data.skipped && data.skipped.length > 0 && (
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Sans historique exploitable : {data.skipped.join(', ')}</div>
-          )}
         </div>
       )}
     </div>
   );
 }
 
-window.CorrelationPro = CorrelationPro;
+window.CorrelationBarometer = CorrelationBarometer;
