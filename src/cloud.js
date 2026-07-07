@@ -10,6 +10,9 @@ import { createClient } from '@supabase/supabase-js';
 const ENV = (typeof import.meta !== 'undefined' && import.meta.env) || {};
 const URL = ENV.VITE_SUPABASE_URL;
 const KEY = ENV.VITE_SUPABASE_ANON_KEY;
+// Offre annuelle activée uniquement si VITE_PRO_ANNUAL=1 (à poser en même temps
+// que STRIPE_PRICE_ID_ANNUAL côté serveur). Exposé au client pour l'UI Tarifs.
+if (typeof window !== 'undefined') window.DX_PRO_ANNUAL = ENV.VITE_PRO_ANNUAL === '1';
 
 // Retour du lien « mot de passe oublié » : on lit le hash (#…type=recovery) AVANT
 // que Supabase (detectSessionInUrl) ne le nettoie → l'app affiche le formulaire.
@@ -51,11 +54,11 @@ async function checkPro() {
 // fait sur ?pro=success ; c'est le WEBHOOK (serveur, service role) qui accorde
 // réellement le Pro — jamais le navigateur.
 const proApi = {
-  async startCheckout() {
+  async startCheckout(cycle) {
     if (!currentUser) throw new Error('not_signed_in');
     const r = await fetch('/api/pro/checkout', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: currentUser.id, email: currentUser.email }),
+      body: JSON.stringify({ user_id: currentUser.id, email: currentUser.email, cycle: cycle === 'annual' ? 'annual' : 'monthly' }),
     });
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j.url) throw new Error(j.error || 'checkout_indisponible');
@@ -527,7 +530,7 @@ window.DXCloud = {
   get proStatus() { return proStatus; },
   get proPeriodEnd() { return proPeriodEnd; },
   isPro: () => checkPro(),
-  startProCheckout: () => proApi.startCheckout(),
+  startProCheckout: (cycle) => proApi.startCheckout(cycle),
   refreshPro: () => proApi.refresh(),
   openProPortal: () => proApi.openPortal(),
   lists: supa ? lists : null,

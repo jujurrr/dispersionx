@@ -8,7 +8,7 @@ const DX_PRO = {
   price: '2,99',
   currency: '€',
   period: 'mois',
-  annual: { available: false, price: '29,99', period: 'an', note: 'Bientôt' }, // offre annuelle à venir
+  annual: { price: '29,99', period: 'an', note: 'Bientôt' }, // activée via VITE_PRO_ANNUAL=1 (+ STRIPE_PRICE_ID_ANNUAL)
   guaranteeDays: 14,
   // Ce que Pro débloque (repris dans la carte et le tableau comparatif).
   perks: [
@@ -60,11 +60,11 @@ function useProCheckout(onNav, addToast, source = 'unknown') {
   const C = window.DXCloud;
   const signedIn = !!(C && C.user);
   const [busy, setBusy] = React.useState(false);
-  const goPro = React.useCallback(async () => {
-    window.DXTrack && window.DXTrack(signedIn ? 'checkout_start' : 'checkout_login_required', { source });
+  const goPro = React.useCallback(async (cycle = 'monthly') => {
+    window.DXTrack && window.DXTrack(signedIn ? 'checkout_start' : 'checkout_login_required', { source, cycle });
     if (!signedIn) { onNav && onNav('login'); return; }
     setBusy(true);
-    try { await C.startProCheckout(); }
+    try { await C.startProCheckout(cycle); }
     catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setBusy(false); }
   }, [signedIn, onNav, addToast, source]);
   return { signedIn, busy, goPro };
@@ -328,7 +328,7 @@ function ProPricing({ onNav, addToast }) {
   const { signedIn, busy, goPro } = useProCheckout(onNav, addToast, 'pricing_plan');
   React.useEffect(() => { window.DXTrack && window.DXTrack('pricing_view'); }, []);
   const pro = !!(window.DXCloud && window.DXCloud.pro);
-  const annualSoon = !DX_PRO.annual.available;
+  const annualSoon = !window.DX_PRO_ANNUAL;   // annuel activé via VITE_PRO_ANNUAL=1
 
   const faqs = [
     ['Concrètement, qu\'est-ce que l\'auto-chercheur m\'apporte ?', 'Il fait le travail d\'analyse à votre place : au lieu de tester des dizaines de paniers à la main, il explore des milliers de combinaisons et vous classe les meilleures dispersions d\'un indice en quelques secondes — sizing et stress-tests déjà calculés. Des heures gagnées à chaque idée.'],
@@ -367,7 +367,7 @@ function ProPricing({ onNav, addToast }) {
   ) : (cycle === 'annual' && annualSoon) ? (
     <button disabled style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'not-allowed' }}>Offre annuelle bientôt disponible</button>
   ) : (
-    <button onClick={goPro} disabled={busy} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
+    <button onClick={() => goPro(cycle)} disabled={busy} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
       {busy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
     </button>
   );
@@ -393,7 +393,7 @@ function ProPricing({ onNav, addToast }) {
               borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
               background: cycle === key ? 'var(--accent)' : 'transparent', color: cycle === key ? '#fff' : 'var(--text-muted)',
             }}>
-              {label}{key === 'annual' && <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 5px', borderRadius: 6, background: cycle === key ? 'rgba(255,255,255,0.2)' : 'var(--accent-soft)', color: cycle === key ? '#fff' : 'var(--accent-hover)' }}>{DX_PRO.annual.note}</span>}
+              {label}{key === 'annual' && <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 5px', borderRadius: 6, background: cycle === key ? 'rgba(255,255,255,0.2)' : 'var(--accent-soft)', color: cycle === key ? '#fff' : 'var(--accent-hover)' }}>{annualSoon ? DX_PRO.annual.note : '2 mois offerts'}</span>}
             </button>
           ))}
         </div>
