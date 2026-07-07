@@ -148,6 +148,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   const gEntry = liveOn && live.greeks ? live.greeks.entry : { vega: eg.vega, theta: eg.theta, gamma: null };
   const gCur   = liveOn && live.greeks ? live.greeks.current : { vega: cg.vega, theta: cg.theta, gamma: null };
   const deltaInfo = liveOn && live.delta_dollar ? live.delta_dollar : null;
+  const rebalance = liveOn && live.rebalance ? live.rebalance : null;
   const hedgePnl  = liveOn && typeof live.hedge_pnl === 'number' ? live.hedge_pnl : null;
   const straddlePnl = liveOn && typeof live.straddle_pnl === 'number' ? live.straddle_pnl : null;
   const hasGreeks = gEntry.vega != null || gEntry.theta != null || gEntry.gamma != null;
@@ -269,7 +270,8 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
       {/* Évolution du P&L — hauteur fixe, axes en HTML (pas de distorsion ni chevauchement) */}
       {(() => {
-        const raw = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: s.taken_at, v: s.total_pnl }));
+        // Fenêtre cohérente : 30 derniers relevés (intraday du jour + jours récents).
+        const raw = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: s.taken_at, v: s.total_pnl })).slice(-30);
         if (raw.length < 2) return null;
         const vals = raw.map(p => p.v);
         let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
@@ -372,6 +374,51 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
             </table>
             <div style={{ padding: '10px 16px', font: 'var(--type-caption)', color: 'var(--text-muted)', background: 'var(--bg-elevated)' }}>
               Le delta part ~neutre et <strong style={{ color: 'var(--text-soft)' }}>dérive avec le sous-jacent</strong> (gamma){deltaInfo && deltaInfo.hedged ? ', couverture Δ incluse' : ''}.
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Rééquilibrage delta — combien acheter/vendre pour redevenir delta-$ neutre */}
+      {(() => {
+        if (!rebalance) return null;
+        const trade = n => n == null ? '—' : n > 0 ? `Acheter ${Math.abs(n).toLocaleString('fr-FR')}` : n < 0 ? `Vendre ${Math.abs(n).toLocaleString('fr-FR')}` : 'Aucun ajustement';
+        const tone = n => n == null ? 'var(--text-dim)' : Math.abs(n) < 1 ? 'var(--text-dim)' : n > 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
+        const rows = rebalance.mode === 'legs'
+          ? (rebalance.legs || []).filter(l => l.shares != null)
+          : (rebalance.shares != null ? [{ symbol: rebalance.symbol, shares: rebalance.shares, side: 'index' }] : []);
+        return (
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
+                Rééquilibrage delta <span style={{ textTransform: 'none', color: 'var(--text-dim)' }}>· {rebalance.mode === 'legs' ? 'par composant' : 'par indice'}</span>
+              </span>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Delta net {dxUsd(rebalance.net_delta)} $/+1 %</span>
+            </div>
+            {rows.length === 0 || rows.every(r => Math.abs(r.shares || 0) < 1) ? (
+              <div style={{ padding: '14px 20px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>Position déjà ~delta-neutre — aucun ajustement significatif.</div>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
+                <tbody>
+                  {rows.map((r, i) => (
+                    <tr key={r.symbol || i} style={{ borderBottom: i < rows.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                      <td style={{ padding: '11px 20px' }}>
+                        <span style={{ font: 'var(--type-ticker)', color: 'var(--text)' }}>{r.symbol}</span>
+                        {r.side === 'index' && <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginLeft: 6 }}>ETF indice</span>}
+                      </td>
+                      <td style={{ padding: '11px 20px', textAlign: 'right', font: 'var(--type-data)', color: tone(r.shares), fontWeight: 600 }}>
+                        {trade(r.shares)} <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', fontWeight: 400 }}>actions</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 20px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
+              <span style={{ color: 'var(--accent-hover)', flexShrink: 0 }}>💡</span>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                Idéalement, <strong style={{ color: 'var(--text-soft)' }}>rééquilibrez la couverture chaque soir</strong> (après la clôture) pour rester delta‑neutre. Quantités calculées sur le delta réel Black‑Scholes ; arrondir à l'entier le plus proche.
+              </span>
             </div>
           </div>
         );
@@ -484,30 +531,33 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         </div>
       )}
 
-      {/* Snapshots history */}
+      {/* Snapshots history — plus récent en haut, hauteur limitée + molette */}
       {snaps.length > 0 && (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
-            Historique des snapshots
+          <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Historique des snapshots</span>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{snaps.length} · défiler pour les plus anciens</span>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
-            <thead>
-              <tr style={{ background: 'var(--bg-elevated)' }}>
-                {['Date', 'P&L total', 'P&L quotidien'].map((h, i) => (
-                  <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {snaps.map((s, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                  <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{(s.taken_at || '').slice(0, 16).replace('T', ' ')}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.total_pnl != null ? dxUsd(s.total_pnl) + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}</td>
-                  <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? dxUsd(s.daily_pnl) + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
+          <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
+              <thead>
+                <tr style={{ background: 'var(--bg-elevated)' }}>
+                  {['Date', 'P&L total', 'P&L quotidien'].map((h, i) => (
+                    <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)', position: 'sticky', top: 0, background: 'var(--bg-elevated)', zIndex: 1 }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {snaps.slice().reverse().map((s, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
+                    <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{(s.taken_at || '').slice(0, 16).replace('T', ' ')}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
+                    <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.total_pnl != null ? dxUsd(s.total_pnl) + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}</td>
+                    <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? dxUsd(s.daily_pnl) + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 

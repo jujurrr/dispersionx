@@ -144,7 +144,9 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
       current_iv: mk ? round1(mk.iv) : null,
       iv_change: (mk && ivEntry) ? round1(mk.iv - ivEntry) : null,
       spot_change_pct: (mk && spotEntry) ? round1((mk.spot / spotEntry - 1) * 100) : null,
-      spot_now: spotNow, spot_entry: spotEntry, covered,
+      spot_now: spotNow, spot_entry: spotEntry,
+      bs_delta: (bsCur || bsE) ? (bsCur || bsE).delta : 0,   // delta straddle par action (courant)
+      covered,
     });
   }
 
@@ -197,6 +199,33 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
 
   const g = v => (v == null || !isFinite(v)) ? null : Math.round(v);
   const hedged = !!(s.deltaHedge && s.deltaHedge !== 'none');
+  const deltaCur = accC.delta + hedgeDeltaC;   // delta $ net actuel (par +1 %), couverture incluse
+
+  // ── Rééquilibrage pour redevenir delta-DOLLAR neutre (chiffres réels) ──
+  // Mode indice : neutralise le delta net agrégé avec l'ETF proxy.
+  // Mode composants : ajustement par jambe = −(delta straddle en actions + couverture déjà en place).
+  // shares = −Δ$/(0.01·spot) : le spot se simplifie → un vrai nombre d'actions.
+  const idxLeg0 = legs.find(l => l.role === 'index');
+  const etf = s.indexEtf || proxyEtf(s.index || 'SPX') || (s.index || 'SPX');
+  const etfSpotNow = idxLeg0 ? idxLeg0.spot_now : (s.indexPrice || 0);
+  const mode = s.deltaHedge === 'legs' ? 'legs' : 'index';
+  let rebalance = null;
+  if (mode === 'legs') {
+    const rl = [];
+    if (idxLeg0 && idxLeg0.covered) {
+      // jambe indice short + couverture future existante (hedgeUnits ≈ ×100 actions ETF)
+      rl.push({ symbol: etf, side: 'index', shares: g(100 * ((s.nIndex || 1) * idxLeg0.bs_delta - (s.hedgeUnits || 0))) });
+    }
+    for (const c of (s.components || [])) {
+      const leg = legs.find(l => l.symbol === c.ticker);
+      if (leg && leg.covered) rl.push({ symbol: c.ticker, side: 'component', shares: g(-((c.nContracts || 1) * 100 * leg.bs_delta + (c.hedgeShares || 0))) });
+    }
+    rebalance = { mode, net_delta: g(deltaCur), legs: rl };
+  } else {
+    const shares = etfSpotNow > 0 ? g(-deltaCur / (0.01 * etfSpotNow)) : null;
+    rebalance = { mode, net_delta: g(deltaCur), symbol: etf, spot: round2(etfSpotNow), shares };
+  }
+
   return {
     asof: new Date(now).toISOString(),
     dte: dteNow,
@@ -207,7 +236,8 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
       current: { vega: g(accC.vega), theta: g(accC.theta), gamma: g(accC.gamma) },
     },
     // Delta $ net (par +1 %) INCLUANT la couverture → dérive réellement avec le spot.
-    delta_dollar: { entry: g(accE.delta + hedgeDeltaE), current: g(accC.delta + hedgeDeltaC), hedged },
+    delta_dollar: { entry: g(accE.delta + hedgeDeltaE), current: g(deltaCur), hedged },
+    rebalance,
     coverage: { priced, total: legs.length },
     legs,
   };

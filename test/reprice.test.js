@@ -128,6 +128,39 @@ test('repriceStrategy : delta $ DÉRIVE avec le spot (Black-Scholes) + P&L couve
   assert.ok(Math.abs(v.total_pnl - (v.straddle_pnl + v.hedge_pnl)) < 1);
 });
 
+test('repriceStrategy : rééquilibrage delta (mode indice) — vendre si delta + ', async () => {
+  const strategy = {
+    index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
+    builtAt: new Date().toISOString(), deltaHedge: 'index', hedgeUnits: 0,
+    portfolio: { idxPrem: 20000, idxIV: 20 },
+    components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 3 }],
+  };
+  // AAPL +10 % → le straddle long gagne beaucoup de delta + → position nette longue delta.
+  const getMarket = async (sym) => ({ SPY: { spot: 500, iv: 20 }, AAPL: { spot: 220, iv: 30 } }[sym] || null);
+  const v = await repriceStrategy(strategy, getMarket);
+  assert.equal(v.rebalance.mode, 'index');
+  assert.equal(v.rebalance.symbol, 'SPY');
+  assert.ok(v.delta_dollar.current > 0, `delta net + attendu, ${v.delta_dollar.current}`);
+  assert.ok(v.rebalance.shares < 0, `il faut VENDRE des actions ETF (${v.rebalance.shares})`);
+  // Neutralisation : shares · (0.01·spot) ≈ −delta net.
+  assert.ok(Math.abs(v.rebalance.shares * 0.01 * 500 + v.delta_dollar.current) < 6, `résiduel ${v.rebalance.shares * 5 + v.delta_dollar.current}`);
+});
+
+test('repriceStrategy : rééquilibrage delta (mode composants) — une ligne par jambe', async () => {
+  const strategy = {
+    index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
+    builtAt: new Date().toISOString(), deltaHedge: 'legs', hedgeUnits: 0,
+    portfolio: { idxPrem: 20000, idxIV: 20 },
+    components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 3, hedgeShares: 0 }],
+  };
+  const getMarket = async (sym) => ({ SPY: { spot: 500, iv: 20 }, AAPL: { spot: 220, iv: 30 } }[sym] || null);
+  const v = await repriceStrategy(strategy, getMarket);
+  assert.equal(v.rebalance.mode, 'legs');
+  const aapl = v.rebalance.legs.find(l => l.symbol === 'AAPL');
+  assert.ok(aapl, 'ligne AAPL présente');
+  assert.ok(aapl.shares < 0, `AAPL long a gagné du delta + → VENDRE (${aapl.shares})`);
+});
+
 test('repriceStrategy : grecs BS calculés même sans netGamma stocké', async () => {
   const strategy = {
     index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
