@@ -159,6 +159,7 @@ function Sidebar({ active, onNav, lists, user, pro }) {
   const navGroups = [...NAV, { group: 'Pro', items: [
     { id: 'opportunities', label: 'Opportunités', icon: 'opp', locked: !pro },
     { id: 'market-pro', label: 'Marché Pro', icon: 'corr', locked: !pro },
+    { id: 'journal', label: 'Journal', icon: 'journal', locked: !pro },
   ] }];
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const cloudUser = window.DXCloud && window.DXCloud.user;

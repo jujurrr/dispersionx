@@ -582,6 +582,37 @@ APP_URL        = https://ton-domaine     (lien dans l'e-mail)
 Sans ces variables, l'alerte se déclenche quand même et reste **visible dans
 l'app** (statut « Déclenchée le … ») — seul l'e-mail est désactivé.
 
+## 15. Journal de trades (optionnel)
+Permet à un abonné d'enregistrer ses dispersions et de suivre sa performance
+(réalisé vs attendu, taux de réussite, P&L cumulé). Chacun gère les siens (RLS).
+
+Dans **SQL Editor → New query → Run** :
+```sql
+create table if not exists public.trades (
+  id           bigint generated always as identity primary key,
+  user_id      uuid not null references auth.users(id) on delete cascade,
+  label        text,
+  index_symbol text,
+  tickers      jsonb not null default '[]',
+  entry_date   date,
+  horizon      int,
+  entry_pct    int,          -- percentile de corrélation implicite à l'entrée
+  entry_prime  numeric,      -- prime attendue (pts)
+  status       text not null default 'open',   -- open | closed
+  exit_date    date,
+  pnl          numeric,      -- P&L réalisé saisi par l'utilisateur
+  outcome      text,         -- win | loss | flat
+  notes        text,
+  created_at   timestamptz not null default now()
+);
+alter table public.trades enable row level security;
+drop policy if exists "trades_rw" on public.trades;
+create policy "trades_rw" on public.trades
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+```
+Le P&L est **saisi par l'utilisateur** (son suivi réel). Un bouton « Journaliser »
+sur chaque opportunité pré-remplit une entrée.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

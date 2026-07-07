@@ -213,6 +213,7 @@ function App() {
     monitor: ['Strategy Monitor'],
     opportunities: ['Opportunités Pro'],
     'market-pro': ['Marché Pro'],
+    journal: ['Journal de trades'],
     preferences: ['Préférences'],
     checklist: ['Mes listes', '…', 'Checklist'],
     'monitor-list': ['Mes listes', '…', 'Positions'],
@@ -261,6 +262,9 @@ function App() {
       break;
     case 'market-pro':
       screenEl = <window.MarketPro onNav={onNav} addToast={addToast} pro={pro} lists={lists} />;
+      break;
+    case 'journal':
+      screenEl = <window.Journal onNav={onNav} addToast={addToast} pro={pro} lists={lists} prefill={params.prefill} />;
       break;
     case 'preferences':
       screenEl = <window.Preferences user={user} onNav={onNav} onAuth={handleAuth} addToast={addToast} mode={mode} />;

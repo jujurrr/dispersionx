@@ -466,6 +466,51 @@ const alerts = {
   },
 };
 
+// ── Journal de trades (Pro) : chacun gère les siens (RLS) ───────────────────
+const trades = {
+  async list() {
+    const { data, error } = await supa.from('trades').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
+  async create(t) {
+    const row = {
+      user_id: currentUser.id,
+      label: t.label || null,
+      index_symbol: t.index || null,
+      tickers: Array.isArray(t.tickers) ? t.tickers.slice(0, 30) : [],
+      entry_date: t.entry_date || new Date().toISOString().slice(0, 10),
+      horizon: t.horizon || null,
+      entry_pct: t.entry_pct != null && t.entry_pct !== '' ? Math.round(t.entry_pct) : null,
+      entry_prime: t.entry_prime != null && t.entry_prime !== '' ? Number(t.entry_prime) : null,
+      status: 'open',
+      notes: t.notes || null,
+    };
+    const { data, error } = await supa.from('trades').insert(row).select().single();
+    if (error) throw error;
+    return data;
+  },
+  async close(id, { exit_date, pnl, outcome, notes }) {
+    const patch = {
+      status: 'closed',
+      exit_date: exit_date || new Date().toISOString().slice(0, 10),
+      pnl: pnl != null && pnl !== '' ? Number(pnl) : null,
+      outcome: outcome || null,
+    };
+    if (notes != null) patch.notes = notes;
+    const { error } = await supa.from('trades').update(patch).eq('id', id).eq('user_id', currentUser.id);
+    if (error) throw error;
+  },
+  async reopen(id) {
+    const { error } = await supa.from('trades').update({ status: 'open', exit_date: null, pnl: null, outcome: null }).eq('id', id).eq('user_id', currentUser.id);
+    if (error) throw error;
+  },
+  async remove(id) {
+    const { error } = await supa.from('trades').delete().eq('id', id).eq('user_id', currentUser.id);
+    if (error) throw error;
+  },
+};
+
 // ── API publique exposée au reste de l'app (js/api.js, Auth.jsx, app.jsx) ────
 window.DXCloud = {
   configured: !!supa,
@@ -486,6 +531,7 @@ window.DXCloud = {
   shares: supa ? shares : null,
   audit: supa ? audit : null,
   alerts: supa ? alerts : null,
+  trades: supa ? trades : null,
 };
 
 // ── Suivi de session : maintient currentUser + prévient l'app ───────────────

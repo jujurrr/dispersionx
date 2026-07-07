@@ -241,6 +241,11 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
     } catch (e) { addToast && addToast('Création impossible : ' + (e && e.message ? e.message : ''), 'error'); }
   }
 
+  // Pré-remplit le journal depuis une opportunité (find → journal → suivi).
+  function journalize(o) {
+    onNav('journal', { prefill: { label: `Dispersion ${index} · ${o.k} actions`, index, tickers: o.members, horizon: duration, entry_prime: Number(o.prime.toFixed(1)) } });
+  }
+
   // Backtest historique approché d'une opportunité (à la demande).
   async function toggleBacktest(i, o) {
     const cur = bt[i];
@@ -448,10 +453,16 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ρ réalisée</div>
                   </div>
                 </div>
-                <button onClick={() => createAndBuild(o)}
-                  style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', flexShrink: 0 }}>
-                  Créer la liste & construire →
-                </button>
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  <button onClick={() => journalize(o)} title="Enregistrer dans le journal de trades"
+                    style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+                    Journaliser
+                  </button>
+                  <button onClick={() => createAndBuild(o)}
+                    style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+                    Créer la liste & construire →
+                  </button>
+                </div>
               </div>
               <div style={{ padding: '12px 20px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {o.members.map(t => (
