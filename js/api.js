@@ -495,14 +495,13 @@
   // entre appareils ; sinon store local 'dx-positions' (comportement historique).
   // Les positions créées hors-ligne (id « loc-… ») restent gérées en local même
   // une fois le cloud actif. La forme renvoyée est identique dans les deux cas.
-  // Nom par défaut UNIQUE et parlant quand l'utilisateur n'en saisit pas :
-  // « <indice> <durée>j · dispersion · <liste> · JJ/MM » — inclut la liste et la
-  // date pour ne pas se retrouver avec des positions homonymes.
+  // Nom par défaut UNIQUE et lisible quand l'utilisateur n'en saisit pas :
+  // « <liste> · JJ/MM » (l'indice/durée restent visibles dans le sous-titre du
+  // suivi ; pas de préfixe technique redondant). Repli sur l'indice sans liste.
   function _defaultPositionName(s) {
     if (!s) return null;
-    const m = strategyMetrics(s);
     const d = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-    return m.name + ' · ' + d;
+    return (s.listName || s.index || 'Position') + ' · ' + d;
   }
   async function commitPosition(list_id, name) {
     let s = null;
