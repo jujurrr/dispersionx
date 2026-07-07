@@ -6,6 +6,12 @@ function dxUsd(n, { sign = true } = {}) {
   const s = r < 0 ? '−' : (sign ? '+' : '');
   return s + Math.abs(r).toLocaleString('fr-FR');
 }
+// Horodatage UTC (taken_at/asof en ISO) → heure LOCALE de l'utilisateur.
+function dxLocalDateTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
 function PositionDetail({ positionId, onNav, addToast, mode }) {
   const { MetricCard, WarningPanel, Badge } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
@@ -240,7 +246,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
             <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
               {liveOn ? 'En direct' : 'Suivi mark-to-market'} — P&L théorique au mid <strong style={{ color: 'var(--text)' }}>piloté par le spot et l'IV réels</strong> (Cboe, différé 15 min).
               {cov && ` ${cov.priced}/${cov.total} jambes valorisées au marché.`}
-              {asof && ` ${liveOn ? 'À' : 'Dernier relevé'} ${asof.slice(0, 16).replace('T', ' ')}.`}
+              {asof && ` ${liveOn ? 'À' : 'Dernier relevé'} ${dxLocalDateTime(asof)}.`}
             </span>
             {cov && cov.priced < cov.total && (
               <span style={{ font: 'var(--type-caption)', color: 'var(--warn)' }}>
@@ -550,7 +556,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
               <tbody>
                 {snaps.slice().reverse().map((s, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{(s.taken_at || '').slice(0, 16).replace('T', ' ')}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
+                    <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{dxLocalDateTime(s.taken_at)}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
                     <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.total_pnl != null ? dxUsd(s.total_pnl) + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}</td>
                     <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? dxUsd(s.daily_pnl) + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
                   </tr>
