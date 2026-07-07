@@ -1,5 +1,5 @@
 /* ─── DispersionX App: router + global state ─────────────────────── */
-const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs', 'privacy'];
+const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs', 'privacy', 'pricing'];
 
 // Détection mobile (largeur ≤ 768px), réactive au redimensionnement/rotation.
 // Sert UNIQUEMENT à adapter la mise en page mobile ; sur PC, isMobile=false et
@@ -242,6 +242,7 @@ function App() {
     position: ['Suivi des positions', 'Position'],
     docs: ['Formules & Référence'],
     privacy: ['Confidentialité'],
+    pricing: ['Tarifs'],
   };
   const crumbs = crumbMap[screen] || ['DispersionX'];
 
@@ -307,6 +308,9 @@ function App() {
       break;
     case 'privacy':
       screenEl = <window.Privacy onNav={onNav} />;
+      break;
+    case 'pricing':
+      screenEl = <window.ProPricing onNav={onNav} addToast={addToast} />;
       break;
     default:
       screenEl = (

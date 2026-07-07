@@ -59,35 +59,11 @@ function Journal({ onNav, addToast, pro, lists, prefill }) {
   async function reopen(t) { try { await C.trades.reopen(t.id); await refresh(); } catch {} }
   async function remove(t) { try { await C.trades.remove(t.id); await refresh(); } catch {} }
 
-  // ── Écran verrouillé (non Pro) ──
+  // ── Écran verrouillé (non Pro) : carte d'upsell contextuelle partagée ──
   if (!pro) {
-    const signedIn = !!(C && C.user);
-    async function goPro() {
-      if (!signedIn) { onNav('login'); return; }
-      setBusy(true);
-      try { await C.startProCheckout(); } catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setBusy(false); }
-    }
     return (
       <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}>
-        <div style={{ width: '100%', maxWidth: 440, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', padding: '28px 26px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent-hover)' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
-          </div>
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Journal de trades</h2>
-              <Badge tone="accent" size="sm">Pro</Badge>
-            </div>
-            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, maxWidth: 360 }}>
-              Gardez la trace de vos dispersions, comparez réalisé vs attendu et bâtissez votre <strong style={{ color: 'var(--text-soft)' }}>track record</strong> dans le temps.
-            </p>
-          </div>
-          <button onClick={goPro} disabled={busy}
-            style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 26px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-            {busy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
-          </button>
-          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Abonnement mensuel · paiement sécurisé Stripe · résiliable à tout moment</div>
-        </div>
+        <window.ProUpsellCard context="journal" onNav={onNav} addToast={addToast} />
       </div>
     );
   }

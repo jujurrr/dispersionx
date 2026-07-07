@@ -5,10 +5,8 @@
    Création d'une position : Construction/Builder → Risk Lab → Checklist. */
 function MonitorList({ onNav, addToast, mode, pro, lists }) {
   const { Badge } = window.DispersionXDesignSystem_cb86be;
-  const C = window.DXCloud;
   const [positions, setPositions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
-  const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
     if (!pro) { setLoading(false); return; }
@@ -19,36 +17,22 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
     });
   }, [pro]);
 
-  // ── Écran verrouillé (non Pro) : même motif d'upsell que le Journal ──
+  // ── Écran verrouillé (non Pro) : soft-paywall (aperçu flouté + carte) ──
   if (!pro) {
-    const signedIn = !!(C && C.user);
-    async function goPro() {
-      if (!signedIn) { onNav('login'); return; }
-      setBusy(true);
-      try { await C.startProCheckout(); }
-      catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setBusy(false); }
-    }
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}>
-        <div style={{ width: '100%', maxWidth: 440, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', padding: '28px 26px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent-hover)' }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Suivi des positions</h1>
+            <Badge tone="accent" size="sm">Pro</Badge>
           </div>
-          <div>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Suivi des positions</h2>
-              <Badge tone="accent" size="sm">Pro</Badge>
-            </div>
-            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, maxWidth: 360 }}>
-              Suivez en temps réel l'avancée de vos positions committées : grecs au DTE restant, snapshots et <strong style={{ color: 'var(--text-soft)' }}>évolution de la prime de corrélation</strong>.
-            </p>
-          </div>
-          <button onClick={goPro} disabled={busy}
-            style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 26px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-            {busy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
-          </button>
-          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Abonnement mensuel · paiement sécurisé Stripe · résiliable à tout moment</div>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 640 }}>
+            Suivez l'avancée de vos positions en temps réel — voici un aperçu de ce que Pro débloque.
+          </p>
         </div>
+        <window.ProLockedPreview context="positions" onNav={onNav} addToast={addToast} minHeight={430}>
+          {SampleSuivi()}
+        </window.ProLockedPreview>
       </div>
     );
   }
@@ -166,6 +150,46 @@ function PositionCard({ pos, onNav, lists }) {
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
           {pos.n_snapshots || 0} snapshot(s)
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* Aperçu représentatif (non interactif) affiché flouté sous le soft-paywall. */
+function SampleSuivi() {
+  const cards = [
+    { name: 'Tech US · 14/07', idx: 'NDX', pnl: 1840, dte: 22, snaps: 6, up: true },
+    { name: 'Value SPX · 09/07', idx: 'SPX', pnl: -520, dte: 15, snaps: 4, up: false },
+    { name: 'Semis · 02/07', idx: 'NDX', pnl: 3110, dte: 31, snaps: 9, up: true },
+  ];
+  const pts = [0, 6, 3, 9, 7, 14, 11, 18];
+  const W = 520, H = 96, max = Math.max(...pts), min = Math.min(...pts, 0);
+  const x = i => (i / (pts.length - 1)) * W;
+  const y = v => H - ((v - min) / ((max - min) || 1)) * H;
+  const d = pts.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(0)},${y(v).toFixed(0)}`).join(' ');
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12 }}>
+        {cards.map((c, i) => (
+          <div key={i} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: `3px solid ${c.up ? 'var(--pos)' : 'var(--neg)'}`, borderRadius: 'var(--radius-lg)', padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{c.name}</span>
+              <span style={{ font: '500 10px/1 var(--font-mono)', padding: '3px 8px', borderRadius: 'var(--radius-pill)', background: 'var(--pos-soft)', color: 'var(--pos-bright)', border: '1px solid var(--pos)' }}>Ouverte</span>
+            </div>
+            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginBottom: 10 }}>{c.idx} · dispersion · {c.dte} DTE</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ font: 'var(--type-data)', color: c.up ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{c.up ? '+' : ''}{c.pnl.toLocaleString('fr-FR')} $</span>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{c.snaps} snapshots</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
+        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>Évolution du P&L</div>
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
+          <path d={`${d} L${W},${H} L0,${H} Z`} fill="var(--pos-soft)" opacity="0.5" />
+          <path d={d} fill="none" stroke="var(--pos-bright)" strokeWidth="2" />
+        </svg>
       </div>
     </div>
   );

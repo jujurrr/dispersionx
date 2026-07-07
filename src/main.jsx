@@ -42,6 +42,7 @@ import '../js/screens/RiskLab.jsx';
 import '../js/screens/Construction.jsx';
 import '../js/screens/Builder.jsx';
 import '../js/screens/StrategyMonitor.jsx';
+import '../js/screens/ProUpsell.jsx';            // window.ProUpsellCard / ProLockedPreview / ProPricing (offre Pro)
 import '../js/screens/OpportunityFinder.jsx';   // window.OpportunityFinder (module Pro)
 import '../js/screens/CorrelationPro.jsx';       // window.CorrelationBarometer (baromètre ρ)
 import '../js/screens/AlertsPanel.jsx';           // window.AlertsPanel (alertes de corrélation, Pro)

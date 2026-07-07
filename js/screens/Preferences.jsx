@@ -186,9 +186,10 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
               <li>✓ Backtest historique de la prime de corrélation capturée</li>
             </ul>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Button variant="primary" size="lg" onClick={goPro} disabled={busyPro}>{busyPro ? 'Redirection…' : 'Passer Pro →'}</Button>
-              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Abonnement mensuel · paiement sécurisé Stripe · résiliable à tout moment</span>
+              <Button variant="primary" size="lg" onClick={goPro} disabled={busyPro}>{busyPro ? 'Redirection…' : `Passer Pro — ${(window.DX_PRO ? window.DX_PRO.price + ' ' + window.DX_PRO.currency : '2,99 €')}/mois`}</Button>
+              <button onClick={() => onNav('pricing')} style={{ font: '600 12px/1 var(--font-sans)', background: 'none', border: 'none', color: 'var(--accent-hover)', cursor: 'pointer', padding: 0 }}>Voir les tarifs →</button>
             </div>
+            <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Garantie {(window.DX_PRO ? window.DX_PRO.guaranteeDays : 14)} jours satisfait ou remboursé · paiement sécurisé Stripe · résiliable en 1 clic</span>
           </div>
         )}
       </PrefSection>
