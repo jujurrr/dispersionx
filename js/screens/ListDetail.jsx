@@ -216,9 +216,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
           <button onClick={() => onNav('risk', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Risk Lab</button>
           <button onClick={() => onNav('construction', { listId })}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Construction</button>
-          <button onClick={() => onNav('monitor-list', { listId })}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Positions →</button>
+            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Construction</button>
           {cloudOn && (
             <button onClick={toggleAudit}
               style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: showAudit ? 'var(--bg-hover)' : 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Activité</button>

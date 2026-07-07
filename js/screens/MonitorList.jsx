@@ -1,22 +1,57 @@
-/* ─── MonitorList: committed positions for a specific list ───── */
-function MonitorList({ listId, onNav, addToast, mode }) {
+/* ─── Suivi des positions : hub GLOBAL des positions committées (module Pro) ──
+   Onglet Pro « Suivi » : rassemble TOUTES les positions suivies (toutes listes
+   confondues), plus de vue par liste. On y suit en temps réel l'avancée d'une
+   position (grecs au DTE restant, snapshots) depuis PositionDetail.
+   Création d'une position : Construction/Builder → Risk Lab → Checklist. */
+function MonitorList({ onNav, addToast, mode, pro, lists }) {
   const { Badge } = window.DispersionXDesignSystem_cb86be;
+  const C = window.DXCloud;
   const [positions, setPositions] = React.useState([]);
-  const [listName, setListName] = React.useState('');
   const [loading, setLoading] = React.useState(true);
+  const [busy, setBusy] = React.useState(false);
 
   React.useEffect(() => {
-    Promise.all([
-      DXApi.getList(listId).catch(() => ({ name: `Liste ${listId}` })),
-      DXApi.getPositions(listId).catch(() => null),
-    ]).then(([list, posData]) => {
-      setListName(list?.name || `Liste ${listId}`);
-      // Positions réelles uniquement (serveur ou store local dx-positions) —
-      // plus de positions de démonstration.
+    if (!pro) { setLoading(false); return; }
+    // Toutes les positions (aucun list_id) — serveur, cloud ou store local.
+    DXApi.getPositions().catch(() => null).then(posData => {
       setPositions(posData?.positions || posData || []);
       setLoading(false);
     });
-  }, [listId]);
+  }, [pro]);
+
+  // ── Écran verrouillé (non Pro) : même motif d'upsell que le Journal ──
+  if (!pro) {
+    const signedIn = !!(C && C.user);
+    async function goPro() {
+      if (!signedIn) { onNav('login'); return; }
+      setBusy(true);
+      try { await C.startProCheckout(); }
+      catch (e) { addToast && addToast('Paiement indisponible : ' + (e && e.message ? e.message : ''), 'error'); setBusy(false); }
+    }
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', paddingTop: 40 }}>
+        <div style={{ width: '100%', maxWidth: 440, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', padding: '28px 26px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', color: 'var(--accent-hover)' }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>
+          </div>
+          <div>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+              <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Suivi des positions</h2>
+              <Badge tone="accent" size="sm">Pro</Badge>
+            </div>
+            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, maxWidth: 360 }}>
+              Suivez en temps réel l'avancée de vos positions committées : grecs au DTE restant, snapshots et <strong style={{ color: 'var(--text-soft)' }}>évolution de la prime de corrélation</strong>.
+            </p>
+          </div>
+          <button onClick={goPro} disabled={busy}
+            style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 26px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
+            {busy ? 'Redirection…' : (signedIn ? 'Passer Pro →' : 'Se connecter pour passer Pro')}
+          </button>
+          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Abonnement mensuel · paiement sécurisé Stripe · résiliable à tout moment</div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return (
     <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement des positions…</div>
@@ -29,29 +64,36 @@ function MonitorList({ listId, onNav, addToast, mode }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
-          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>
-            Suivi — {listName}
-          </h1>
-          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
-            Stratégies committées et suivies pour cette liste.
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Suivi des positions</h1>
+            <Badge tone="accent" size="sm">Pro</Badge>
+          </div>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 640 }}>
+            Toutes vos stratégies committées, suivies en temps réel : grecs au DTE restant, snapshots et P&L théorique.
           </p>
         </div>
-        <button onClick={() => onNav('checklist', { listId })}
-          style={{ font: '600 13px/1 var(--font-sans)', padding: '9px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
-          + Nouvelle position (checklist)
+        <button onClick={() => onNav('construction')}
+          style={{ font: '600 13px/1 var(--font-sans)', padding: '9px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+          + Construire une stratégie
         </button>
       </div>
 
       {positions.length === 0 ? (
         <div style={{ padding: '64px 32px', textAlign: 'center', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
           <div style={{ font: 'var(--type-h3)', color: 'var(--text-soft)', marginBottom: 8 }}>Aucune position suivie</div>
-          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', maxWidth: 360, margin: '0 auto 20px' }}>
-            Construisez une stratégie, validez la checklist, et committez-la pour la suivre ici.
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', maxWidth: 420, margin: '0 auto 20px' }}>
+            Pour suivre une position : construisez une stratégie (Construction ou Builder) à partir d'une liste, puis validez sa checklist dans le <strong style={{ color: 'var(--text-soft)' }}>Risk Lab</strong>. Elle apparaîtra ici.
           </div>
-          <button onClick={() => onNav('checklist', { listId })}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
-            Aller à la checklist
-          </button>
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button onClick={() => onNav('construction')}
+              style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+              Construire une stratégie →
+            </button>
+            <button onClick={() => onNav('lists')}
+              style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+              Mes listes
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -61,7 +103,7 @@ function MonitorList({ listId, onNav, addToast, mode }) {
                 Positions ouvertes <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', fontWeight: 400 }}>({open.length})</span>
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                {open.map(p => <PositionCard key={p.id} pos={p} onNav={onNav} />)}
+                {open.map(p => <PositionCard key={p.id} pos={p} onNav={onNav} lists={lists} />)}
               </div>
             </section>
           )}
@@ -72,7 +114,7 @@ function MonitorList({ listId, onNav, addToast, mode }) {
                 Positions fermées <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', fontWeight: 400 }}>({closed.length})</span>
               </h2>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                {closed.map(p => <PositionCard key={p.id} pos={p} onNav={onNav} />)}
+                {closed.map(p => <PositionCard key={p.id} pos={p} onNav={onNav} lists={lists} />)}
               </div>
             </section>
           )}
@@ -82,10 +124,12 @@ function MonitorList({ listId, onNav, addToast, mode }) {
   );
 }
 
-function PositionCard({ pos, onNav }) {
+function PositionCard({ pos, onNav, lists }) {
   const isOpen = pos.status === 'open' || pos.status === 'sain' || pos.status === 'surveiller';
   const pnl = pos.pnl;   // null = P&L de marché non disponible (position locale)
   const date = (pos.committed_at || pos.opened || '').slice(0, 10);
+  // Nom de la liste d'origine (si la position en vient) — repère de contexte.
+  const listName = (lists || []).find(l => String(l.id) === String(pos.list_id))?.name;
 
   return (
     <div
@@ -112,6 +156,7 @@ function PositionCard({ pos, onNav }) {
       </div>
       <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginBottom: 10 }}>
         {pos.index_symbol || pos.idx} · {pos.strategy_type || 'dispersion'}
+        {listName && ` · ${listName}`}
         {date && ` · ouvert le ${date}`}
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

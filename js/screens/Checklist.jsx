@@ -1,5 +1,5 @@
 /* ─── Trade Checklist: validate before committing a position ──── */
-function Checklist({ listId, onNav, addToast, mode }) {
+function Checklist({ listId, onNav, addToast, mode, pro }) {
   const { WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -24,11 +24,14 @@ function Checklist({ listId, onNav, addToast, mode }) {
   }
 
   async function handleCommit() {
+    // Le suivi de position est un module Pro : sans accès, on redirige vers
+    // l'onglet « Suivi » qui propose de passer Pro (pas de position créée).
+    if (!pro) { onNav('positions'); return; }
     setCommitting(true);
     try {
       const res = await DXApi.commitPosition(listId, commitName || null);
       addToast && addToast('Position créée et suivie.', 'ok');
-      onNav('monitor-list', { listId });
+      onNav('positions');
     } catch (err) {
       addToast && addToast(`Erreur : ${err.message}`, 'error');
     } finally {
@@ -76,7 +79,7 @@ function Checklist({ listId, onNav, addToast, mode }) {
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
             ← Risk Lab
           </button>
-          <button onClick={() => onNav('monitor-list', { listId })}
+          <button onClick={() => onNav('positions')}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
             Positions suivies →
           </button>
@@ -127,19 +130,26 @@ function Checklist({ listId, onNav, addToast, mode }) {
               font: 'var(--type-body-sm)',
             }}
           />
-          <button
-            onClick={handleCommit}
-            disabled={!allValidated || committing}
-            style={{
-              font: '600 13px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)',
-              border: 'none', cursor: allValidated ? 'pointer' : 'not-allowed',
-              background: allValidated ? 'var(--accent)' : 'var(--bg-elevated)',
-              color: allValidated ? '#fff' : 'var(--text-dim)',
-              transition: 'all var(--dur-fast) var(--ease)',
-              opacity: committing ? 0.6 : 1,
-            }}>
-            {committing ? 'Committing…' : 'Suivre cette stratégie'}
-          </button>
+          {(() => {
+            // Non-Pro : bouton toujours cliquable → onglet « Suivi » (upsell).
+            // Pro : commit classique, requiert toutes les cases cochées.
+            const enabled = !pro ? !committing : (allValidated && !committing);
+            return (
+              <button
+                onClick={handleCommit}
+                disabled={!enabled}
+                style={{
+                  font: '600 13px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)',
+                  border: 'none', cursor: enabled ? 'pointer' : 'not-allowed',
+                  background: enabled ? 'var(--accent)' : 'var(--bg-elevated)',
+                  color: enabled ? '#fff' : 'var(--text-dim)',
+                  transition: 'all var(--dur-fast) var(--ease)',
+                  opacity: committing ? 0.6 : 1,
+                }}>
+                {committing ? 'Committing…' : (!pro ? 'Suivre cette stratégie (Pro) →' : 'Suivre cette stratégie')}
+              </button>
+            );
+          })()}
         </div>
 
         {hasBlockers && (

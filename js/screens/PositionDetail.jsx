@@ -58,8 +58,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         try {
           await DXApi.deletePosition(positionId);
           addToast && addToast('Position supprimée.', 'ok');
-          if (data?.position?.list_id) onNav('monitor-list', { listId: data.position.list_id });
-          else onNav('monitor');
+          onNav('positions');
         } catch (err) { addToast && addToast(`Erreur : ${err.message}`, 'error'); }
       },
     });

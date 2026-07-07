@@ -234,11 +234,12 @@ function App() {
     monitor: ['Strategy Monitor'],
     opportunities: ['Opportunités Pro'],
     'market-pro': ['Marché Pro'],
+    positions: ['Suivi des positions'],
     journal: ['Journal de trades'],
     preferences: ['Préférences'],
-    checklist: ['Mes listes', '…', 'Checklist'],
-    'monitor-list': ['Mes listes', '…', 'Positions'],
-    position: ['Mes listes', '…', 'Position'],
+    checklist: ['Risk Lab', 'Checklist'],
+    'monitor-list': ['Suivi des positions'],
+    position: ['Suivi des positions', 'Position'],
     docs: ['Formules & Référence'],
   };
   const crumbs = crumbMap[screen] || ['DispersionX'];
@@ -287,14 +288,15 @@ function App() {
     case 'journal':
       screenEl = <window.Journal onNav={onNav} addToast={addToast} pro={pro} lists={lists} prefill={params.prefill} />;
       break;
+    case 'positions':
+    case 'monitor-list':   // ancien chemin par liste → même hub global de suivi (Pro)
+      screenEl = <window.MonitorList onNav={onNav} addToast={addToast} pro={pro} lists={lists} mode={mode} />;
+      break;
     case 'preferences':
       screenEl = <window.Preferences user={user} onNav={onNav} onAuth={handleAuth} addToast={addToast} mode={mode} />;
       break;
     case 'checklist':
-      screenEl = <window.Checklist listId={params.listId} onNav={onNav} addToast={addToast} mode={mode} />;
-      break;
-    case 'monitor-list':
-      screenEl = <window.MonitorList listId={params.listId} onNav={onNav} addToast={addToast} mode={mode} />;
+      screenEl = <window.Checklist listId={params.listId} onNav={onNav} addToast={addToast} mode={mode} pro={pro} />;
       break;
     case 'position':
       screenEl = <window.PositionDetail positionId={params.positionId} onNav={onNav} addToast={addToast} mode={mode} />;

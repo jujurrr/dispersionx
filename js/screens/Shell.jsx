@@ -159,6 +159,7 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
   const navGroups = [...NAV, { group: 'Pro', items: [
     { id: 'opportunities', label: 'Opportunités', icon: 'opp', locked: !pro },
     { id: 'market-pro', label: 'Marché Pro', icon: 'corr', locked: !pro },
+    { id: 'positions', label: 'Suivi', icon: 'monitor', locked: !pro },
     { id: 'journal', label: 'Journal', icon: 'journal', locked: !pro },
   ] }];
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
@@ -193,7 +194,8 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
             </div>
             {sec.items.map((it) => {
               const on = active === it.id
-                || (it.id === 'lists' && ['list-detail','checklist','monitor-list','position'].includes(active));
+                || (it.id === 'lists' && active === 'list-detail')
+                || (it.id === 'positions' && ['checklist','monitor-list','position'].includes(active));
               return (
                 <a key={it.id} onClick={() => onNav(it.id)} className="dx-ico-hover" style={{
                   display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
