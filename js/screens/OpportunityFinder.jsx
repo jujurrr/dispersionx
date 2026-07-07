@@ -317,7 +317,7 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
             <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Auto-chercheur d'opportunités</h1>
             <Badge tone="accent" size="sm">Pro</Badge>
           </div>
-          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 640 }}>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 820 }}>
             Teste des milliers de paniers pour trouver les meilleures dispersions — un aperçu de ce que Pro débloque.
           </p>
         </div>
