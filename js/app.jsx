@@ -1,6 +1,23 @@
 /* ─── DispersionX App: router + global state ─────────────────────── */
 const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs'];
 
+// Détection mobile (largeur ≤ 768px), réactive au redimensionnement/rotation.
+// Sert UNIQUEMENT à adapter la mise en page mobile ; sur PC, isMobile=false et
+// tout reste identique. Exposé pour les écrans qui veulent aussi s'ajuster.
+function useIsMobile() {
+  const get = () => (typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : false);
+  const [m, setM] = React.useState(get);
+  React.useEffect(() => {
+    if (!window.matchMedia) return;
+    const mq = window.matchMedia('(max-width: 768px)');
+    const on = () => setM(mq.matches);
+    mq.addEventListener ? mq.addEventListener('change', on) : mq.addListener(on);
+    return () => { mq.removeEventListener ? mq.removeEventListener('change', on) : mq.removeListener(on); };
+  }, []);
+  return m;
+}
+window.useIsMobile = useIsMobile;
+
 function App() {
   const [screen, setScreen] = React.useState(() => {
     if (window.__dxRecovery) return 'login';   // retour d'un lien de réinitialisation de mot de passe
@@ -23,12 +40,16 @@ function App() {
     try { return JSON.parse(localStorage.getItem('dx-user') || 'null'); } catch { return null; }
   });
   const [toasts, addToast] = window.useToasts();
+  const isMobile = useIsMobile();
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [pro, setPro] = React.useState(() => !!(window.DXCloud && window.DXCloud.pro));
   React.useEffect(() => {
     const onPro = (e) => setPro(!!e.detail);
     window.addEventListener('dx-pro-change', onPro);
     return () => window.removeEventListener('dx-pro-change', onPro);
   }, []);
+  // Referme le tiroir mobile à chaque navigation.
+  React.useEffect(() => { setDrawerOpen(false); }, [screen, params]);
 
   // Progression GLOBALE du chargement des données (tous les indices).
   // Alimentée par DXStore, qui précharge l'ensemble du site au démarrage.
@@ -321,17 +342,28 @@ function App() {
 
   return (
     <React.Fragment>
-    <div style={{ display: 'grid', gridTemplateColumns: 'var(--sidebar-w, 220px) 1fr', height: '100vh', overflow: 'hidden' }}>
-      <window.Sidebar active={screen} onNav={onNav} lists={lists} user={user} pro={pro} />
+    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'var(--sidebar-w, 220px) 1fr', height: '100vh', overflow: 'hidden' }}>
+      {/* Desktop : sidebar dans la grille. Mobile : rendue en tiroir plus bas. */}
+      {!isMobile && <window.Sidebar active={screen} onNav={onNav} lists={lists} user={user} pro={pro} />}
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
-        <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} dataProgress={dataProgress} />
+        <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} dataProgress={dataProgress} isMobile={isMobile} onMenu={() => setDrawerOpen(true)} />
         <main style={{
-          flex: 1, overflowY: 'auto', padding: '24px 28px 64px',
+          flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 56px' : '24px 28px 64px',
           backgroundImage: 'radial-gradient(ellipse 70% 50% at 80% -5%, var(--accent-soft), transparent 60%), radial-gradient(ellipse 50% 40% at 0% 10%, var(--pos-soft), transparent 55%)',
         }}>
           {screenEl}
         </main>
       </div>
+
+      {/* Tiroir latéral (mobile) : voile + panneau glissant */}
+      {isMobile && (
+        <React.Fragment>
+          <div onClick={() => setDrawerOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.5)', opacity: drawerOpen ? 1 : 0, pointerEvents: drawerOpen ? 'auto' : 'none', transition: 'opacity var(--dur-fast) var(--ease)' }} />
+          <div style={{ position: 'fixed', top: 0, bottom: 0, left: 0, width: '82%', maxWidth: 300, zIndex: 1001, transform: drawerOpen ? 'translateX(0)' : 'translateX(-100%)', transition: 'transform var(--dur, 0.25s) var(--ease)', boxShadow: drawerOpen ? 'var(--shadow-lg)' : 'none' }}>
+            <window.Sidebar active={screen} onNav={(s, p) => { onNav(s, p); setDrawerOpen(false); }} lists={lists} user={user} pro={pro} isMobile />
+          </div>
+        </React.Fragment>
+      )}
 
       {/* Score Modal overlay */}
       {scoreModal && (

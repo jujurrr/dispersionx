@@ -8,3 +8,25 @@
 @import url('./tokens/spacing.css');
 @import url('./tokens/effects.css');
 @import url('./tokens/themes.css');
+
+/* ═══════════════════════════════════════════════════════════════
+   Adaptations mobile (≤ 768px). N'affecte QUE les petits écrans ;
+   sur ordinateur, aucune de ces règles ne s'applique → rendu identique.
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  /* Empêche un léger débordement horizontal de la page. */
+  html, body { max-width: 100%; overflow-x: hidden; }
+
+  /* Tableaux larges : défilement horizontal DANS leur conteneur (au lieu
+     de déborder). :has cible le div qui enveloppe directement un tableau ;
+     !important pour surcharger le overflow:hidden en style inline. */
+  main div:has(> table) {
+    overflow-x: auto !important;
+    overflow-y: visible !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  main table { min-width: 560px; }
+
+  /* Modales/dialogues : garder une marge sur petit écran. */
+  main { scrollbar-width: thin; }
+}

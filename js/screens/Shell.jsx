@@ -150,7 +150,7 @@ const NAV = [
   ]},
 ];
 
-function Sidebar({ active, onNav, lists, user, pro }) {
+function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
   const listCount = lists ? lists.length : 0;
   const recent = lists ? lists.slice(0, 5) : [];
   // Entrée « Opportunités Pro » TOUJOURS visible (sinon impossible de découvrir
@@ -170,6 +170,7 @@ function Sidebar({ active, onNav, lists, user, pro }) {
     <aside style={{
       background: 'var(--bg-surface)', borderRight: '1px solid var(--border)',
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
+      height: isMobile ? '100%' : undefined, width: isMobile ? '100%' : undefined,
     }}>
       {/* Logo — clicking navigates to home (indices) */}
       <div onClick={() => onNav('home')} title="Accueil — Indices"
@@ -416,7 +417,7 @@ function DataProgress({ dataProgress }) {
   );
 }
 
-function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress }) {
+function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress, isMobile, onMenu }) {
   const [apiOn, setApiOn] = React.useState(window.DXApi ? window.DXApi.isConnected() : null);
 
   React.useEffect(() => {
@@ -429,9 +430,14 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
     <header style={{
       height: 52, borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '0 28px', flexShrink: 0,
+      padding: isMobile ? '0 12px' : '0 28px', flexShrink: 0,
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '500 13px/1 var(--font-sans)', color: 'var(--text-muted)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '500 13px/1 var(--font-sans)', color: 'var(--text-muted)', minWidth: 0 }}>
+        {isMobile && (
+          <button onClick={onMenu} aria-label="Menu" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, marginRight: 2, borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
+          </button>
+        )}
         {crumbs.map((c, i) => {
           const isLink = i === 0 && crumbs.length > 1;
           return (
@@ -453,16 +459,16 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
           );
         })}
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        {activeList && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: isMobile ? 8 : 14 }}>
+        {activeList && !isMobile && (
           <div style={{ font: 'var(--type-data-sm)', color: 'var(--accent-hover)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius-pill)', padding: '3px 10px' }}>
             {activeList.name} ({activeList.n_items})
           </div>
         )}
-        <MarketStatus apiOn={apiOn} />
+        {!isMobile && <MarketStatus apiOn={apiOn} />}
 
-        <DataProgress dataProgress={dataProgress} />
-        {(() => {
+        {!isMobile && <DataProgress dataProgress={dataProgress} />}
+        {!isMobile && (() => {
           const toggle = (
             <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
               {['Débutant', 'Avancé'].map((m) => (
@@ -480,7 +486,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress })
             ? <window.HintDot text="Change uniquement l'aide affichée, pas les calculs ni les données. « Débutant » ajoute des encadrés d'explication sur chaque écran ; « Avancé » les masque pour une interface plus dense.">{toggle}</window.HintDot>
             : toggle;
         })()}
-        <SectionToggle to="landing" />
+        {!isMobile && <SectionToggle to="landing" />}
         <ThemeToggle />
         <div onClick={() => onNav && onNav(user ? 'preferences' : 'login')} title={user ? `${user.name} — préférences` : 'Connexion'}
           style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
