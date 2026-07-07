@@ -588,7 +588,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   //    sauvegardée pour cette liste, on invite d'abord à la construire. ──
   if (!strategy && !forceEstimate) {
     const flow = [
-      { n: '1', t: 'Strategy Builder', d: 'Choisir l\'indice, l\'échéance, les composants et le nombre de contrats (sizing vega-neutre).', on: false },
+      { n: '1', t: 'Construction', d: 'Choisir l\'indice, l\'échéance, les composants et le nombre de contrats (sizing vega-neutre).', on: false },
       { n: '2', t: 'Risk Lab', d: 'Grecs, scénarios et P&L calculés sur les quantités réelles de la stratégie.', on: true },
       { n: '3', t: 'Strategy Monitor', d: 'Suivi de la position une fois en marché.', on: false },
     ];
@@ -624,7 +624,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
-            <button onClick={() => onNav && onNav('builder', { listId })} style={{ font: '600 13px/1 var(--font-sans)', padding: '12px 24px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+            <button onClick={() => onNav && onNav('construction', { listId })} style={{ font: '600 13px/1 var(--font-sans)', padding: '12px 24px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
               Construire la stratégie →
             </button>
             <button onClick={() => setForceEstimate(true)} style={{ font: '500 12px/1 var(--font-sans)', padding: '4px 8px', borderRadius: 'var(--radius)', border: 'none', background: 'transparent', color: 'var(--text-dim)', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3 }}>
