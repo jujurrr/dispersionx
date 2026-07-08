@@ -61,7 +61,7 @@ function dxToneSoft(tone) {
     default:    return 'var(--accent-soft)';
   }
 }
-window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo, tone: dxActionTone, who: dxWho, toneColor: dxToneColor, toneSoft: dxToneSoft };
+window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo, tone: dxActionTone, who: dxWho, toneColor: dxToneColor, toneSoft: dxToneSoft, notifTarget: dxNotifTarget, auditTarget: dxAuditTarget, go: dxGo };
 
 // ── Cible de navigation d'une notification / d'un événement d'audit ──
 // On déduit la destination du `kind` + `ref` (ex. « pos:<id>:delta »). Renvoie
@@ -151,20 +151,18 @@ function ActivityFeed() {
   const meEmail = (window.DXCloud && window.DXCloud.user && window.DXCloud.user.email) || '';
   const uid = (window.DXCloud && window.DXCloud.user && window.DXCloud.user.id) || 'anon';
   const seenKey = 'dx-activity-seen-' + uid;
-  const notifSeenKey = 'dx-notif-seen-' + uid;
+  const store = window.DXNotifStore;   // notifications : source unique partagée (cloche + page)
 
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState([]);
-  const [notifs, setNotifs] = React.useState([]);     // notifications « intelligentes » (cloud)
   const [reveal, setReveal] = React.useState(null);   // dernière modif « live » à révéler
   const [shown, setShown] = React.useState(false);
-  const [unseen, setUnseen] = React.useState(0);       // NON-VU depuis la dernière visite (audit + notifs)
+  const [auditUnseen, setAuditUnseen] = React.useState(0);   // modifs par d'autres non vues (audit)
+  const [, forceStore] = React.useState(0);                  // re-render quand le store notifs change
   const [loginNotice, setLoginNotice] = React.useState(0);   // bannière persistante à la (re)connexion
 
   const seenRef = React.useRef(null);        // baseline session (révélations live)
   const lastSeenRef = React.useRef(null);    // dernier id audit vu, PERSISTÉ
-  const lastNotifSeenRef = React.useRef(null); // dernier id notif vu, PERSISTÉ
-  const notifMaxRef = React.useRef(0);
   const latestMaxRef = React.useRef(0);
   const firstRef = React.useRef(true);
   const revealTimers = React.useRef([]);
@@ -181,81 +179,70 @@ function ActivityFeed() {
 
   const markSeen = React.useCallback(() => {
     lastSeenRef.current = latestMaxRef.current;
-    lastNotifSeenRef.current = notifMaxRef.current;
     try { localStorage.setItem(seenKey, String(latestMaxRef.current)); } catch {}
-    try { localStorage.setItem(notifSeenKey, String(notifMaxRef.current)); } catch {}
-    setUnseen(0); setLoginNotice(0);
-  }, [seenKey, notifSeenKey]);
+    setAuditUnseen(0); setLoginNotice(0);
+    if (store) store.markSeen();   // notifications : réinitialise aussi la cloche (cohérence)
+  }, [seenKey, store]);
 
   const poll = React.useCallback(() => {
-    if (!(window.DXCloud && window.DXCloud.enabled)) { setRows([]); setNotifs([]); return; }
+    if (!(window.DXCloud && window.DXCloud.enabled)) { setRows([]); return; }
     if (lastSeenRef.current == null) {
       const raw = (() => { try { return localStorage.getItem(seenKey); } catch { return null; } })();
       lastSeenRef.current = raw != null ? (parseInt(raw, 10) || 0) : 0;
     }
-    if (lastNotifSeenRef.current == null) {
-      const raw = (() => { try { return localStorage.getItem(notifSeenKey); } catch { return null; } })();
-      lastNotifSeenRef.current = raw != null ? (parseInt(raw, 10) || 0) : 0;
-    }
     const cutoff = Date.now() - DX_ACT_WINDOW_MS;
-    Promise.all([
-      DXApi.getGlobalActivity(DX_ACT_LIMIT).catch(() => null),
-      DXApi.getNotifications(50).catch(() => null),
-    ]).then(([alist, nlist]) => {
-      // ── Notifications « intelligentes » ──
-      let notifUnseen = 0;
-      if (Array.isArray(nlist)) {
-        const recentN = nlist.filter(n => new Date(n.created_at).getTime() >= cutoff);
-        setNotifs(recentN);
-        notifMaxRef.current = recentN.reduce((mx, n) => Math.max(mx, Number(n.id) || 0), 0);
-        notifUnseen = recentN.filter(n => Number(n.id) > lastNotifSeenRef.current).length;
+    // Audit collaboratif (les notifications « intelligentes » viennent du store).
+    DXApi.getGlobalActivity(DX_ACT_LIMIT).then(alist => {
+      if (!Array.isArray(alist)) return;
+      setRows(alist.filter(e => new Date(e.created_at).getTime() >= cutoff));   // fenêtre 30 j
+      if (!alist.length) return;
+      const maxId = alist.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 0);
+      latestMaxRef.current = maxId;
+      const au = alist.filter(e => Number(e.id) > lastSeenRef.current && e.actor_email && e.actor_email !== meEmail).length;
+      setAuditUnseen(au);
+      const notifUnseen = store ? store.unseen() : 0;
+      if (seenRef.current == null) {
+        seenRef.current = maxId;
+        if (firstRef.current && (au + notifUnseen) > 0) setLoginNotice(au + notifUnseen);
+        firstRef.current = false;
+      } else {
+        const fresh = alist.filter(e => Number(e.id) > seenRef.current);
+        if (fresh.length) { seenRef.current = maxId; showReveal(fresh.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a))); }
       }
-      // ── Audit collaboratif (logique existante) ──
-      let auditUnseen = 0;
-      if (Array.isArray(alist)) {
-        setRows(alist.filter(e => new Date(e.created_at).getTime() >= cutoff));   // fenêtre 30 j
-        if (alist.length) {
-          const maxId = alist.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 0);
-          latestMaxRef.current = maxId;
-          // Non-vu = modifs par D'AUTRES au-delà de lastSeen.
-          auditUnseen = alist.filter(e => Number(e.id) > lastSeenRef.current && e.actor_email && e.actor_email !== meEmail).length;
-          if (seenRef.current == null) {
-            seenRef.current = maxId;
-            if (firstRef.current && (auditUnseen + notifUnseen) > 0) setLoginNotice(auditUnseen + notifUnseen);
-            firstRef.current = false;
-          } else {
-            const fresh = alist.filter(e => Number(e.id) > seenRef.current);
-            if (fresh.length) { seenRef.current = maxId; showReveal(fresh.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a))); }
-          }
-        }
-      }
-      setUnseen(auditUnseen + notifUnseen);
     }).catch(() => {});
-  }, [showReveal, meEmail, seenKey, notifSeenKey]);
+  }, [showReveal, meEmail, seenKey, store]);
 
   React.useEffect(() => {
     if (!cloudOn) return;
     poll();
+    if (store) store.start();
     const id = setInterval(poll, 20000);
     const onPoke = () => { poll(); clearTimeout(pokeTimer.current); pokeTimer.current = setTimeout(poll, 1200); };
+    const onStore = () => forceStore(x => x + 1);   // notifs du store changées → re-render (badge + fil)
     window.addEventListener('dx-activity-poke', onPoke);
     window.addEventListener('dx-lists-changed', onPoke);
     window.addEventListener('dx-strategies-changed', onPoke);
+    window.addEventListener('dx-notif-store', onStore);
     return () => {
       clearInterval(id);
       window.removeEventListener('dx-activity-poke', onPoke);
       window.removeEventListener('dx-lists-changed', onPoke);
       window.removeEventListener('dx-strategies-changed', onPoke);
+      window.removeEventListener('dx-notif-store', onStore);
       clearRevealTimers();
       clearTimeout(pokeTimer.current);
     };
-  }, [cloudOn, poll]);
+  }, [cloudOn, poll, store]);
 
   if (!cloudOn) return null;
 
   const A = window.DXActivity;
   const toggle = () => setOpen(o => { const n = !o; if (n) markSeen(); return n; });
   const lifting = ((loginNotice > 0) || (reveal && shown)) && !open;
+
+  // Notifications = store partagé ; non-vu total = audit d'autrui + notifs non vues.
+  const notifs = store ? store.getNotifs() : [];
+  const unseen = auditUnseen + (store ? store.unseen() : 0);
 
   // Fil fusionné : notifications « intelligentes » + audit collaboratif, trié récent→ancien.
   const feed = [

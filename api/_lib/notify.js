@@ -27,10 +27,15 @@ export function deltaDriftNotif(pos, v, { frac = 0.15, floor = 150 } = {}) {
   if (Math.abs(cur) < thresh) return null;
   const dir = cur > 0 ? 'haussier' : 'baissier';
   const name = (pos && pos.name) || 'position';
+  const entryD = v.delta_dollar && v.delta_dollar.entry != null ? Math.round(v.delta_dollar.entry) : null;
+  const g = v.greeks && v.greeks.current ? v.greeks.current : null;
+  const entryTxt = entryD != null ? ` (≈ ${entryD} $ à l'entrée)` : '';
+  const dteTxt = v.dte != null ? ` DTE restant ${v.dte}.` : '';
+  const gTxt = g && (g.vega != null || g.theta != null) ? ` Vega ${g.vega} $/pt IV, theta ${g.theta} $/j.` : '';
   return {
     kind: 'greek_drift', tone: 'warn',
     title: `Delta à surveiller — ${name}`,
-    body: `Delta net ${Math.round(cur)} $/+1 % (${dir}) — la position s'éloigne du neutre. Pense à rééquilibrer (ETF indice ou par jambe).`,
+    body: `Delta net ${Math.round(cur)} $/+1 % (${dir})${entryTxt} — la position s'éloigne du neutre.${dteTxt}${gTxt} Pense à rééquilibrer (ETF indice ou par jambe).`,
     ref: `pos:${pos && pos.id}:delta`,
   };
 }
@@ -42,8 +47,11 @@ export function pnlNotif(pos, v, { win = 0.5, loss = -0.3 } = {}) {
   if (pnl == null || !isFinite(pnl) || !(gross > 0)) return null;
   const r = pnl / gross;
   const name = (pos && pos.name) || 'position';
-  if (r >= win) return { kind: 'pnl', tone: 'pos', title: `Gain notable — ${name}`, body: `P&L +${Math.round(pnl)} $ (+${Math.round(r * 100)} % de la prime engagée). Envisage une prise de profit.`, ref: `pos:${pos && pos.id}:pnlwin` };
-  if (r <= loss) return { kind: 'pnl', tone: 'neg', title: `Perte notable — ${name}`, body: `P&L ${Math.round(pnl)} $ (${Math.round(r * 100)} % de la prime engagée). Revois la thèse et le risque.`, ref: `pos:${pos && pos.id}:pnlloss` };
+  const dteTxt = v.dte != null ? ` DTE restant ${v.dte}.` : '';
+  const breakdown = (typeof v.straddle_pnl === 'number' && typeof v.hedge_pnl === 'number' && Math.abs(v.hedge_pnl) >= 1)
+    ? ` (straddles ${Math.round(v.straddle_pnl)} $ · couverture ${Math.round(v.hedge_pnl)} $)` : '';
+  if (r >= win) return { kind: 'pnl', tone: 'pos', title: `Gain notable — ${name}`, body: `P&L +${Math.round(pnl)} $ (+${Math.round(r * 100)} % de la prime engagée)${breakdown}.${dteTxt} Envisage une prise de profit.`, ref: `pos:${pos && pos.id}:pnlwin` };
+  if (r <= loss) return { kind: 'pnl', tone: 'neg', title: `Perte notable — ${name}`, body: `P&L ${Math.round(pnl)} $ (${Math.round(r * 100)} % de la prime engagée)${breakdown}.${dteTxt} Revois la thèse et le risque.`, ref: `pos:${pos && pos.id}:pnlloss` };
   return null;
 }
 

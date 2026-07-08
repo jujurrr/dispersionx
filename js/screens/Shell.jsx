@@ -165,6 +165,50 @@ function LangSwitcher() {
   );
 }
 
+// Cloche de notifications (barre du haut, partie création). Point rouge + chiffre
+// quand il y a du non-vu ; clic → page Notifications + réinitialise (via le store
+// partagé window.DXNotifStore, cohérent avec l'onglet Activité). Cloud uniquement.
+function NotifBell({ onNav }) {
+  const store = typeof window !== 'undefined' ? window.DXNotifStore : null;
+  const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
+  const [hover, setHover] = React.useState(false);
+  const [, force] = React.useState(0);
+  React.useEffect(() => {
+    if (!store) return;
+    const h = () => force(x => x + 1);
+    window.addEventListener('dx-notif-store', h);
+    store.start();
+    return () => window.removeEventListener('dx-notif-store', h);
+  }, []);
+  if (!cloudOn || !store) return null;
+  const unseen = store.unseen();
+  const has = unseen > 0;
+  const open = () => { store.markSeen(); onNav && onNav('notifications'); };
+  return (
+    <button onClick={open} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      title={has ? `${unseen} notification${unseen > 1 ? 's' : ''} non lue${unseen > 1 ? 's' : ''}` : 'Notifications'}
+      aria-label="Notifications"
+      style={{
+        position: 'relative', width: 30, height: 30, borderRadius: 'var(--radius)', cursor: 'pointer',
+        background: hover ? 'var(--bg-hover)' : 'var(--bg-elevated)', border: '1px solid var(--border)',
+        color: has ? 'var(--accent-hover)' : (hover ? 'var(--accent-hover)' : 'var(--text-soft)'),
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        transition: 'all var(--dur-fast) var(--ease)',
+      }}>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" /><path d="M13.73 21a2 2 0 0 1-3.46 0" />
+      </svg>
+      {has && (
+        <span className="dx-pulse" style={{
+          position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16, padding: '0 3px', boxSizing: 'border-box',
+          borderRadius: 999, background: 'var(--neg)', color: '#fff', font: '700 9px/12px var(--font-mono)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', border: '2px solid var(--bg-surface)',
+        }}>{unseen > 99 ? '99+' : unseen}</span>
+      )}
+    </button>
+  );
+}
+
 // Toggle between the presentation (Landing) part and the app (creation) part.
 // `to` = destination side, controls the icon + tooltip. Action runs window.__dxSwitch.
 function SectionToggle({ to = 'landing' }) {
@@ -574,7 +618,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress, i
             : toggle;
         })()}
         {!isMobile && <SectionToggle to="landing" />}
-        <LangSwitcher />
+        <NotifBell onNav={onNav} />
         <ThemeToggle />
         <div onClick={() => onNav && onNav(user ? 'preferences' : 'login')} title={user ? `${user.name} — ${window.t ? window.t('Préférences') : 'Préférences'}` : (window.t ? window.t('Connexion') : 'Connexion')}
           style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
@@ -1120,4 +1164,4 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
   );
 }
 
-Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, LangSwitcher, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });
+Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, LangSwitcher, NotifBell, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });

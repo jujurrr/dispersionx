@@ -31,6 +31,7 @@ import '../project/_ds_bundle.js';
 import '../js/data.js';
 import '../js/api.js';
 import '../js/store.js';
+import '../js/notif-store.js';   // window.DXNotifStore (store partagé des notifications, cloud)
 import '../js/lib/market-hours.js';
 
 // 5) Écrans (ordre identique à index.html — dépendances de globals au top-level).
@@ -66,6 +67,7 @@ import '../js/screens/Privacy.jsx';        // window.Privacy (politique de confi
 import '../js/screens/Landing.jsx';
 import '../js/screens/Auth.jsx';
 import '../js/screens/Preferences.jsx';   // window.Preferences (compte / abonnement)
+import '../js/screens/NotificationsPage.jsx';   // window.NotificationsPage (page dédiée notifs + activité)
 
 // 6) Point d'entrée applicatif — monte React (doit être en DERNIER).
 import '../js/app.jsx';

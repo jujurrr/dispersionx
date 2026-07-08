@@ -240,6 +240,7 @@ function App() {
     positions: ['Suivi des positions'],
     journal: ['Journal de trades'],
     preferences: ['Préférences'],
+    notifications: ['Notifications'],
     checklist: ['Risk Lab', 'Checklist'],
     'monitor-list': ['Suivi des positions'],
     position: ['Suivi des positions', 'Position'],
@@ -299,6 +300,9 @@ function App() {
       break;
     case 'preferences':
       screenEl = <window.Preferences user={user} onNav={onNav} onAuth={handleAuth} addToast={addToast} mode={mode} />;
+      break;
+    case 'notifications':
+      screenEl = <window.NotificationsPage onNav={onNav} lists={lists} addToast={addToast} />;
       break;
     case 'checklist':
       screenEl = <window.Checklist listId={params.listId} onNav={onNav} addToast={addToast} mode={mode} pro={pro} />;
