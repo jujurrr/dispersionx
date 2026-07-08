@@ -65,7 +65,7 @@ function ThemeToggle() {
 
   return (
     <button onClick={toggle} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
-      title={isDark ? 'Thème clair' : 'Thème sombre'} aria-label="Changer de thème"
+      title={window.t ? window.t(isDark ? 'Thème clair' : 'Thème sombre') : (isDark ? 'Thème clair' : 'Thème sombre')} aria-label={window.t ? window.t('Changer de thème') : 'Changer de thème'}
       style={{
         width: 30, height: 30, borderRadius: 'var(--radius)', cursor: 'pointer',
         background: hover ? 'var(--bg-hover)' : 'var(--bg-elevated)',
@@ -89,12 +89,89 @@ function ThemeToggle() {
   );
 }
 
+// Sélecteur de langue (fr/en/zh). Non-cassant : agit via window.DXI18n, qui
+// émet `dx-lang` → l'app entière se re-rend (voir useLang dans app.jsx).
+function LangSwitcher() {
+  const I18n = typeof window !== 'undefined' ? window.DXI18n : null;
+  const LANGS = (I18n && I18n.LANGS) || [{ code: 'fr', label: 'FR' }];
+  const [lang, setLang] = React.useState(I18n ? I18n.get() : 'fr');
+  const [open, setOpen] = React.useState(false);
+  const [hover, setHover] = React.useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    const onLang = (e) => setLang(e.detail);
+    window.addEventListener('dx-lang', onLang);
+    return () => window.removeEventListener('dx-lang', onLang);
+  }, []);
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  if (!I18n) return null;
+  const cur = LANGS.find(l => l.code === lang) || LANGS[0];
+  const label = window.t ? window.t('Changer de langue') : 'Changer de langue';
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(o => !o)} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+        title={label} aria-label={label} aria-haspopup="listbox" aria-expanded={open}
+        style={{
+          height: 30, minWidth: 30, padding: '0 8px', borderRadius: 'var(--radius)', cursor: 'pointer',
+          background: hover || open ? 'var(--bg-hover)' : 'var(--bg-elevated)',
+          border: '1px solid var(--border)', color: hover || open ? 'var(--accent-hover)' : 'var(--text-soft)',
+          display: 'flex', alignItems: 'center', gap: 5,
+          font: '600 11px/1 var(--font-sans)',
+          transition: 'all var(--dur-fast) var(--ease)',
+        }}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" /><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+        </svg>
+        <span>{cur.label}</span>
+      </button>
+      {open && (
+        <div role="listbox" style={{
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 1200, minWidth: 132,
+          background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)',
+          borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', padding: 4,
+          display: 'flex', flexDirection: 'column', gap: 2,
+        }}>
+          {LANGS.map(l => {
+            const on = l.code === lang;
+            return (
+              <button key={l.code} role="option" aria-selected={on}
+                onClick={() => { I18n.set(l.code); setOpen(false); }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+                  padding: '7px 10px', borderRadius: 'var(--radius-sm, 6px)', cursor: 'pointer',
+                  background: on ? 'var(--accent-soft)' : 'transparent',
+                  border: `1px solid ${on ? 'var(--accent-border)' : 'transparent'}`,
+                  color: on ? 'var(--accent-hover)' : 'var(--text-soft)',
+                  font: '500 12px/1 var(--font-sans)', textAlign: 'left',
+                }}
+                onMouseEnter={e => { if (!on) e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                onMouseLeave={e => { if (!on) e.currentTarget.style.background = 'transparent'; }}>
+                <span>{l.name}</span>
+                <span style={{ font: '600 10px/1 var(--font-mono)', color: on ? 'var(--accent-hover)' : 'var(--text-muted)' }}>{l.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Toggle between the presentation (Landing) part and the app (creation) part.
 // `to` = destination side, controls the icon + tooltip. Action runs window.__dxSwitch.
 function SectionToggle({ to = 'landing' }) {
   const [hover, setHover] = React.useState(false);
   const goingToApp = to === 'app';
-  const title = goingToApp ? 'Aller à l’espace de création' : 'Aller à la présentation';
+  const rawTitle = goingToApp ? 'Aller à l’espace de création' : 'Aller à la présentation';
+  const title = window.t ? window.t(rawTitle) : rawTitle;
   return (
     <button onClick={() => window.__dxSwitch && window.__dxSwitch()}
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
@@ -164,7 +241,7 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
   ] }];
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const cloudUser = window.DXCloud && window.DXCloud.user;
-  const who = (user && (user.name || user.email)) || (cloudUser && (cloudUser.name || cloudUser.email)) || 'Mon compte';
+  const who = (user && (user.name || user.email)) || (cloudUser && (cloudUser.name || cloudUser.email)) || (window.t ? window.t('Mon compte') : 'Mon compte');
   const srcLink = { color: 'var(--text-muted)', textDecoration: 'none', borderBottom: '1px dotted var(--border-strong)' };
 
   return (
@@ -174,14 +251,14 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
       height: isMobile ? '100%' : undefined, width: isMobile ? '100%' : undefined,
     }}>
       {/* Logo — clicking navigates to home (indices) */}
-      <div onClick={() => onNav('home')} title="Accueil — Indices"
+      <div onClick={() => onNav('home')} title={window.t ? window.t('Accueil — Indices') : 'Accueil — Indices'}
         style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '16px 18px 18px', borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
         <Logo size={32} wordmark={false} />
         <div style={{ lineHeight: 1.15 }}>
           <div style={{ font: '800 14px/1 var(--font-sans)', letterSpacing: '-0.01em', color: 'var(--text)' }}>
             Dispersion<span style={{ color: 'var(--accent-hover)' }}>X</span>
           </div>
-          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginTop: 3 }}>Volatility desk</div>
+          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginTop: 3 }}>{window.t ? window.t('Volatility desk') : 'Volatility desk'}</div>
         </div>
       </div>
 
@@ -190,7 +267,7 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
         {navGroups.map((sec) => (
           <div key={sec.group} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <div style={{ padding: '0 10px 6px', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>
-              {sec.group}
+              {window.t ? window.t(sec.group) : sec.group}
             </div>
             {sec.items.map((it) => {
               const on = active === it.id
@@ -207,9 +284,9 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
                   transition: 'all var(--dur-fast) var(--ease)',
                 }}>
                   <Icon d={ICONS[it.icon]} />
-                  <span style={{ flex: 1 }}>{it.label}</span>
+                  <span style={{ flex: 1 }}>{window.t ? window.t(it.label) : it.label}</span>
                   {it.locked && (
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title="Réservé au forfait Pro">
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} title={window.t ? window.t('Réservé au forfait Pro') : 'Réservé au forfait Pro'}>
                       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="var(--accent-hover)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
                       </svg>
@@ -236,7 +313,7 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
         {/* Recent lists */}
         {recent.length > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <div style={{ padding: '0 10px 6px', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>Récentes</div>
+            <div style={{ padding: '0 10px 6px', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>{window.t ? window.t('Récentes') : 'Récentes'}</div>
             {recent.map((list) => (
               <a key={list.id} onClick={() => onNav('list-detail', { listId: list.id })} style={{
                 display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
@@ -263,20 +340,20 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-soft)' }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: cloudOn ? 'var(--pos)' : 'var(--warn)', boxShadow: cloudOn ? '0 0 0 3px var(--pos-soft)' : 'none' }} />
             {cloudOn ? (
-              <span onClick={() => onNav && onNav('preferences')} title="Préférences du compte"
+              <span onClick={() => onNav && onNav('preferences')} title={window.t ? window.t('Préférences du compte') : 'Préférences du compte'}
                 style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                Mode réel · <span style={{ textTransform: 'none', color: 'var(--text)', fontWeight: 600 }}>{who}</span>
+                {window.t ? window.t('Mode réel · ') : 'Mode réel · '}<span style={{ textTransform: 'none', color: 'var(--text)', fontWeight: 600 }}>{who}</span>
               </span>
             ) : (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <span onClick={() => onNav && onNav('login')} style={{ cursor: 'pointer' }} title="Se connecter">Mode invité</span>
-                {window.HintDot && <window.HintDot text="Vos listes et stratégies restent uniquement sur cet appareil. Connectez-vous (gratuit) pour les sauvegarder et les retrouver sur tous vos appareils." />}
+                <span onClick={() => onNav && onNav('login')} style={{ cursor: 'pointer' }} title={window.t ? window.t('Se connecter') : 'Se connecter'}>{window.t ? window.t('Mode invité') : 'Mode invité'}</span>
+                {window.HintDot && <window.HintDot text={window.t ? window.t('Vos listes et stratégies restent uniquement sur cet appareil. Connectez-vous (gratuit) pour les sauvegarder et les retrouver sur tous vos appareils.') : 'Vos listes et stratégies restent uniquement sur cet appareil. Connectez-vous (gratuit) pour les sauvegarder et les retrouver sur tous vos appareils.'} />}
               </span>
             )}
           </div>
           {/* Sources de données réelles — liens à jour */}
           <div style={{ font: '10px/1.5 var(--font-sans)', color: 'var(--text-dim)' }}>
-            Sources :{' '}
+            {window.t ? window.t('Sources :') : 'Sources :'}{' '}
             <a href="https://www.cboe.com/delayed_quotes/" target="_blank" rel="noreferrer" style={srcLink}>Cboe</a>{' · '}
             <a href="https://finance.yahoo.com" target="_blank" rel="noreferrer" style={srcLink}>Yahoo Finance</a>{' · '}
             <a href="https://finnhub.io" target="_blank" rel="noreferrer" style={srcLink}>Finnhub</a>
@@ -284,12 +361,12 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
           {/* Note (déplacée du haut du site) */}
           <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', font: '10px/1.4 var(--font-sans)', color: 'var(--text-dim)' }}>
             <span style={{ font: '9px/1', color: 'var(--text-muted)', flexShrink: 0 }}>ⓘ</span>
-            <span>Données différées 15 min — analyse pédagogique, pas un conseil en investissement.</span>
+            <span>{window.t ? window.t('Données différées 15 min — analyse pédagogique, pas un conseil en investissement.') : 'Données différées 15 min — analyse pédagogique, pas un conseil en investissement.'}</span>
           </div>
           {/* Liens légal + offre */}
           <div style={{ display: 'flex', gap: 12, font: '10px/1.4 var(--font-sans)' }}>
-            {!pro && <a onClick={() => onNav && onNav('pricing')} style={{ color: 'var(--accent-hover)', cursor: 'pointer', borderBottom: '1px dotted var(--accent-border)' }}>Passer Pro</a>}
-            <a onClick={() => onNav && onNav('privacy')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>Confidentialité</a>
+            {!pro && <a onClick={() => onNav && onNav('pricing')} style={{ color: 'var(--accent-hover)', cursor: 'pointer', borderBottom: '1px dotted var(--accent-border)' }}>{window.t ? window.t('Passer Pro') : 'Passer Pro'}</a>}
+            <a onClick={() => onNav && onNav('privacy')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('Confidentialité') : 'Confidentialité'}</a>
           </div>
         </div>
       </div>
@@ -325,7 +402,7 @@ function MarketStatus({ apiOn }) {
     <div onMouseEnter={show} onMouseLeave={hide} style={{ position: 'relative' }}>
       <button
         onClick={() => setOpen(o => !o)}
-        title="Statut des places boursières"
+        title={window.t ? window.t('Statut des places boursières') : 'Statut des places boursières'}
         style={{
           display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
           font: 'var(--type-data-sm)', color: 'var(--text-muted)',
@@ -333,8 +410,8 @@ function MarketStatus({ apiOn }) {
         }}
       >
         <span style={{ width: 6, height: 6, borderRadius: '50%', background: mainOpen ? 'var(--pos)' : 'var(--text-dim)' }} />
-        {mainOpen ? 'Marché ouvert' : 'Marché fermé'}
-        {!apiOn && <span style={{ color: 'var(--text-dim)' }}>· démo</span>}
+        {window.t ? window.t(mainOpen ? 'Marché ouvert' : 'Marché fermé') : (mainOpen ? 'Marché ouvert' : 'Marché fermé')}
+        {!apiOn && <span style={{ color: 'var(--text-dim)' }}>· {window.t ? window.t('démo') : 'démo'}</span>}
         <span style={{ fontSize: 8, color: 'var(--text-dim)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-fast) var(--ease)' }}>▾</span>
       </button>
 
@@ -441,7 +518,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress, i
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, font: '500 13px/1 var(--font-sans)', color: 'var(--text-muted)', minWidth: 0 }}>
         {isMobile && (
-          <button onClick={onMenu} aria-label="Menu" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, marginRight: 2, borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>
+          <button onClick={onMenu} aria-label={window.t ? window.t('Menu') : 'Menu'} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 34, marginRight: 2, borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)', cursor: 'pointer', flexShrink: 0 }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12h18M3 6h18M3 18h18" /></svg>
           </button>
         )}
@@ -460,7 +537,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress, i
                   textUnderlineOffset: 3,
                 }}
               >
-                {c}
+                {window.t ? window.t(c) : c}
               </span>
             </React.Fragment>
           );
@@ -485,17 +562,18 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress, i
                   background: mode === m ? 'var(--accent)' : 'transparent',
                   color: mode === m ? '#fff' : 'var(--text-muted)',
                   transition: 'all var(--dur-fast) var(--ease)',
-                }}>{m}</button>
+                }}>{window.t ? window.t(m) : m}</button>
               ))}
             </div>
           );
           return window.HintDot
-            ? <window.HintDot text="Change uniquement l'aide affichée, pas les calculs ni les données. « Débutant » ajoute des encadrés d'explication sur chaque écran ; « Avancé » les masque pour une interface plus dense.">{toggle}</window.HintDot>
+            ? <window.HintDot text={window.t ? window.t("Change uniquement l'aide affichée, pas les calculs ni les données. « Débutant » ajoute des encadrés d'explication sur chaque écran ; « Avancé » les masque pour une interface plus dense.") : "Change uniquement l'aide affichée, pas les calculs ni les données. « Débutant » ajoute des encadrés d'explication sur chaque écran ; « Avancé » les masque pour une interface plus dense."}>{toggle}</window.HintDot>
             : toggle;
         })()}
         {!isMobile && <SectionToggle to="landing" />}
+        <LangSwitcher />
         <ThemeToggle />
-        <div onClick={() => onNav && onNav(user ? 'preferences' : 'login')} title={user ? `${user.name} — préférences` : 'Connexion'}
+        <div onClick={() => onNav && onNav(user ? 'preferences' : 'login')} title={user ? `${user.name} — ${window.t ? window.t('Préférences') : 'Préférences'}` : (window.t ? window.t('Connexion') : 'Connexion')}
           style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',
             background: user ? 'var(--accent-soft)' : 'var(--bg-elevated)',
             border: `1px solid ${user ? 'var(--accent-border)' : 'var(--border)'}`,
@@ -1039,4 +1117,4 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
   );
 }
 
-Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });
+Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, LangSwitcher, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });

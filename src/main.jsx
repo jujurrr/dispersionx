@@ -14,6 +14,11 @@ import './analytics.js';
 //     (l'app reste en localStorage). Doit exister avant que les écrans tournent.
 import './cloud.js';
 
+// 1c) Internationalisation (fr/en/zh) → window.DXI18n, window.t, window.useLang.
+//     Repli sur le français : toute chaîne non traduite reste affichée en FR.
+//     Doit exister avant les écrans (ils appellent window.t au rendu).
+import '../js/i18n.js';
+
 // 2) Styles du design system.
 import '../project/styles.css';
 

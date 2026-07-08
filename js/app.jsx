@@ -40,6 +40,9 @@ function App() {
     try { return JSON.parse(localStorage.getItem('dx-user') || 'null'); } catch { return null; }
   });
   const [toasts, addToast] = window.useToasts();
+  // Langue courante (fr/en/zh). Ce hook re-render TOUT l'arbre au changement
+  // de langue → les appels window.t() des écrans reflètent la nouvelle langue.
+  const lang = window.useLang ? window.useLang() : 'fr';
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [pro, setPro] = React.useState(() => !!(window.DXCloud && window.DXCloud.pro));
@@ -89,7 +92,7 @@ function App() {
   // pas re-render quand l'App se met à jour (progression, listes…). On garde la
   // MÊME référence d'élément → React saute son rendu. Le préchargement des
   // données continue en parallèle (déclenché dans l'effet ci-dessus).
-  const landingEl = React.useMemo(() => (window.Landing ? <window.Landing /> : null), []);
+  const landingEl = React.useMemo(() => (window.Landing ? <window.Landing /> : null), [lang]);
 
   function handleAuth(u) {
     setUser(u);

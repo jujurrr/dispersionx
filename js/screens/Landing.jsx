@@ -37,14 +37,15 @@ function Landing() {
           </span>
           <nav style={{ display: 'flex', gap: 26, alignItems: 'center' }} className="dx-landing-nav">
             {LINKS.map(([id, label]) => (
-              <a key={id} onClick={() => scrollTo(id)} style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', cursor: 'pointer' }}>{label}</a>
+              <a key={id} onClick={() => scrollTo(id)} style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', cursor: 'pointer' }}>{window.t ? window.t(label) : label}</a>
             ))}
           </nav>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
             {window.SectionToggle ? <window.SectionToggle to="app" /> : null}
+            {window.LangSwitcher ? <window.LangSwitcher /> : null}
             {window.ThemeToggle ? <window.ThemeToggle /> : null}
-            <Button variant="ghost" size="md" onClick={() => window.__dxNav && window.__dxNav('login')}>Connexion</Button>
-            <Button variant="primary" size="md" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
+            <Button variant="ghost" size="md" onClick={() => window.__dxNav && window.__dxNav('login')}>{window.t ? window.t('Connexion') : 'Connexion'}</Button>
+            <Button variant="primary" size="md" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
           </div>
         </div>
       </header>
@@ -58,20 +59,20 @@ function Landing() {
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 80% 60% at 70% 0%, var(--accent-soft), transparent 60%), radial-gradient(ellipse 50% 50% at 10% 30%, var(--pos-soft), transparent 60%)' }} />
         <div style={{ ...wrap, position: 'relative', padding: '92px 32px 80px', display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 48, alignItems: 'center' }}>
           <div>
-            <Badge tone="accent" size="md">Analyse de dispersion d'options</Badge>
+            <Badge tone="accent" size="md">{window.t ? window.t("Analyse de dispersion d'options") : "Analyse de dispersion d'options"}</Badge>
             <h1 style={{ font: 'var(--type-hero)', fontSize: 48, letterSpacing: 'var(--track-tight)', color: 'var(--text)', margin: '20px 0 0', textWrap: 'balance' }}>
-              Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.
+              {window.t ? window.t('Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.') : 'Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.'}
             </h1>
             <p style={{ ...lede, fontSize: 19, marginTop: 22 }}>
-              Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.
+              {window.t ? window.t('Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.') : 'Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.'}
             </p>
             <div style={{ display: 'flex', gap: 12, marginTop: 32, flexWrap: 'wrap' }}>
-              <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Créer une stratégie</Button>
-              <Button variant="outline" size="lg" onClick={() => scrollTo('comprendre')}>Comprendre la dispersion</Button>
+              <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
+              <Button variant="outline" size="lg" onClick={() => scrollTo('comprendre')}>{window.t ? window.t('Comprendre la dispersion') : 'Comprendre la dispersion'}</Button>
             </div>
             <div style={{ display: 'flex', gap: 24, marginTop: 30, font: 'var(--type-caption)', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
               <span>5 indices · SPX, NDX, DJI, CAC 40, DAX 40</span>
-              <span>Mode Débutant & Avancé</span>
+              <span>{window.t ? window.t('Mode Débutant & Avancé') : 'Mode Débutant & Avancé'}</span>
             </div>
           </div>
           <PayoffCard />
@@ -126,8 +127,8 @@ function Landing() {
   function Comprendre() {
     return (
       <section id="comprendre" style={{ ...sectionPad, ...wrap }}>
-        <div style={eyebrow}>Comprendre la dispersion</div>
-        <h2 style={h2}>Les options ne pricent pas que la volatilité.</h2>
+        <div style={eyebrow}>{window.t ? window.t('Comprendre la dispersion') : 'Comprendre la dispersion'}</div>
+        <h2 style={h2}>{window.t ? window.t('Les options ne pricent pas que la volatilité.') : 'Les options ne pricent pas que la volatilité.'}</h2>
         <p style={{ ...lede, fontSize: 18, marginTop: 18 }}>
           La volatilité d'un indice dépend de celle de ses composants <strong style={{ color: 'var(--text)' }}>et</strong> de leur <strong style={{ color: 'var(--text)' }}>corrélation</strong>. Les options d'indice embarquent donc un prix de la corrélation — que l'on peut comparer à la corrélation réellement observée. Une stratégie de dispersion exploite l'écart entre la volatilité de l'indice et celle des actions qui le composent.
         </p>
@@ -179,8 +180,8 @@ function Landing() {
     return (
       <section id="pourquoi" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ ...sectionPad, ...wrap }}>
-          <div style={eyebrow}>Pourquoi cette approche est utile</div>
-          <h2 style={{ ...h2, marginBottom: 14 }}>Elle oblige à analyser sous plusieurs angles.</h2>
+          <div style={eyebrow}>{window.t ? window.t('Pourquoi cette approche est utile') : 'Pourquoi cette approche est utile'}</div>
+          <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t('Elle oblige à analyser sous plusieurs angles.') : 'Elle oblige à analyser sous plusieurs angles.'}</h2>
           <p style={{ ...lede, marginBottom: 36 }}>Volatilité implicite, volatilité historique, corrélation, liquidité, grecs, theta, scénario de stress et coût d'exécution — chaque dimension est mesurée, jamais supposée.</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {WHY.map(([t, d]) => (
@@ -208,8 +209,8 @@ function Landing() {
   function Workflow() {
     return (
       <section id="workflow" style={{ ...sectionPad, ...wrap }}>
-        <div style={eyebrow}>Comment ça fonctionne</div>
-        <h2 style={{ ...h2, marginBottom: 36 }}>De l'analyse à la stratégie, en sept étapes.</h2>
+        <div style={eyebrow}>{window.t ? window.t('Comment ça fonctionne') : 'Comment ça fonctionne'}</div>
+        <h2 style={{ ...h2, marginBottom: 36 }}>{window.t ? window.t("De l'analyse à la stratégie, en sept étapes.") : "De l'analyse à la stratégie, en sept étapes."}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
           {STEPS.map(([n, t, d]) => (
             <div key={n} style={{ position: 'relative', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
@@ -219,8 +220,8 @@ function Landing() {
             </div>
           ))}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10, padding: 18 }}>
-            <Button variant="primary" size="md" full onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Lancer le Builder</Button>
-            <Button variant="outline" size="md" full onClick={() => window.__dxNav && window.__dxNav('docs')}>Voir les formules</Button>
+            <Button variant="primary" size="md" full onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Lancer le Builder') : 'Lancer le Builder'}</Button>
+            <Button variant="outline" size="md" full onClick={() => window.__dxNav && window.__dxNav('docs')}>{window.t ? window.t('Voir les formules') : 'Voir les formules'}</Button>
           </div>
         </div>
       </section>
@@ -239,8 +240,8 @@ function Landing() {
     return (
       <section id="risques" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ ...sectionPad, ...wrap }}>
-          <div style={eyebrow}>Les risques, rendus visibles</div>
-          <h2 style={{ ...h2, marginBottom: 14 }}>Un portefeuille vega-neutre n'est pas sans risque.</h2>
+          <div style={eyebrow}>{window.t ? window.t('Les risques, rendus visibles') : 'Les risques, rendus visibles'}</div>
+          <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t("Un portefeuille vega-neutre n'est pas sans risque.") : "Un portefeuille vega-neutre n'est pas sans risque."}</h2>
           <p style={{ ...lede, marginBottom: 32 }}>La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
             {RISKS.map(([t, d]) => (
@@ -278,8 +279,8 @@ function Landing() {
   function Execution() {
     return (
       <section id="execution" style={{ ...sectionPad, ...wrap, textAlign: 'center' }}>
-        <div style={{ ...eyebrow, textAlign: 'center' }}>Où exécuter la stratégie</div>
-        <h2 style={{ ...h2, maxWidth: 720, margin: '0 auto 18px' }}>La construction ici, l'exécution sous votre contrôle.</h2>
+        <div style={{ ...eyebrow, textAlign: 'center' }}>{window.t ? window.t('Où exécuter la stratégie') : 'Où exécuter la stratégie'}</div>
+        <h2 style={{ ...h2, maxWidth: 720, margin: '0 auto 18px' }}>{window.t ? window.t("La construction ici, l'exécution sous votre contrôle.") : "La construction ici, l'exécution sous votre contrôle."}</h2>
         <p style={{ ...lede, margin: '0 auto', textAlign: 'center' }}>
           La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.
         </p>
@@ -298,8 +299,8 @@ function Landing() {
       <section id="pro" style={{ ...sectionPad, background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={wrap}>
           <div style={{ textAlign: 'center', marginBottom: 34 }}>
-            <div style={{ ...eyebrow, textAlign: 'center' }}>DispersionX Pro</div>
-            <h2 style={{ ...h2, maxWidth: 780, margin: '0 auto 16px' }}>Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel.</h2>
+            <div style={{ ...eyebrow, textAlign: 'center' }}>{window.t ? window.t('DispersionX Pro') : 'DispersionX Pro'}</div>
+            <h2 style={{ ...h2, maxWidth: 780, margin: '0 auto 16px' }}>{window.t ? window.t("Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel.") : "Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel."}</h2>
             <p style={{ ...lede, margin: '0 auto', textAlign: 'center' }}>
               Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur <strong style={{ color: 'var(--text-soft)' }}>construit les meilleures dispersions tout seul</strong>, et le suivi valorise vos positions au marché réel, jour après jour.
             </p>
@@ -315,9 +316,9 @@ function Landing() {
     return (
       <section style={{ ...wrap, padding: '90px 32px', textAlign: 'center' }}>
         <h2 style={{ font: 'var(--type-hero)', fontSize: 40, letterSpacing: 'var(--track-tight)', color: 'var(--text)', maxWidth: 760, margin: '0 auto 28px', textWrap: 'balance' }}>
-          Passez d'une idée de volatilité à une stratégie construite et testée.
+          {window.t ? window.t("Passez d'une idée de volatilité à une stratégie construite et testée.") : "Passez d'une idée de volatilité à une stratégie construite et testée."}
         </h2>
-        <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>Lancer le Strategy Builder</Button>
+        <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Lancer le Strategy Builder') : 'Lancer le Strategy Builder'}</Button>
       </section>
     );
   }
@@ -331,8 +332,8 @@ function Landing() {
             <span style={{ font: '700 13px/1 var(--font-sans)', color: 'var(--text-soft)' }}>DispersionX</span>
           </span>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-            <a onClick={() => window.__dxNav && window.__dxNav('privacy')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>Confidentialité</a>
-            <span>Outil d'analyse — ne constitue pas un conseil en investissement.</span>
+            <a onClick={() => window.__dxNav && window.__dxNav('privacy')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('Confidentialité') : 'Confidentialité'}</a>
+            <span>{window.t ? window.t("Outil d'analyse — ne constitue pas un conseil en investissement.") : "Outil d'analyse — ne constitue pas un conseil en investissement."}</span>
           </span>
         </div>
       </footer>

@@ -8,7 +8,7 @@ function PrefPwField({ value, onChange, placeholder, style }) {
   return (
     <div style={{ position: 'relative' }}>
       <input style={{ ...style, paddingRight: 44 }} type={show ? 'text' : 'password'} value={value} onChange={onChange} placeholder={placeholder} autoComplete="new-password" />
-      <button type="button" onClick={() => setShow(s => !s)} title={show ? 'Masquer' : 'Afficher'}
+      <button type="button" onClick={() => setShow(s => !s)} title={window.t ? window.t(show ? 'Masquer' : 'Afficher') : (show ? 'Masquer' : 'Afficher')}
         style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', padding: 6, cursor: 'pointer', color: 'var(--text-muted)', display: 'inline-flex' }}>
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           {show
@@ -39,6 +39,7 @@ function PrefSection({ title, desc, children, right }) {
 function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const DS = window.DispersionXDesignSystem_cb86be;
   const { Button, Badge } = DS;
+  const t = window.t || ((s) => s);
   const C = window.DXCloud;
   const configured = !!(C && C.configured);
 
@@ -61,9 +62,9 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   if (!user) {
     return (
       <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: 0 }}>Préférences</h1>
-        <PrefSection title="Connectez-vous" desc="Créez un compte (gratuit) pour sauvegarder vos réglages, vos listes et gérer votre abonnement.">
-          <Button variant="primary" size="lg" onClick={() => onNav('login')}>Se connecter / créer un compte</Button>
+        <h1 style={{ font: 'var(--type-h1)', color: 'var(--text)', margin: 0 }}>{t('Préférences')}</h1>
+        <PrefSection title={t('Connectez-vous')} desc={t('Créez un compte (gratuit) pour sauvegarder vos réglages, vos listes et gérer votre abonnement.')}>
+          <Button variant="primary" size="lg" onClick={() => onNav('login')}>{t('Se connecter / créer un compte')}</Button>
         </PrefSection>
       </div>
     );
@@ -111,42 +112,42 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   return (
     <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
-        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Préférences</h1>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '6px 0 0' }}>Compte, sécurité, abonnement et apparence.</p>
+        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>{t('Préférences')}</h1>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '6px 0 0' }}>{t('Compte, sécurité, abonnement et apparence.')}</p>
       </div>
 
       {/* ── Compte ── */}
-      <PrefSection title="Compte" desc="Votre pseudo est affiché dans l'app et sur les listes partagées.">
+      <PrefSection title={t('Compte')} desc={t("Votre pseudo est affiché dans l'app et sur les listes partagées.")}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
           <div style={{ width: 56, height: 56, borderRadius: '50%', flexShrink: 0, background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 20px/1 var(--font-mono)', color: 'var(--accent-hover)' }}>
             {window.initialsOf ? window.initialsOf(user.name) : 'DX'}
           </div>
           <div style={{ minWidth: 0 }}>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>Connecté en tant que</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{t('Connecté en tant que')}</div>
             <div style={{ font: 'var(--type-body)', color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
           </div>
         </div>
-        <label style={label}>Pseudo</label>
+        <label style={label}>{t('Pseudo')}</label>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <input style={{ ...input, flex: 1, minWidth: 200 }} value={name} onChange={e => setName(e.target.value)} placeholder="Votre pseudo" maxLength={40} />
+          <input style={{ ...input, flex: 1, minWidth: 200 }} value={name} onChange={e => setName(e.target.value)} placeholder={t('Votre pseudo')} maxLength={40} />
           <Button variant="primary" size="md" onClick={saveName} disabled={savingName || name.trim() === user.name || !name.trim()}>
-            {savingName ? 'Enregistrement…' : 'Enregistrer'}
+            {savingName ? t('Enregistrement…') : t('Enregistrer')}
           </Button>
         </div>
-        <label style={{ ...label, marginTop: 16 }}>E-mail</label>
+        <label style={{ ...label, marginTop: 16 }}>{t('E-mail')}</label>
         <input style={{ ...input, color: 'var(--text-muted)', cursor: 'not-allowed' }} value={user.email} readOnly disabled />
       </PrefSection>
 
       {/* ── Sécurité ── */}
       {configured && (
-        <PrefSection title="Sécurité" desc="Définir ou changer votre mot de passe.">
-          <label style={label}>Nouveau mot de passe</label>
+        <PrefSection title={t('Sécurité')} desc={t('Définir ou changer votre mot de passe.')}>
+          <label style={label}>{t('Nouveau mot de passe')}</label>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <PrefPwField style={input} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder="Au moins 6 caractères" />
+              <PrefPwField style={input} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder={t('Au moins 6 caractères')} />
             </div>
             <Button variant="outline" size="md" onClick={savePw} disabled={savingPw || newPw.length < 6}>
-              {savingPw ? 'Mise à jour…' : 'Mettre à jour'}
+              {savingPw ? t('Mise à jour…') : t('Mettre à jour')}
             </Button>
           </div>
         </PrefSection>
@@ -154,11 +155,11 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
 
       {/* ── Abonnement ── */}
       <PrefSection
-        title="Abonnement"
-        desc="Le module Pro : auto-chercheur d'opportunités, risque & sizing inline, backtest historique."
+        title={t('Abonnement')}
+        desc={t("Le module Pro : auto-chercheur d'opportunités, risque & sizing inline, backtest historique.")}
         right={isPro
-          ? <Badge tone={canceling ? 'warn' : 'pos'} size="sm">{canceling ? 'Se termine bientôt' : 'Pro actif'}</Badge>
-          : <Badge tone="neutral" size="sm">Gratuit</Badge>}
+          ? <Badge tone={canceling ? 'warn' : 'pos'} size="sm">{canceling ? t('Se termine bientôt') : t('Pro actif')}</Badge>
+          : <Badge tone="neutral" size="sm">{t('Gratuit')}</Badge>}
       >
         {isPro ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -170,10 +171,10 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
                 : <>Accès Pro actif <span style={{ color: 'var(--text-muted)' }}>(accordé manuellement — pas d'abonnement Stripe).</span></>}
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <Button variant="primary" size="md" onClick={() => onNav('opportunities')}>Ouvrir les Opportunités</Button>
+              <Button variant="primary" size="md" onClick={() => onNav('opportunities')}>{t('Ouvrir les Opportunités')}</Button>
               {subscribed && (
                 <Button variant="outline" size="md" onClick={managePortal} disabled={busyPro}>
-                  {busyPro ? 'Ouverture…' : 'Gérer l\'abonnement'}
+                  {busyPro ? t('Ouverture…') : t("Gérer l'abonnement")}
                 </Button>
               )}
             </div>
@@ -181,32 +182,39 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 7, font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-              <li>✓ Meilleurs paniers de dispersion par indice (5 à 20 actions)</li>
-              <li>✓ Sizing vega-neutre + 3 scénarios de stress, comme le Risk Lab</li>
-              <li>✓ Backtest historique de la prime de corrélation capturée</li>
+              <li>{t('✓ Meilleurs paniers de dispersion par indice (5 à 20 actions)')}</li>
+              <li>{t('✓ Sizing vega-neutre + 3 scénarios de stress, comme le Risk Lab')}</li>
+              <li>{t('✓ Backtest historique de la prime de corrélation capturée')}</li>
             </ul>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-              <Button variant="primary" size="lg" onClick={goPro} disabled={busyPro}>{busyPro ? 'Redirection…' : `Passer Pro — ${(window.DX_PRO ? window.DX_PRO.price + ' ' + window.DX_PRO.currency : '2,99 €')}/mois`}</Button>
-              <button onClick={() => onNav('pricing')} style={{ font: '600 12px/1 var(--font-sans)', background: 'none', border: 'none', color: 'var(--accent-hover)', cursor: 'pointer', padding: 0 }}>Voir les tarifs →</button>
+              <Button variant="primary" size="lg" onClick={goPro} disabled={busyPro}>{busyPro ? t('Redirection…') : `${t('Passer Pro')} — ${(window.DX_PRO ? window.DX_PRO.price + ' ' + window.DX_PRO.currency : '2,99 €')}/${t('mois')}`}</Button>
+              <button onClick={() => onNav('pricing')} style={{ font: '600 12px/1 var(--font-sans)', background: 'none', border: 'none', color: 'var(--accent-hover)', cursor: 'pointer', padding: 0 }}>{t('Voir les tarifs →')}</button>
             </div>
             <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Garantie {(window.DX_PRO ? window.DX_PRO.guaranteeDays : 14)} jours satisfait ou remboursé · paiement sécurisé Stripe · résiliable en 1 clic</span>
           </div>
         )}
       </PrefSection>
 
-      {/* ── Apparence ── */}
-      <PrefSection title="Apparence" desc="Thème clair ou sombre." right={window.ThemeToggle ? <window.ThemeToggle /> : null}>
+      {/* ── Langue ── */}
+      <PrefSection title={t('Langue')} desc={t("Langue de l'interface.")} right={window.LangSwitcher ? <window.LangSwitcher /> : null}>
         <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
-          Le thème est mémorisé sur cet appareil. Le mode d'affichage (Débutant / Avancé) se règle en haut à droite de l'app.
+          {t('La langue est mémorisée sur cet appareil. Les données de marché et les calculs restent identiques.')}
+        </div>
+      </PrefSection>
+
+      {/* ── Apparence ── */}
+      <PrefSection title={t('Apparence')} desc={t('Thème clair ou sombre.')} right={window.ThemeToggle ? <window.ThemeToggle /> : null}>
+        <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+          {t("Le thème est mémorisé sur cet appareil. Le mode d'affichage (Débutant / Avancé) se règle en haut à droite de l'app.")}
         </div>
       </PrefSection>
 
       {/* ── Session ── */}
-      <PrefSection title="Session" desc="Se déconnecter de ce compte sur cet appareil.">
+      <PrefSection title={t('Session')} desc={t('Se déconnecter de ce compte sur cet appareil.')}>
         <Button variant="danger" size="md" onClick={async () => {
           try { if (configured) await C.auth.signOut(); } catch {}
           onAuth && onAuth(null); onNav('landing');
-        }}>Se déconnecter</Button>
+        }}>{t('Se déconnecter')}</Button>
       </PrefSection>
     </div>
   );
