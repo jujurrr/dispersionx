@@ -146,7 +146,7 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
 }
 
 /* ─── Strategy Builder: 8-step wizard ──────────────────────────── */
-function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }) {
+function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, pro }) {
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
   const [step, setStep] = React.useState(listId ? 3 : 0);
@@ -358,7 +358,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '6px 10px' }}>
           <Stepper steps={STEPS} current={step} onStepClick={setStep} />
         </div>
-        <TradeBrief data={stratData} onNav={onNav} />
+        <TradeBrief data={stratData} onNav={onNav} pro={pro} />
       </div>
     );
   }
@@ -617,7 +617,8 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx }
 }
 
 /* ─── Trade Brief inlined (shown at step 7) ─────────────────────── */
-function TradeBrief({ data, onNav }) {
+function TradeBrief({ data, onNav, pro }) {
+  const isPro = pro != null ? !!pro : !!(window.DXCloud && window.DXCloud.pro);
   const { Badge, MetricCard, RiskBadge, WarningPanel, ScoreBadge } = window.DispersionXDesignSystem_cb86be;
   const D        = data || window.DXData || {};
   const strategy = D.strategy || null;
@@ -822,10 +823,26 @@ function TradeBrief({ data, onNav }) {
           {strategy && onNav && (
             <button onClick={() => onNav('risk', { listId: strategy.listId })} style={{ font: '600 13px/1 var(--font-sans)', padding: '10px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Voir le Risk Lab →</button>
           )}
+          {/* Suivi de stratégie (Pro) : cliquable si Pro → onglet Suivi ; sinon verrouillé → page Pro. */}
+          {onNav && (isPro ? (
+            <button onClick={() => onNav('positions')} style={{ font: '600 13px/1 var(--font-sans)', padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>Suivi de stratégie →</button>
+          ) : (
+            <button onClick={() => onNav('pricing')} title="Réservé à l'offre Pro — cliquez pour la découvrir"
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 7, font: '600 13px/1 var(--font-sans)', padding: '10px 16px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+              🔒 Suivi de stratégie
+              <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pro</span> →
+            </button>
+          ))}
           <button style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Préparer pour exécution manuelle</button>
           <button style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Sauvegarder</button>
           <button onClick={() => onNav && onNav('monitor')} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Ouvrir dans le monitor</button>
         </div>
+        {!isPro && (
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            <span style={{ flexShrink: 0 }}>🔒</span>
+            <span>Le <strong style={{ color: 'var(--text-soft)' }}>suivi en temps réel</strong> de vos stratégies (P&amp;L au marché, grecs, snapshots quotidiens) est réservé à l'offre <strong style={{ color: 'var(--accent-hover)' }}>Pro</strong>. Cliquez sur « Suivi de stratégie » pour la découvrir.</span>
+          </div>
+        )}
       </Section>
     </div>
   );
