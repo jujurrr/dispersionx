@@ -576,7 +576,7 @@ function DataProgress({ dataProgress }) {
   );
 }
 
-function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress, isMobile, onMenu }) {
+function Topbar({ crumbs, crumbHome = 'home', mode, onMode, activeList, onNav, user, dataProgress, isMobile, onMenu }) {
   const [apiOn, setApiOn] = React.useState(window.DXApi ? window.DXApi.isConnected() : null);
 
   React.useEffect(() => {
@@ -603,7 +603,7 @@ function Topbar({ crumbs, mode, onMode, activeList, onNav, user, dataProgress, i
             <React.Fragment key={i}>
               {i > 0 && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>›</span>}
               <span
-                onClick={isLink ? () => onNav && onNav('home') : undefined}
+                onClick={isLink ? () => onNav && onNav(crumbHome) : undefined}
                 style={{
                   color: i === crumbs.length - 1 ? 'var(--text)' : 'var(--text-soft)',
                   fontWeight: i === crumbs.length - 1 ? 600 : 500,

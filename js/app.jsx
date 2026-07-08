@@ -249,6 +249,13 @@ function App() {
     pricing: ['Tarifs'],
   };
   const crumbs = crumbMap[screen] || ['DispersionX'];
+  // Écran vers lequel pointe le PREMIER crumb (lien de retour) — contextuel, pas
+  // toujours « home ». Ex. depuis une position, « Suivi des positions » → positions.
+  const crumbParent = {
+    'index-detail': 'home', 'list-detail': 'lists', checklist: 'risk',
+    position: 'positions', 'monitor-list': 'positions',
+  };
+  const crumbHome = crumbParent[screen] || 'home';
 
   let screenEl;
   switch (screen) {
@@ -363,7 +370,7 @@ function App() {
       {/* Desktop : sidebar dans la grille. Mobile : rendue en tiroir plus bas. */}
       {!isMobile && <window.Sidebar active={screen} onNav={onNav} lists={lists} user={user} pro={pro} />}
       <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', background: 'var(--bg-base)' }}>
-        <window.Topbar crumbs={crumbs} mode={mode} onMode={setMode} onNav={onNav} user={user} dataProgress={dataProgress} isMobile={isMobile} onMenu={() => setDrawerOpen(true)} />
+        <window.Topbar crumbs={crumbs} crumbHome={crumbHome} mode={mode} onMode={setMode} onNav={onNav} user={user} dataProgress={dataProgress} isMobile={isMobile} onMenu={() => setDrawerOpen(true)} />
         <main style={{
           flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 56px' : '24px 28px 64px',
           backgroundImage: 'radial-gradient(ellipse 70% 50% at 80% -5%, var(--accent-soft), transparent 60%), radial-gradient(ellipse 50% 40% at 0% 10%, var(--pos-soft), transparent 55%)',
