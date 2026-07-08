@@ -233,12 +233,15 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
   // Entrée « Opportunités Pro » TOUJOURS visible (sinon impossible de découvrir
   // et de payer l'offre Pro). Marquée « Pro » tant que l'accès n'est pas actif ;
   // le clic mène à l'écran qui propose « Passer Pro ».
-  const navGroups = [...NAV, { group: 'Pro', items: [
+  const proGroup = { group: 'Pro', items: [
     { id: 'opportunities', label: 'Opportunités', icon: 'opp', locked: !pro },
     { id: 'market-pro', label: 'Marché Pro', icon: 'corr', locked: !pro },
     { id: 'positions', label: 'Suivi', icon: 'monitor', locked: !pro },
     { id: 'journal', label: 'Journal', icon: 'journal', locked: !pro },
-  ] }];
+  ] };
+  // « Aide » (Formules & Référence) déplacé tout en bas, sous le groupe Pro.
+  const helpGroup = NAV.find(g => g.group === 'Aide');
+  const navGroups = [...NAV.filter(g => g !== helpGroup), proGroup, ...(helpGroup ? [helpGroup] : [])];
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const cloudUser = window.DXCloud && window.DXCloud.user;
   const who = (user && (user.name || user.email)) || (cloudUser && (cloudUser.name || cloudUser.email)) || (window.t ? window.t('Mon compte') : 'Mon compte');
