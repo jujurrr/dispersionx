@@ -146,6 +146,15 @@ function App() {
     if (!token) return;
     pendingJoinRef.current = token;
     if (!(window.DXCloud && window.DXCloud.enabled)) { onNav('login'); return; }   // se connecter d'abord
+    // Rejoindre une liste partagée est réservé à Pro (destinataire) — sinon
+    // n'importe qui pourrait accéder au contenu Pro via un lien.
+    if (!(window.DXCloud && window.DXCloud.pro)) {
+      pendingJoinRef.current = null;
+      try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch {}
+      addToast && addToast('Rejoindre une liste partagée nécessite l\'offre Pro.', 'info');
+      onNav('pricing');
+      return;
+    }
     try {
       const listId = await DXApi.redeemShareLink(token);
       pendingJoinRef.current = null;
@@ -153,9 +162,10 @@ function App() {
       window.dispatchEvent(new CustomEvent('dx-lists-changed'));
       addToast && addToast('Liste ajoutée à « Partagées avec moi ».', 'ok');
       if (listId) onNav('list-detail', { listId });
-    } catch {
+    } catch (e) {
       pendingJoinRef.current = null;
-      addToast && addToast('Lien de partage invalide ou expiré.', 'error');
+      const msg = (e && (e.code === 'pro_required' || /pro_required/.test(e.message || ''))) ? 'Rejoindre une liste partagée nécessite l\'offre Pro.' : 'Lien de partage invalide ou expiré.';
+      addToast && addToast(msg, e && e.code === 'pro_required' ? 'info' : 'error');
     }
   };
   React.useEffect(() => { tryRedeemJoinRef.current(); }, []);

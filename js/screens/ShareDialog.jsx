@@ -22,6 +22,7 @@ function ShareDialog({ list, onClose, addToast, kind }) {
   const shareErr = (err) => {
     const m = String(err?.message || '');
     if (m.includes('user_not_found')) return 'aucun compte avec cet e-mail.';
+    if (m.includes('recipient_not_pro')) return 'ce compte n\'a pas l\'offre Pro — le partage est réservé aux comptes Pro.';
     if (m.includes('not_owner')) return 'vous n\'êtes pas propriétaire.';
     if (m.includes('cannot_share_self')) return 'c\'est déjà à vous.';
     if (m.includes('bad_role')) return 'rôle invalide.';
@@ -72,6 +73,30 @@ function ShareDialog({ list, onClose, addToast, kind }) {
   }
 
   if (!list) return null;
+
+  // Garde : le partage est réservé à l'offre Pro. Les points d'entrée gèrent déjà
+  // le verrouillage ; ceci est un filet de sécurité (menant vers l'offre Pro).
+  if (!(window.DXCloud && window.DXCloud.pro)) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', borderRadius: 'var(--radius-lg)', padding: 28, width: '100%', maxWidth: 420, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, textAlign: 'center' }}>
+          <div style={{ font: '30px/1' }}>🔒</div>
+          <div style={{ font: 'var(--type-h3)', color: 'var(--text)' }}>Le partage est une fonctionnalité Pro</div>
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', maxWidth: 340 }}>
+            Partagez vos listes et stratégies par lien ou par e-mail avec l'offre <strong style={{ color: 'var(--accent-hover)' }}>Pro</strong>.
+          </div>
+          <div style={{ display: 'flex', gap: 10, marginTop: 6 }}>
+            <button onClick={() => { onClose(); window.__dxNav && window.__dxNav('pricing'); }}
+              style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Découvrir Pro →</button>
+            <button onClick={onClose}
+              style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Fermer</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const isConstruction = kind === 'construction';
   const title = isConstruction ? `Partager la construction « ${list.name} »` : `Partager « ${list.name} »`;
   const subtitle = isConstruction

@@ -9,8 +9,9 @@ function Lists({ onNav, onListsChange, addToast }) {
   const [newDesc, setNewDesc] = React.useState('');
   const [creating, setCreating] = React.useState(false);
   const importRef = React.useRef();
-  // Partage (tranche 3) — cloud uniquement. Modale = window.ShareDialog.
+  // Partage (tranche 3) — cloud + Pro uniquement. Modale = window.ShareDialog.
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
+  const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage réservé à Pro
   const [shared, setShared] = React.useState([]);          // listes partagées AVEC moi
   const [shareFor, setShareFor] = React.useState(null);    // liste en cours de partage (modal)
   // Confirmation in-app générique (ConfirmDialog).
@@ -184,10 +185,13 @@ function Lists({ onNav, onListsChange, addToast }) {
           style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: guest ? 'var(--text-dim)' : 'var(--text-muted)', cursor: 'pointer', opacity: guest ? 0.6 : 1 }}>
           {guest ? '🔒 Groupes — compte requis' : `🗂 ${list.group_name ? 'Changer de groupe' : 'Ranger dans un groupe'}`}
         </button>
-        {cloudOn && (
+        {cloudOn && (isProUser ? (
           <button onClick={e => openShare(list, e)}
             style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>⤳ Partager</button>
-        )}
+        ) : (
+          <button onClick={e => { e.stopPropagation(); onNav('pricing'); }} title="Partage réservé à l'offre Pro"
+            style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-dim)', opacity: 0.7, cursor: 'pointer' }}>🔒 Partager · Pro</button>
+        ))}
       </div>
     </div>
   );
@@ -204,10 +208,13 @@ function Lists({ onNav, onListsChange, addToast }) {
         style={{ ...smallBtn, border: '1px dashed var(--border)', color: guest ? 'var(--text-dim)' : 'var(--text-muted)', opacity: guest ? 0.6 : 1 }}>{guest ? '🔒' : '🗂'}</button>
       <button title="Télécharger (JSON)" onClick={e => handleExport(list, e)}
         style={{ ...smallBtn, border: '1px solid var(--border)', color: 'var(--text-soft)' }}>↓</button>
-      {cloudOn && (
+      {cloudOn && (isProUser ? (
         <button title="Partager" onClick={e => openShare(list, e)}
           style={{ ...smallBtn, border: '1px dashed var(--border)', color: 'var(--text-muted)' }}>⤳</button>
-      )}
+      ) : (
+        <button title="Partage réservé à l'offre Pro" onClick={e => { e.stopPropagation(); onNav('pricing'); }}
+          style={{ ...smallBtn, border: '1px dashed var(--border)', color: 'var(--text-dim)', opacity: 0.7 }}>🔒</button>
+      ))}
       <button title="Supprimer" onClick={e => { e.stopPropagation(); handleDelete(list); }}
         style={{ ...smallBtn, border: '1px solid var(--neg)', color: 'var(--neg-bright)' }}>×</button>
     </div>

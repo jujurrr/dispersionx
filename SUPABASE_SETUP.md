@@ -694,6 +694,122 @@ create index if not exists notifications_user_created
 Anti-spam : chaque notif porte un `ref` ; une même condition n'est ré-écrite qu'au
 plus ~1×/20 h (dédup côté serveur).
 
+## 18. Partage réservé à Pro — côté ÉMETTEUR **et** DESTINATAIRE (sécurité)
+
+Le partage est une fonctionnalité Pro. L'app verrouille déjà l'émission côté
+client, mais **la vraie protection est côté serveur (RLS)** : sans ça, il
+suffirait qu'un compte Pro envoie un lien à un compte gratuit pour lui donner
+accès au contenu Pro. Cette migration exige que **le destinataire soit Pro** pour
+voir/rejoindre une liste partagée — impossible à contourner depuis le client.
+
+Prérequis : §9 (partage), §11 (liens), §12 (`pro_access`). Non-cassant.
+
+```sql
+-- 0) Helper : l'utilisateur a-t-il un accès Pro ? (octroi manuel = présence
+--    dans pro_access). SECURITY DEFINER pour lire pro_access d'autrui.
+create or replace function public.is_pro(p_uid uuid)
+returns boolean language sql security definer set search_path = public stable as $$
+  select exists (select 1 from public.pro_access p where p.user_id = p_uid);
+$$;
+revoke all on function public.is_pro(uuid) from public, anon;
+grant execute on function public.is_pro(uuid) to authenticated;
+-- (Abonnement Stripe §13 : pour exclure les abonnements EXPIRÉS, remplace le
+--  exists ci-dessus par «  … and (p.current_period_end is null
+--  or p.current_period_end > now()) ».)
+
+-- 1) RLS : un destinataire NON-Pro ne voit RIEN de partagé.
+drop policy if exists "recipient_reads_shares" on public.list_shares;
+create policy "recipient_reads_shares" on public.list_shares
+  for select using (auth.uid() = shared_with and public.is_pro(auth.uid()));
+
+drop policy if exists "shared_lists_select" on public.lists;
+create policy "shared_lists_select" on public.lists
+  for select using (
+    public.is_pro(auth.uid())
+    and exists (select 1 from public.list_shares s where s.list_id = lists.id and s.shared_with = auth.uid())
+  );
+
+drop policy if exists "shared_items_select" on public.list_items;
+create policy "shared_items_select" on public.list_items
+  for select using (
+    public.is_pro(auth.uid())
+    and exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid())
+  );
+
+drop policy if exists "shared_items_write" on public.list_items;
+create policy "shared_items_write" on public.list_items
+  for all using (
+    public.is_pro(auth.uid())
+    and exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid() and s.role = 'editor')
+  ) with check (
+    public.is_pro(auth.uid())
+    and exists (select 1 from public.list_shares s where s.list_id = list_items.list_id and s.shared_with = auth.uid() and s.role = 'editor')
+  );
+
+drop policy if exists "shared_strategies_select" on public.strategies;
+create policy "shared_strategies_select" on public.strategies
+  for select using (
+    public.is_pro(auth.uid())
+    and exists (select 1 from public.list_shares s where s.list_id::text = strategies.list_id and s.shared_with = auth.uid())
+  );
+
+-- 2) Réclamer un lien (redeem) : le destinataire DOIT être Pro.
+create or replace function public.redeem_share_link(p_token uuid)
+returns uuid language plpgsql security definer set search_path = public as $$
+declare
+  v_link public.share_links;
+  v_me uuid := auth.uid();
+  v_owner_email text; v_me_email text;
+begin
+  if v_me is null then raise exception 'not_authenticated'; end if;
+  if not public.is_pro(v_me) then raise exception 'pro_required'; end if;
+  select * into v_link from public.share_links where token = p_token;
+  if v_link.id is null then raise exception 'invalid_link'; end if;
+  if v_link.owner_id = v_me then return v_link.list_id; end if;
+  select email into v_owner_email from auth.users where id = v_link.owner_id;
+  select email into v_me_email from auth.users where id = v_me;
+  insert into public.list_shares (list_id, owner_id, owner_email, shared_with, shared_with_email, role)
+  values (v_link.list_id, v_link.owner_id, v_owner_email, v_me, v_me_email, v_link.role)
+  on conflict (list_id, shared_with) do update set role = excluded.role;
+  return v_link.list_id;
+end; $$;
+revoke all on function public.redeem_share_link(uuid) from public, anon;
+grant execute on function public.redeem_share_link(uuid) to authenticated;
+
+-- 3) Partage par e-mail : le DESTINATAIRE doit être Pro (sinon l'envoi échoue).
+create or replace function public.share_list(p_list_id uuid, p_email text, p_role text default 'viewer')
+returns json language plpgsql security definer set search_path = public as $$
+declare
+  v_owner uuid := auth.uid();
+  v_owner_email text;
+  v_target uuid;
+  v_target_email text;
+begin
+  if v_owner is null then raise exception 'not_authenticated'; end if;
+  if p_role not in ('viewer','editor') then raise exception 'bad_role'; end if;
+  if not exists (select 1 from public.lists where id = p_list_id and user_id = v_owner) then
+    raise exception 'not_owner';
+  end if;
+  select id, email into v_target, v_target_email
+    from auth.users where lower(email) = lower(trim(p_email)) limit 1;
+  if v_target is null then raise exception 'user_not_found'; end if;
+  if v_target = v_owner then raise exception 'cannot_share_self'; end if;
+  if not public.is_pro(v_target) then raise exception 'recipient_not_pro'; end if;
+  select email into v_owner_email from auth.users where id = v_owner;
+  insert into public.list_shares (list_id, owner_id, owner_email, shared_with, shared_with_email, role)
+  values (p_list_id, v_owner, v_owner_email, v_target, v_target_email, p_role)
+  on conflict (list_id, shared_with) do update
+    set role = excluded.role, shared_with_email = excluded.shared_with_email;
+  return json_build_object('ok', true, 'shared_with_email', v_target_email, 'role', p_role);
+end; $$;
+revoke all on function public.share_list(uuid, text, text) from public, anon;
+grant execute on function public.share_list(uuid, text, text) to authenticated;
+```
+
+Effet : un compte gratuit qui reçoit un lien ou un partage e-mail **ne peut ni le
+rejoindre ni voir la liste** ; l'émetteur reçoit une erreur claire s'il partage à
+un e-mail non-Pro. Retirer le Pro d'un compte lui coupe l'accès aux listes reçues.
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

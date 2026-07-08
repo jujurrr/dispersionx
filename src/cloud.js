@@ -365,7 +365,11 @@ const positions = {
 // list_shares pour l'affichage. RLS et fonction : voir SUPABASE_SETUP.md §9.
 const shares = {
   // Listes partagées AVEC moi (façonnées comme des listes + drapeaux de partage).
+  // Réservé à Pro : un compte non-Pro ne voit AUCUNE liste partagée (le partage
+  // est une fonctionnalité Pro, côté émetteur ET destinataire). La vraie
+  // application est la RLS serveur (SUPABASE_SETUP.md §18) ; ceci est le miroir UI.
   async sharedWithMe() {
+    if (!proAccess) return [];
     const { data: sh, error } = await supa.from('list_shares').select('*').eq('shared_with', currentUser.id);
     if (error) throw error;
     if (!sh || !sh.length) return [];
@@ -429,6 +433,9 @@ const shares = {
     return { success: true };
   },
   async redeem(token) {
+    // Rejoindre une liste partagée est réservé à Pro (destinataire). Bloqué côté
+    // client ; la RPC le refuse aussi côté serveur (SUPABASE_SETUP.md §18).
+    if (!proAccess) { const e = new Error('pro_required'); e.code = 'pro_required'; throw e; }
     const { data, error } = await supa.rpc('redeem_share_link', { p_token: token });
     if (error) throw error;
     return data;   // list_id

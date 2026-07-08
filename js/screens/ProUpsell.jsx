@@ -15,6 +15,7 @@ const DX_PRO = {
     'Auto-chercheur d\'opportunités',
     'Marché Pro : baromètre ρ, alertes, calendrier des résultats',
     'Suivi de positions en temps réel (P&L, grecs, snapshots)',
+    'Partage de listes & stratégies (lien ou e-mail)',
     'Journal / track record',
     'Rapports PDF',
   ],
@@ -160,6 +161,7 @@ const DX_PRO_COMPARE = [
   ['Auto-chercheur d\'opportunités', false, true],
   ['Marché Pro : baromètre ρ, alertes, résultats', false, true],
   ['Suivi de positions en temps réel', false, true],
+  ['Partage de listes & stratégies (lien / e-mail)', false, true],
   ['Journal / track record', false, true],
   ['Rapports PDF', false, true],
 ];

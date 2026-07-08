@@ -50,6 +50,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [shareOpen, setShareOpen] = React.useState(false);
   // Partage de la construction = partage de sa liste (cloud uniquement).
   const canShare = !!(window.DXCloud && window.DXCloud.enabled) && !!listId;
+  const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage réservé à Pro
   const shareList = listId ? { id: listId, name: (lists || []).find(l => l.id === listId)?.name || (moduleCtx && moduleCtx.listName) || 'la construction' } : null;
 
   function pickExpiry(o) { if (!o) return; setExpiry(o.date); setDuration(Math.max(1, o.dte)); }
@@ -655,12 +656,18 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               <input type="file" accept=".json,application/json" style={{ display: 'none' }}
                 onChange={e => { const f = e.target.files && e.target.files[0]; if (f) importStrategy(f); e.target.value = ''; }} />
             </label>
-            {canShare && (
+            {canShare && (isProUser ? (
               <button onClick={() => { save(false); setShareOpen(true); }}
                 style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>
                 🔗 Partager la construction
               </button>
-            )}
+            ) : (
+              <button onClick={() => onNav && onNav('pricing')} title="Partage réservé à l'offre Pro — cliquez pour la découvrir"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, font: '600 13px/1 var(--font-sans)', padding: '11px 16px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                🔒 Partager la construction
+                <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pro</span>
+              </button>
+            ))}
             {savedTick > 0 && !importMsg && (
               <span style={{ font: 'var(--type-body-sm)', color: 'var(--pos-bright)', display: 'flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ font: '700 13px/1 var(--font-mono)' }}>✓</span> Stratégie enregistrée — le Risk Lab l'utilisera.
