@@ -112,7 +112,7 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
               return (
                 <tr key={r.s.listId || i} onClick={() => setSel(i)} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: sel === i ? 'var(--bg-hover)' : 'transparent' }}>
                   <td style={{ padding: '12px 16px' }}>
-                    <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{m.name}</div>
+                    <div style={{ font: 'var(--type-title)', fontWeight: 700, color: 'var(--accent-hover)' }}>{m.name}</div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
                       {r.s.nIndex || 1} contrat(s) {r.s.index} short · construit il y a {m.daysSince}j{m.alert && <span style={{ color: 'var(--warn)' }}> · {m.alert}</span>}
                     </div>
@@ -137,7 +137,7 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
             <div>
               <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Détail de la stratégie</h2>
-              <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>{cur.m.name} · {cur.s.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'poids égaux'}</p>
+              <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}><strong style={{ color: 'var(--accent-hover)' }}>{cur.m.name}</strong> · {cur.s.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'poids égaux'}</p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {onNav && <button onClick={() => onNav('risk', { listId: cur.s.listId })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Risk Lab →</button>}
@@ -194,7 +194,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
                 ? <WarningPanel tone={cur.m.status === 'risque' ? 'neg' : 'warn'} title="À surveiller">{cur.m.alert} — réévaluez dans le Risk Lab ou ajustez le dimensionnement.</WarningPanel>
                 : <WarningPanel tone="pos" title="Profil sain">Vega équilibré et échéance confortable. Surveillez la prime de corrélation dans le Risk Lab.</WarningPanel>}
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
-                <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 10 }}>Repères</div>
+                <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Repères</div>
+                {/* Nom de la stratégie EN PREMIER et en couleur, pour mieux la repérer. */}
+                <div style={{ font: 'var(--type-h3)', fontWeight: 700, color: 'var(--accent-hover)', margin: '0 0 10px', wordBreak: 'break-word', lineHeight: 1.25 }}>{cur.m.name}</div>
                 <MonitorRow k="Indice" v={cur.s.indexEtf && cur.s.indexEtf !== cur.s.index ? cur.s.indexEtf + ' (' + cur.s.index + ')' : cur.s.index} />
                 <MonitorRow k="Échéance" v={cur.s.expiry && window.DXExpiry ? `${window.DXExpiry.fmtExpiry(cur.s.expiry)} · ${cur.m.dte} DTE restant` : (cur.s.duration || 30) + ' jours'} />
                 <MonitorRow k="Composants" v={String(cur.m.nComp)} />
