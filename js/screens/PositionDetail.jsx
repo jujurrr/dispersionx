@@ -111,8 +111,18 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
   async function handleRename() {
     setRenaming(true);
+    const nm = (nameInput || '').trim();
     try {
       const r = await DXApi.renamePosition(positionId, nameInput);
+      // Interconnexion des noms : renommer AUSSI la liste liée (si elle existe
+      // encore) → le même nom se propage partout dans le site.
+      const lid = data && data.position && data.position.list_id;
+      if (nm && lid) {
+        try {
+          const l = await DXApi.getList(lid);
+          if (l && l.id) { await DXApi.updateList(lid, nm, l.description || ''); window.dispatchEvent(new CustomEvent('dx-lists-changed')); }
+        } catch { /* liste supprimée → on renomme seulement la position */ }
+      }
       addToast && addToast('Nom mis à jour.', 'ok');
       setEditingName(false);
       load();
@@ -121,6 +131,36 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
     } finally {
       setRenaming(false);
     }
+  }
+
+  // Retrouver la liste des composants : renvoie un listId — celui d'origine s'il
+  // existe encore, sinon RECRÉE la liste à partir de la stratégie stockée dans la
+  // position (les listes créées par les Opportunités peuvent avoir été supprimées).
+  const [restoring, setRestoring] = React.useState(false);
+  async function ensureListId() {
+    const s = (data && data.strategy) || {};
+    const lid = data && data.position && data.position.list_id;
+    if (lid) { try { const l = await DXApi.getList(lid); if (l && l.id) return l.id; } catch {} }
+    const nm = (data && data.position && data.position.name) || s.index || 'Stratégie';
+    const created = await DXApi.createList(nm, s.index || 'SPX', 'Recréée depuis le suivi');
+    const newId = created && (created.id || created.commitment_id);
+    if (!newId) throw new Error('création de liste impossible');
+    for (const c of (s.components || [])) {
+      if (!c || !c.ticker) continue;
+      try { await DXApi.addListItem(newId, c.ticker, { score: c.score ?? null, stock: { symbol: c.ticker, weight: c.weight } }, ''); } catch {}
+    }
+    window.dispatchEvent(new CustomEvent('dx-lists-changed'));
+    return newId;
+  }
+  async function goToList(target) {   // target: 'list-detail' | 'risk'
+    setRestoring(true);
+    try {
+      const id = await ensureListId();
+      addToast && addToast('Liste des composants disponible.', 'ok');
+      onNav(target, { listId: id });
+    } catch (err) {
+      addToast && addToast(`Impossible de recréer la liste : ${err && err.message ? err.message : ''}`, 'error');
+    } finally { setRestoring(false); }
   }
 
   function handleClose() {
@@ -265,6 +305,25 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         </div>
       </div>
 
+      {/* Retrouver la stratégie : recréer la liste (si supprimée) ou aller au Risk Lab */}
+      {data.strategy && Array.isArray(data.strategy.components) && data.strategy.components.length > 0 && (
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '12px 16px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)' }}>
+          <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', flex: 1, minWidth: 220 }}>
+            Retrouver les composants de cette stratégie — la liste est <strong style={{ color: 'var(--text)' }}>recréée</strong> si elle a été supprimée.
+          </span>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button onClick={() => goToList('list-detail')} disabled={restoring}
+              style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: restoring ? 'default' : 'pointer' }}>
+              {restoring ? '…' : '🗂 Liste des composants'}
+            </button>
+            <button onClick={() => goToList('risk')} disabled={restoring}
+              style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: restoring ? 'default' : 'pointer' }}>
+              {restoring ? '…' : 'Ouvrir le Risk Lab'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bannière suivi théorique : grecs au DTE restant, pas de P&L de marché */}
       {!liveOn && data.theoretical && (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--info)', borderRadius: 'var(--radius-lg)' }}>
@@ -322,10 +381,16 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
       {/* Évolution du P&L — graphe interactif (croix de visée, valeurs aux axes, zoom molette) */}
       {(() => {
-        const raw = pnlSeries(snaps, pnlUnit);            // rééchantillonné selon l'unité choisie
-        if (raw.length < 2) return null;
-        const last = raw[raw.length - 1].v;
-        const col = last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
+        // Données de base : sans au moins 2 relevés mark-to-market, pas de carte.
+        if (snaps.filter(s => s && s.mtm && typeof s.total_pnl === 'number').length < 2) return null;
+        const UNITS = [['15min', '15m'], ['1h', '1H'], ['1day', '1J'], ['1week', '1S']];
+        // Nombre de points par échelle → on DÉSACTIVE celles qui donneraient < 2
+        // points (sinon le graphe disparaîtrait, ex. « 1S » sur < 2 semaines).
+        const counts = {}; UNITS.forEach(([u]) => { counts[u] = pnlSeries(snaps, u).length; });
+        const raw = pnlSeries(snaps, pnlUnit);
+        const enough = raw.length >= 2;
+        const last = enough ? raw[raw.length - 1].v : null;
+        const col = (last != null && last >= 0) ? 'var(--pos-bright)' : 'var(--neg-bright)';
         const intraday = pnlUnit === '15min' || pnlUnit === '1h';
         const days = new Set(raw.map(p => (p.t || '').slice(0, 10)));
         const fmtX = iso => {
@@ -334,20 +399,24 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           const hm = dd.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
           return days.size <= 1 ? hm : dd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
         };
-        const UNITS = [['15min', '15m'], ['1h', '1H'], ['1day', '1J'], ['1week', '1S']];
         return (
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             <div style={{ padding: '10px 16px 10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L ($)</span>
               <div style={{ display: 'flex', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
-                {UNITS.map(([u, lbl]) => (
-                  <button key={u} onClick={() => setPnlUnit(u)} title={`Unité : ${lbl}`}
-                    style={{ font: '600 10px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer', background: pnlUnit === u ? 'var(--accent)' : 'transparent', color: pnlUnit === u ? '#fff' : 'var(--text-muted)', transition: 'all var(--dur-fast) var(--ease)' }}>{lbl}</button>
-                ))}
+                {UNITS.map(([u, lbl]) => {
+                  const dis = counts[u] < 2;
+                  const on = pnlUnit === u && !dis;
+                  return (
+                    <button key={u} onClick={() => { if (!dis) setPnlUnit(u); }} disabled={dis}
+                      title={dis ? 'Pas assez de données à cette échelle' : `Unité : ${lbl}`}
+                      style={{ font: '600 10px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: dis ? 'not-allowed' : 'pointer', opacity: dis ? 0.4 : 1, background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--text-muted)', transition: 'all var(--dur-fast) var(--ease)' }}>{lbl}</button>
+                  );
+                })}
               </div>
             </div>
             <div style={{ padding: '16px 16px 12px' }}>
-              {window.DXChart ? (
+              {enough && window.DXChart ? (
                 <window.DXChart
                   data={raw} xKey="t"
                   lines={[{ key: 'v', color: col, fill: true }]}
@@ -355,7 +424,11 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                   yFmt={v => Math.round(v).toLocaleString('fr-FR')} xFmt={fmtX} zoom panY
                   footer={<>{raw.length} pts · depuis l'entrée{pctBase && dxPct(last, pctBase) ? <span style={{ color: last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600, marginLeft: 5 }}>· {dxPct(last, pctBase)}</span> : null}</>}
                 />
-              ) : null}
+              ) : (
+                <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)', padding: '0 20px' }}>
+                  Pas assez de points à cette échelle — choisis une échelle plus fine (15m, 1H…).
+                </div>
+              )}
             </div>
           </div>
         );
