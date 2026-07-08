@@ -13,15 +13,16 @@
      yFmt(v), xFmt(x)                               formatage axes + infobulle
      zoom       bool                                molette = zoom, glisser = pan
      footer     node                                légende sous l'axe X (option) */
-function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFrac = 0.18, yAxisWidth = 56, ticksY = 4, yFmt, xFmt, zoom = false, footer = null }) {
+function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFrac = 0.18, yAxisWidth = 56, ticksY = 4, yFmt, xFmt, zoom = false, panY = false, footer = null }) {
   const N = Array.isArray(data) ? data.length : 0;
   const plotRef = React.useRef(null);
-  const [win, setWin] = React.useState(null);     // { i0, i1 } fenêtre visible (zoom/pan) ; null = tout
+  const [win, setWin] = React.useState(null);     // { i0, i1 } fenêtre visible (zoom/pan horizontal) ; null = tout
+  const [yOff, setYOff] = React.useState(0);      // décalage VERTICAL libre (unités de valeur), opt-in `panY`
   const [hov, setHov] = React.useState(null);     // { k, mx, my } — k = index DANS la fenêtre visible
   const drag = React.useRef(null);
   const uid = (React.useId ? React.useId() : 'dxc' + Math.random().toString(36).slice(2)).replace(/:/g, '');
 
-  React.useEffect(() => { setWin(null); }, [N]);   // reset zoom si le jeu de données change
+  React.useEffect(() => { setWin(null); setYOff(0); }, [N]);   // reset zoom + pan si le jeu de données change
 
   yFmt = yFmt || (v => String(Math.round(v)));
   xFmt = xFmt || (x => String(x));
@@ -38,6 +39,7 @@ function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFr
   let lo = allV.length ? Math.min(...allV) : 0, hi = allV.length ? Math.max(...allV) : 1;
   const padY = (hi - lo) * padFrac || Math.abs(hi) * padFrac || 1; lo -= padY; hi += padY;
   const span = (hi - lo) || 1;
+  lo += yOff; hi += yOff;   // décalage vertical libre (pan Y) — n'affecte pas le span
   const VW = 1000, PH = height;
   const xAt = k => (visN === 1 ? VW / 2 : (k / (visN - 1)) * VW);
   const yAt = v => (hi - v) / span * PH;
@@ -93,16 +95,24 @@ function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFr
   const onMove = (e) => {
     const pos = localXY(e); if (!pos) return;
     if (drag.current) {
-      const dxFrac = (pos.mx - drag.current.mx) / pos.width;
-      const shift = Math.round(-dxFrac * (visN - 1));
-      let n0 = Math.max(0, Math.min(drag.current.i0 + shift, N - visN));
-      setWin({ i0: n0, i1: n0 + visN - 1 });
+      // Pan HORIZONTAL (temps) — seulement si zoomé (une fenêtre existe).
+      if (zoom && win) {
+        const dxFrac = (pos.mx - drag.current.mx) / pos.width;
+        const shift = Math.round(-dxFrac * (visN - 1));
+        const n0 = Math.max(0, Math.min(drag.current.i0 + shift, N - visN));
+        setWin({ i0: n0, i1: n0 + visN - 1 });
+      }
+      // Pan VERTICAL libre (valeur) — même au-delà de la courbe, même dézoomé au max.
+      if (panY) {
+        const dyFrac = (pos.my - drag.current.my) / pos.height;
+        setYOff(drag.current.yOff + dyFrac * span);
+      }
       return;
     }
     setHov({ k: pos.k, mx: pos.mx, my: pos.my, width: pos.width, height: pos.height });
   };
   const onLeave = () => { setHov(null); drag.current = null; };
-  const onDown = (e) => { if (!zoom) return; const pos = localXY(e); if (pos) drag.current = { mx: pos.mx, i0 }; };
+  const onDown = (e) => { if (!zoom && !panY) return; const pos = localXY(e); if (pos) drag.current = { mx: pos.mx, my: pos.my, i0, yOff }; };
   const onUp = () => { drag.current = null; };
 
   // Position croix + valeurs
@@ -130,8 +140,8 @@ function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFr
         </div>
 
         {/* Tracé + overlay souris */}
-        <div ref={plotRef} onMouseMove={onMove} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp} onDoubleClick={() => setWin(null)}
-          style={{ position: 'relative', flex: 1, height: PH, cursor: zoom ? (drag.current ? 'grabbing' : 'crosshair') : 'crosshair', touchAction: 'none' }}>
+        <div ref={plotRef} onMouseMove={onMove} onMouseLeave={onLeave} onMouseDown={onDown} onMouseUp={onUp} onDoubleClick={() => { setWin(null); setYOff(0); }}
+          style={{ position: 'relative', flex: 1, height: PH, cursor: (zoom || panY) ? (drag.current ? 'grabbing' : 'crosshair') : 'crosshair', touchAction: 'none' }}>
           <svg viewBox={`0 0 ${VW} ${PH}`} width="100%" height={PH} preserveAspectRatio="none" style={{ display: 'block' }}>
             <defs>
               {lines.filter(l => l.fill).map(l => (
@@ -184,10 +194,10 @@ function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFr
           <span key={i} style={{ position: 'relative', textAlign: i === 0 ? 'left' : i === xIdx.length - 1 ? 'right' : 'center' }}>{xFmt(vis[k] && vis[k][xKey])}</span>
         ))}
       </div>
-      {(footer || zoom) && (
+      {(footer || zoom || panY) && (
         <div style={{ marginLeft: yAxisWidth, marginTop: 6, font: 'var(--type-caption)', color: 'var(--text-dim)', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
           <span>{footer}</span>
-          {zoom && <span>Molette : zoom · glisser : déplacer · double-clic : réinitialiser</span>}
+          {(zoom || panY) && <span>{zoom ? 'Molette : zoom · ' : ''}glisser : déplacer{panY ? ' (H/V)' : ''} · double-clic : réinitialiser</span>}
         </div>
       )}
     </div>

@@ -19,10 +19,35 @@ function dxLocalDateTime(iso) {
   if (isNaN(d)) return '';
   return d.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
+// Rééchantillonne les snapshots P&L par unité de temps (15min/1h/1day/1week) :
+// on garde le DERNIER relevé de chaque intervalle. La granularité réelle est
+// bornée par la cadence des snapshots (intraday ~15 min aujourd'hui, 1/jour avant).
+function pnlSeries(snaps, unit) {
+  const pts = (snaps || [])
+    .filter(s => s && s.mtm && typeof s.total_pnl === 'number' && s.taken_at)
+    .map(s => ({ t: s.taken_at, v: s.total_pnl, ms: new Date(s.taken_at).getTime() }))
+    .filter(p => isFinite(p.ms))
+    .sort((a, b) => a.ms - b.ms);
+  if (!pts.length) return [];
+  const keyOf = (p) => {
+    if (unit === '1day') return p.t.slice(0, 10);
+    if (unit === '1week') {
+      const d = new Date(p.ms), wd = (d.getUTCDay() + 6) % 7;
+      return 'w' + Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - wd);
+    }
+    const step = unit === '1h' ? 3600000 : 900000;   // 15 min par défaut
+    return Math.floor(p.ms / step) * step;
+  };
+  const byBucket = new Map();
+  for (const p of pts) byBucket.set(keyOf(p), p);      // pts triés asc → dernier de chaque bucket
+  return Array.from(byBucket.values()).sort((a, b) => a.ms - b.ms).map(p => ({ t: p.t, v: p.v }));
+}
+
 function PositionDetail({ positionId, onNav, addToast, mode }) {
   const { MetricCard, WarningPanel, Badge } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [pnlUnit, setPnlUnit] = React.useState('15min');   // unité de temps du graphe P&L
   const [snapLoading, setSnapLoading] = React.useState(false);
   // Reprise LIVE (affichage seul, non persistée) — chiffres frais (≤ 15 min) à
   // chaque ouverture. Le cron, lui, persiste l'historique.
@@ -297,21 +322,29 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
       {/* Évolution du P&L — graphe interactif (croix de visée, valeurs aux axes, zoom molette) */}
       {(() => {
-        // Fenêtre cohérente : 30 derniers relevés (intraday du jour + jours récents).
-        const raw = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: s.taken_at, v: s.total_pnl })).slice(-90);
+        const raw = pnlSeries(snaps, pnlUnit);            // rééchantillonné selon l'unité choisie
         if (raw.length < 2) return null;
         const last = raw[raw.length - 1].v;
         const col = last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
+        const intraday = pnlUnit === '15min' || pnlUnit === '1h';
         const days = new Set(raw.map(p => (p.t || '').slice(0, 10)));
-        const fmtX = iso => { const dd = new Date(iso); if (isNaN(dd)) return ''; return days.size <= 1 ? dd.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : dd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }); };
+        const fmtX = iso => {
+          const dd = new Date(iso); if (isNaN(dd)) return '';
+          if (!intraday) return dd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+          const hm = dd.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+          return days.size <= 1 ? hm : dd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) + ' ' + hm;
+        };
+        const UNITS = [['15min', '15m'], ['1h', '1H'], ['1day', '1J'], ['1week', '1S']];
         return (
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div style={{ padding: '10px 16px 10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L ($)</span>
-              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
-                {raw.length} points · depuis l'entrée
-                {pctBase && dxPct(last, pctBase) && <span style={{ color: last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600, marginLeft: 6 }}>· {dxPct(last, pctBase)}</span>}
-              </span>
+              <div style={{ display: 'flex', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
+                {UNITS.map(([u, lbl]) => (
+                  <button key={u} onClick={() => setPnlUnit(u)} title={`Unité : ${lbl}`}
+                    style={{ font: '600 10px/1 var(--font-sans)', padding: '5px 10px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer', background: pnlUnit === u ? 'var(--accent)' : 'transparent', color: pnlUnit === u ? '#fff' : 'var(--text-muted)', transition: 'all var(--dur-fast) var(--ease)' }}>{lbl}</button>
+                ))}
+              </div>
             </div>
             <div style={{ padding: '16px 16px 12px' }}>
               {window.DXChart ? (
@@ -319,7 +352,8 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                   data={raw} xKey="t"
                   lines={[{ key: 'v', color: col, fill: true }]}
                   baseline={0} height={200} padFrac={0.22} yAxisWidth={62} ticksY={4}
-                  yFmt={v => Math.round(v).toLocaleString('fr-FR')} xFmt={fmtX} zoom
+                  yFmt={v => Math.round(v).toLocaleString('fr-FR')} xFmt={fmtX} zoom panY
+                  footer={<>{raw.length} pts · depuis l'entrée{pctBase && dxPct(last, pctBase) ? <span style={{ color: last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600, marginLeft: 5 }}>· {dxPct(last, pctBase)}</span> : null}</>}
                 />
               ) : null}
             </div>
