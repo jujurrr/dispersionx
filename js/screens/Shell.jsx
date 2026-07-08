@@ -165,6 +165,34 @@ function LangSwitcher() {
   );
 }
 
+// Sélecteur de langue INLINE (segmenté) — pour les pages de réglages où un menu
+// déroulant serait rogné par un conteneur overflow:hidden (ex. Préférences).
+function LangSegmented() {
+  const I18n = typeof window !== 'undefined' ? window.DXI18n : null;
+  const LANGS = (I18n && I18n.LANGS) || [];
+  const [lang, setLang] = React.useState(I18n ? I18n.get() : 'fr');
+  React.useEffect(() => {
+    const h = (e) => setLang(e.detail);
+    window.addEventListener('dx-lang', h);
+    return () => window.removeEventListener('dx-lang', h);
+  }, []);
+  if (!I18n) return null;
+  return (
+    <div style={{ display: 'inline-flex', gap: 4, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 3, flexWrap: 'wrap' }}>
+      {LANGS.map(l => {
+        const on = l.code === lang;
+        return (
+          <button key={l.code} onClick={() => I18n.set(l.code)} style={{
+            font: '600 12px/1 var(--font-sans)', padding: '8px 15px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
+            background: on ? 'var(--accent)' : 'transparent', color: on ? '#fff' : 'var(--text-muted)',
+            transition: 'all var(--dur-fast) var(--ease)', whiteSpace: 'nowrap',
+          }}>{l.name}</button>
+        );
+      })}
+    </div>
+  );
+}
+
 // Cloche de notifications (barre du haut, partie création). Point rouge + chiffre
 // quand il y a du non-vu ; clic → page Notifications + réinitialise (via le store
 // partagé window.DXNotifStore, cohérent avec l'onglet Activité). Cloud uniquement.
@@ -1164,4 +1192,4 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
   );
 }
 
-Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, LangSwitcher, NotifBell, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });
+Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, LangSwitcher, LangSegmented, NotifBell, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });

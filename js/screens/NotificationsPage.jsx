@@ -18,6 +18,7 @@ function NotificationsPage({ onNav, lists }) {
   const A = window.DXActivity;
   const store = window.DXNotifStore;
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
+  const isMobile = window.useIsMobile ? window.useIsMobile() : false;   // 2 colonnes sur grand écran, empilé sinon
   const [, force] = React.useState(0);
   const [audit, setAudit] = React.useState([]);
 
@@ -63,11 +64,14 @@ function NotificationsPage({ onNav, lists }) {
   const headLabel = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' };
 
   return (
-    <div style={{ maxWidth: 820, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
+    <div style={{ maxWidth: isMobile ? 820 : 1160, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
       <div>
         <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Notifications</h1>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>Alertes de tes positions et de ton compte, et activité récente. Clique une entrée pour aller au bon endroit.</p>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>Alertes de tes positions et de ton compte, et activité partagée. Clique une entrée pour aller au bon endroit.</p>
       </div>
+
+      {/* Deux colonnes sur grand écran (notifs | activité partagée), empilé sur mobile. */}
+      <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : '1.15fr 0.85fr', gap: 22, alignItems: 'start' }}>
 
       {/* ── Notifications « intelligentes » ── */}
       <section style={sectionCard}>
@@ -101,9 +105,9 @@ function NotificationsPage({ onNav, lists }) {
         })}
       </section>
 
-      {/* ── Activité (audit collaboratif) ── */}
+      {/* ── Activité partagée (audit collaboratif) ── */}
       <section style={sectionCard}>
-        <div style={sectionHead}><span style={headLabel}>Activité {audit.length > 0 && <span style={{ color: 'var(--text-dim)' }}>· {audit.length}</span>}</span></div>
+        <div style={sectionHead}><span style={headLabel}>Activité partagée {audit.length > 0 && <span style={{ color: 'var(--text-dim)' }}>· {audit.length}</span>}</span></div>
         {audit.length === 0 ? (
           <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-body-sm)' }}>Aucune activité récente.</div>
         ) : (
@@ -132,6 +136,8 @@ function NotificationsPage({ onNav, lists }) {
           </div>
         )}
       </section>
+
+      </div>
     </div>
   );
 }

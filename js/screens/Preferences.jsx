@@ -196,7 +196,8 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
       </PrefSection>
 
       {/* ── Langue ── */}
-      <PrefSection title={t('Langue')} desc={t("Langue de l'interface.")} right={window.LangSwitcher ? <window.LangSwitcher /> : null}>
+      <PrefSection title={t('Langue')} desc={t("Langue de l'interface.")}>
+        {window.LangSegmented && <div style={{ marginBottom: 12 }}><window.LangSegmented /></div>}
         <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
           {t('La langue est mémorisée sur cet appareil. Les données de marché et les calculs restent identiques.')}
         </div>
