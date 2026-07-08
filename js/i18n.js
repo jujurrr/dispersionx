@@ -180,6 +180,127 @@
       'Lancer le Strategy Builder': 'Launch the Strategy Builder',
       "Outil d'analyse — ne constitue pas un conseil en investissement.":
         'Analysis tool — does not constitute investment advice.',
+      // ── Landing : corps complet ──
+      '5 indices · SPX, NDX, DJI, CAC 40, DAX 40': '5 indices · SPX, NDX, DJI, CAC 40, DAX 40',
+      'SPX · 31 DTE · dispersion · illustration': 'SPX · 31 DTE · dispersion · illustration',
+      'Payoff estimé': 'Estimated payoff',
+      'Prime ρ': 'ρ premium',
+      'Vega net': 'Net vega',
+      // Comprendre
+      'Prime de corrélation': 'Correlation premium',
+      'Comparer la corrélation implicite pricée par le marché à la corrélation réalisée observée sur les composants.':
+        'Compare the implied correlation priced by the market with the realized correlation observed on the components.',
+      'Écart indice / composants': 'Index / components gap',
+      "Identifier si la volatilité de l'indice est chère ou bon marché face à celle des actions individuelles.":
+        "Identify whether the index's volatility is expensive or cheap relative to that of the individual stocks.",
+      'Mouvements idiosyncratiques': 'Idiosyncratic moves',
+      "Chercher des composants capables de bouger indépendamment de l'indice, moteur de la dispersion.":
+        'Look for components able to move independently of the index — the engine of dispersion.',
+      "La volatilité d'un indice dépend de celle de ses composants et de leur corrélation. Les options d'indice embarquent donc un prix de la corrélation — que l'on peut comparer à la corrélation réellement observée. Une stratégie de dispersion exploite l'écart entre la volatilité de l'indice et celle des actions qui le composent.":
+        "An index's volatility depends on that of its components and on their correlation. Index options therefore embed a price for correlation — which can be compared to the correlation actually observed. A dispersion strategy exploits the gap between the index's volatility and that of the stocks that make it up.",
+      "Quand les actions bougent beaucoup individuellement mais que leurs mouvements se compensent, l'indice reste relativement stable. C'est précisément cette différence que la dispersion mesure et cherche à monétiser.":
+        'When stocks move a lot individually but their moves offset each other, the index stays relatively stable. It is precisely this difference that dispersion measures and seeks to monetize.',
+      'implicite': 'implied',
+      'réalisée': 'realized',
+      'prime de corrélation': 'correlation premium',
+      "Une prime positive signifie que le marché price une synchronisation plus forte que celle réellement observée : un contexte historiquement favorable à la dispersion.":
+        'A positive premium means the market is pricing a stronger synchronization than the one actually observed: a context historically favorable to dispersion.',
+      "Concrètement : on vend la volatilité de l'indice (short straddle) et on achète celle des composants (long straddles), en équilibrant les deux jambes pour ne garder que le pari sur la dispersion.":
+        "In practice: you sell the index's volatility (short straddle) and buy that of the components (long straddles), balancing the two legs to keep only the bet on dispersion.",
+      // Pourquoi
+      "Volatilité implicite, volatilité historique, corrélation, liquidité, grecs, theta, scénario de stress et coût d'exécution — chaque dimension est mesurée, jamais supposée.":
+        'Implied volatility, historical volatility, correlation, liquidity, greeks, theta, stress scenario and execution cost — every dimension is measured, never assumed.',
+      'Analyse structurée': 'Structured analysis',
+      'La stratégie est examinée sous plusieurs angles avant toute décision.':
+        'The strategy is examined from several angles before any decision.',
+      'Meilleure compréhension du risque': 'Better risk understanding',
+      'Grecs, theta, scénarios de stress et coûts rendus visibles.':
+        'Greeks, theta, stress scenarios and costs made visible.',
+      'Construction vega-neutre': 'Vega-neutral construction',
+      'Équilibrage entre la jambe indice et le panier de composants.':
+        'Balancing between the index leg and the basket of components.',
+      'Scénarios de stress': 'Stress scenarios',
+      'Sell-off corrélé, vol crush, hausse IV — testés avant exécution.':
+        'Correlated sell-off, vol crush, IV spike — tested before execution.',
+      'Lecture pédagogique': 'Educational reading',
+      'Explications « en clair » et tooltips pour les débutants sérieux.':
+        'Plain-language explanations and tooltips for serious beginners.',
+      'Outil avancé': 'Advanced tool',
+      'Matrices, formules et exports pour les utilisateurs expérimentés.':
+        'Matrices, formulas and exports for experienced users.',
+      // Workflow
+      'Choisir un indice et une échéance': 'Choose an index and an expiry',
+      'SPX, NDX, DJI, CAC 40, DAX 40 — liquidité, caractéristiques, durée.':
+        'SPX, NDX, DJI, CAC 40, DAX 40 — liquidity, characteristics, duration.',
+      'Analyser les composants': 'Analyze the components',
+      'Score décomposé, IV/HV, β, filtres et avertissements earnings.':
+        'Decomposed score, IV/HV, β, filters and earnings warnings.',
+      'Construire la liste': 'Build the list',
+      "Constituer le panier, suivre le score pondéré et l'edge moyen.":
+        'Assemble the basket, track the weighted score and the average edge.',
+      'Mesurer la corrélation': 'Measure the correlation',
+      'ρ implicite vs ρ̂ réalisée, prime, z-score et contributions.':
+        'Implied ρ vs realized ρ̂, premium, z-score and contributions.',
+      'Construire la stratégie': 'Build the strategy',
+      'Sizing vega-neutre + couverture delta (ETF indice ou par jambe).':
+        'Vega-neutral sizing + delta hedge (index ETF or per leg).',
+      'Tester le risque': 'Test the risk',
+      'Scénarios de stress, grecs, simulateur de P&L interactif.':
+        'Stress scenarios, greeks, interactive P&L simulator.',
+      'Checklist & suivi': 'Checklist & tracking',
+      'Valider la checklist, committer la position et suivre grecs, DTE et alertes.':
+        'Validate the checklist, commit the position and track greeks, DTE and alerts.',
+      // Risques
+      'La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.':
+        'The platform highlights the unfavorable scenarios before any validation. Understanding where the strategy can lose is as important as measuring its edge.',
+      'Sell-off corrélé': 'Correlated sell-off',
+      "L'indice baisse, sa volatilité monte et les composants suivent dans la même direction — le principal risque de la dispersion.":
+        'The index falls, its volatility rises and the components follow in the same direction — the main risk of dispersion.',
+      'Vol crush': 'Vol crush',
+      "La volatilité implicite des composants retombe (après earnings, par exemple) : les straddles longs perdent de la valeur même si l'action ne bouge pas.":
+        'The implied volatility of the components falls back (after earnings, for example): long straddles lose value even if the stock does not move.',
+      'Theta & échéance': 'Theta & expiry',
+      'Les straddles longs composants brûlent du theta chaque jour : si la dispersion attendue ne se réalise pas, le portage coûte.':
+        'Long component straddles burn theta every day: if the expected dispersion does not materialize, the carry costs.',
+      "Coût d'exécution": 'Execution cost',
+      "Le bid/ask aller-retour peut absorber une part significative de l'edge théorique.":
+        'The round-trip bid/ask can absorb a significant part of the theoretical edge.',
+      'Ce que le site ne fait pas': 'What the site does not do',
+      "Un outil d'analyse, pas une promesse.": 'An analysis tool, not a promise.',
+      "DispersionX sert à analyser, construire, simuler et comprendre. L'exécution et la décision restent sous votre contrôle.":
+        'DispersionX is for analyzing, building, simulating and understanding. Execution and the decision remain under your control.',
+      'Ne donne pas de conseil financier': 'Does not give financial advice',
+      'Ne garantit aucune performance': 'Guarantees no performance',
+      'Ne remplace pas Risk Navigator ni une validation humaine': 'Does not replace Risk Navigator or human validation',
+      "N'exécute jamais automatiquement sans contrôle": 'Never executes automatically without control',
+      // Exécution
+      "La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.":
+        'The strategy can be reproduced manually on multi-leg options platforms — notably IBKR TWS or OptionTrader. DispersionX stays agnostic: it prepares the analysis and the construction, you keep control of the execution.',
+      'Options multi-jambes': 'Multi-leg options',
+      // Pro
+      "Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur construit les meilleures dispersions tout seul, et le suivi valorise vos positions au marché réel, jour après jour.":
+        'The analysis tools stay free. Pro adds the engine that saves you hours: the auto-finder builds the best dispersions on its own, and tracking values your positions at the real market, day after day.',
+      // Pro — cartes phares (ProBenefits, visibles sur la Landing)
+      'Gain de temps ×100': 'Time saver ×100',
+      "L'auto-chercheur construit vos meilleures stratégies — tout seul":
+        'The auto-finder builds your best strategies — on its own',
+      "Fini les heures à tester des paniers à la main. L'algorithme explore des milliers de combinaisons et vous sort les dispersions au plus haut potentiel, prêtes à construire — en quelques secondes.":
+        'No more hours spent testing baskets by hand. The algorithm explores thousands of combinations and surfaces the highest-potential dispersions, ready to build — in seconds.',
+      'Classe automatiquement les meilleurs paniers par indice': 'Automatically ranks the best baskets per index',
+      'Sizing vega-neutre + 3 scénarios de stress déjà calculés': 'Vega-neutral sizing + 3 stress scenarios already computed',
+      'Backtest de la prime de corrélation capturée': 'Backtest of the captured correlation premium',
+      'Pilotage en temps réel': 'Real-time steering',
+      'Suivez vos stratégies au marché réel, jour après jour': 'Track your strategies at the real market, day after day',
+      'Chaque position est valorisée en direct : P&L, grecs, évolution. Vous savez toujours où vous en êtes — et quand sortir.':
+        'Every position is valued live: P&L, greeks, evolution. You always know where you stand — and when to exit.',
+      'P&L mark-to-market (spot + IV réels Cboe)': 'Mark-to-market P&L (real Cboe spot + IV)',
+      "Courbe d'évolution + Δ vs entrée / vs veille": 'Evolution curve + Δ vs entry / vs previous day',
+      'Relevé automatique quotidien': 'Automatic daily snapshot',
+      'Se connecter pour passer Pro': 'Sign in to go Pro',
+      'Meilleures opportunités': 'Top opportunities',
+      'actions': 'stocks',
+      'prime ρ': 'ρ premium',
+      'Évolution du P&L': 'P&L evolution',
     },
     zh: {
       // ── Navigation (barre latérale) ──
@@ -330,6 +451,127 @@
       'Lancer le Strategy Builder': '启动策略构建器',
       "Outil d'analyse — ne constitue pas un conseil en investissement.":
         '分析工具 — 不构成投资建议。',
+      // ── Landing : corps complet ──
+      '5 indices · SPX, NDX, DJI, CAC 40, DAX 40': '5 个指数 · SPX、NDX、DJI、CAC 40、DAX 40',
+      'SPX · 31 DTE · dispersion · illustration': 'SPX · 31 DTE · 离散 · 示意',
+      'Payoff estimé': '预计收益',
+      'Prime ρ': 'ρ 溢价',
+      'Vega net': '净 Vega',
+      // Comprendre
+      'Prime de corrélation': '相关性溢价',
+      'Comparer la corrélation implicite pricée par le marché à la corrélation réalisée observée sur les composants.':
+        '将市场定价的隐含相关性与成分股上观察到的已实现相关性进行比较。',
+      'Écart indice / composants': '指数与成分股的差距',
+      "Identifier si la volatilité de l'indice est chère ou bon marché face à celle des actions individuelles.":
+        '判断指数的波动率相对于个股是偏贵还是偏便宜。',
+      'Mouvements idiosyncratiques': '特异性波动',
+      "Chercher des composants capables de bouger indépendamment de l'indice, moteur de la dispersion.":
+        '寻找能够独立于指数波动的成分股 — 这是离散度的驱动力。',
+      "La volatilité d'un indice dépend de celle de ses composants et de leur corrélation. Les options d'indice embarquent donc un prix de la corrélation — que l'on peut comparer à la corrélation réellement observée. Une stratégie de dispersion exploite l'écart entre la volatilité de l'indice et celle des actions qui le composent.":
+        '指数的波动率取决于其成分股的波动率以及它们之间的相关性。因此，指数期权中隐含了一个相关性的价格 — 可以将其与实际观察到的相关性进行比较。离散度策略正是利用指数波动率与其成分股波动率之间的差距。',
+      "Quand les actions bougent beaucoup individuellement mais que leurs mouvements se compensent, l'indice reste relativement stable. C'est précisément cette différence que la dispersion mesure et cherche à monétiser.":
+        '当个股各自大幅波动但彼此的走势相互抵消时，指数会保持相对稳定。离散度衡量并试图变现的正是这种差异。',
+      'implicite': '隐含',
+      'réalisée': '已实现',
+      'prime de corrélation': '相关性溢价',
+      "Une prime positive signifie que le marché price une synchronisation plus forte que celle réellement observée : un contexte historiquement favorable à la dispersion.":
+        '正溢价意味着市场所定价的同步程度高于实际观察到的水平：这是历史上有利于离散度的环境。',
+      "Concrètement : on vend la volatilité de l'indice (short straddle) et on achète celle des composants (long straddles), en équilibrant les deux jambes pour ne garder que le pari sur la dispersion.":
+        '具体而言：卖出指数的波动率（卖出跨式），买入成分股的波动率（买入跨式），并平衡两条腿，只保留对离散度的押注。',
+      // Pourquoi
+      "Volatilité implicite, volatilité historique, corrélation, liquidité, grecs, theta, scénario de stress et coût d'exécution — chaque dimension est mesurée, jamais supposée.":
+        '隐含波动率、历史波动率、相关性、流动性、希腊值、Theta、压力情景以及执行成本 — 每个维度都经过测量，而非假设。',
+      'Analyse structurée': '结构化分析',
+      'La stratégie est examinée sous plusieurs angles avant toute décision.':
+        '在做出任何决定之前，从多个角度审视策略。',
+      'Meilleure compréhension du risque': '更好地理解风险',
+      'Grecs, theta, scénarios de stress et coûts rendus visibles.':
+        '将希腊值、Theta、压力情景与成本一览无遗。',
+      'Construction vega-neutre': 'Vega 中性构建',
+      'Équilibrage entre la jambe indice et le panier de composants.':
+        '在指数腿与成分股组合之间进行平衡。',
+      'Scénarios de stress': '压力情景',
+      'Sell-off corrélé, vol crush, hausse IV — testés avant exécution.':
+        '相关性抛售、波动率骤降、IV 飙升 — 在执行前测试。',
+      'Lecture pédagogique': '易懂的解读',
+      'Explications « en clair » et tooltips pour les débutants sérieux.':
+        '为认真的新手提供“通俗”解释和提示。',
+      'Outil avancé': '高级工具',
+      'Matrices, formules et exports pour les utilisateurs expérimentés.':
+        '为有经验的用户提供矩阵、公式和导出功能。',
+      // Workflow
+      'Choisir un indice et une échéance': '选择指数和到期日',
+      'SPX, NDX, DJI, CAC 40, DAX 40 — liquidité, caractéristiques, durée.':
+        'SPX、NDX、DJI、CAC 40、DAX 40 — 流动性、特征、期限。',
+      'Analyser les composants': '分析成分股',
+      'Score décomposé, IV/HV, β, filtres et avertissements earnings.':
+        '分解评分、IV/HV、β、筛选与财报预警。',
+      'Construire la liste': '构建清单',
+      "Constituer le panier, suivre le score pondéré et l'edge moyen.":
+        '构建组合，跟踪加权评分与平均优势。',
+      'Mesurer la corrélation': '衡量相关性',
+      'ρ implicite vs ρ̂ réalisée, prime, z-score et contributions.':
+        '隐含 ρ 对比已实现 ρ̂、溢价、z 分数与贡献度。',
+      'Construire la stratégie': '构建策略',
+      'Sizing vega-neutre + couverture delta (ETF indice ou par jambe).':
+        'Vega 中性头寸规模 + Delta 对冲（指数 ETF 或按腿）。',
+      'Tester le risque': '测试风险',
+      'Scénarios de stress, grecs, simulateur de P&L interactif.':
+        '压力情景、希腊值、交互式盈亏模拟器。',
+      'Checklist & suivi': '检查清单与跟踪',
+      'Valider la checklist, committer la position et suivre grecs, DTE et alertes.':
+        '完成检查清单，提交持仓，并跟踪希腊值、DTE 与提醒。',
+      // Risques
+      'La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.':
+        '平台会在任何确认之前突出显示不利情景。理解策略可能亏损的地方，与衡量其优势同样重要。',
+      'Sell-off corrélé': '相关性抛售',
+      "L'indice baisse, sa volatilité monte et les composants suivent dans la même direction — le principal risque de la dispersion.":
+        '指数下跌，其波动率上升，成分股朝同一方向跟随 — 这是离散度的主要风险。',
+      'Vol crush': '波动率骤降',
+      "La volatilité implicite des composants retombe (après earnings, par exemple) : les straddles longs perdent de la valeur même si l'action ne bouge pas.":
+        '成分股的隐含波动率回落（例如财报之后）：即使股价不动，买入的跨式也会贬值。',
+      'Theta & échéance': 'Theta 与到期',
+      'Les straddles longs composants brûlent du theta chaque jour : si la dispersion attendue ne se réalise pas, le portage coûte.':
+        '买入的成分股跨式每天消耗 Theta：如果预期的离散度没有实现，持有成本高昂。',
+      "Coût d'exécution": '执行成本',
+      "Le bid/ask aller-retour peut absorber une part significative de l'edge théorique.":
+        '买卖价差的往返成本可能吞噬掉相当一部分理论优势。',
+      'Ce que le site ne fait pas': '本网站不做什么',
+      "Un outil d'analyse, pas une promesse.": '一个分析工具，而非承诺。',
+      "DispersionX sert à analyser, construire, simuler et comprendre. L'exécution et la décision restent sous votre contrôle.":
+        'DispersionX 用于分析、构建、模拟和理解。执行与决策始终由您掌控。',
+      'Ne donne pas de conseil financier': '不提供财务建议',
+      'Ne garantit aucune performance': '不保证任何业绩',
+      'Ne remplace pas Risk Navigator ni une validation humaine': '不替代 Risk Navigator 或人工验证',
+      "N'exécute jamais automatiquement sans contrôle": '绝不会在没有监督的情况下自动执行',
+      // Exécution
+      "La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.":
+        '该策略可以在多腿期权平台上手动复制 — 尤其是 IBKR TWS 或 OptionTrader。DispersionX 保持中立：它负责分析与构建，执行则由您掌控。',
+      'Options multi-jambes': '多腿期权',
+      // Pro
+      "Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur construit les meilleures dispersions tout seul, et le suivi valorise vos positions au marché réel, jour après jour.":
+        '分析工具始终免费。Pro 增加了为您节省数小时的引擎：自动搜索器独立构建最佳离散组合，跟踪功能则按真实市场逐日估值您的持仓。',
+      // Pro — cartes phares (ProBenefits, visibles sur la Landing)
+      'Gain de temps ×100': '节省时间 ×100',
+      "L'auto-chercheur construit vos meilleures stratégies — tout seul":
+        '自动搜索器独立为您构建最佳策略',
+      "Fini les heures à tester des paniers à la main. L'algorithme explore des milliers de combinaisons et vous sort les dispersions au plus haut potentiel, prêtes à construire — en quelques secondes.":
+        '不再需要花数小时手动测试组合。算法会探索数千种组合，在几秒内为您筛选出最具潜力、可直接构建的离散组合。',
+      'Classe automatiquement les meilleurs paniers par indice': '自动按指数对最佳组合进行排名',
+      'Sizing vega-neutre + 3 scénarios de stress déjà calculés': 'Vega 中性头寸规模 + 已计算好的 3 种压力情景',
+      'Backtest de la prime de corrélation capturée': '已捕获相关性溢价的回测',
+      'Pilotage en temps réel': '实时掌控',
+      'Suivez vos stratégies au marché réel, jour après jour': '按真实市场逐日跟踪您的策略',
+      'Chaque position est valorisée en direct : P&L, grecs, évolution. Vous savez toujours où vous en êtes — et quand sortir.':
+        '每个持仓都实时估值：盈亏、希腊值、走势。您始终清楚自己的处境 — 以及何时退出。',
+      'P&L mark-to-market (spot + IV réels Cboe)': '按市值计价的盈亏（真实的 Cboe 现价 + IV）',
+      "Courbe d'évolution + Δ vs entrée / vs veille": '走势曲线 + Δ 对比入场 / 对比前一日',
+      'Relevé automatique quotidien': '每日自动快照',
+      'Se connecter pour passer Pro': '登录以升级 Pro',
+      'Meilleures opportunités': '最佳机会',
+      'actions': '只股票',
+      'prime ρ': 'ρ 溢价',
+      'Évolution du P&L': '盈亏走势',
     },
   };
 

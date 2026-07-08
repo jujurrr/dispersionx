@@ -3,6 +3,11 @@ function Landing() {
   const DS = window.DispersionXDesignSystem_cb86be;
   const { Button, Badge, MetricCard } = DS;
   const Icon = window.Icon;
+  // i18n : TR(clé FR) → traduction (repli FR). L = langue courante — sert à
+  // garder la version FR « riche » (avec <strong>) et n'afficher la traduction
+  // en texte simple que dans les autres langues (voir paragraphes ci-dessous).
+  const TR = window.t || ((s) => s);
+  const L = window.DXI18n ? window.DXI18n.get() : 'fr';
 
   // ── Style helpers (cohérents avec le reste de l'app) ──
   const wrap = { maxWidth: 1140, width: '100%', margin: '0 auto' };
@@ -71,8 +76,8 @@ function Landing() {
               <Button variant="outline" size="lg" onClick={() => scrollTo('comprendre')}>{window.t ? window.t('Comprendre la dispersion') : 'Comprendre la dispersion'}</Button>
             </div>
             <div style={{ display: 'flex', gap: 24, marginTop: 30, font: 'var(--type-caption)', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
-              <span>5 indices · SPX, NDX, DJI, CAC 40, DAX 40</span>
-              <span>{window.t ? window.t('Mode Débutant & Avancé') : 'Mode Débutant & Avancé'}</span>
+              <span>{TR('5 indices · SPX, NDX, DJI, CAC 40, DAX 40')}</span>
+              <span>{TR('Mode Débutant & Avancé')}</span>
             </div>
           </div>
           <PayoffCard />
@@ -88,11 +93,11 @@ function Landing() {
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--neg)' }} />
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--warn)' }} />
           <span style={{ width: 9, height: 9, borderRadius: '50%', background: 'var(--pos)' }} />
-          <span style={{ marginLeft: 8, font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>SPX · 31 DTE · dispersion · illustration</span>
+          <span style={{ marginLeft: 8, font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{TR('SPX · 31 DTE · dispersion · illustration')}</span>
         </div>
         <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 14 }}>
-            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Payoff estimé</div>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>{TR('Payoff estimé')}</div>
             <svg viewBox="0 0 320 90" width="100%" height="80">
               <defs><linearGradient id="pfL" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="rgba(38,166,154,0.35)" /><stop offset="100%" stopColor="rgba(38,166,154,0)" /></linearGradient></defs>
               <path d="M0 70 Q80 72 130 40 Q160 22 190 40 Q240 72 320 70" fill="none" stroke="var(--pos-bright)" strokeWidth="2" />
@@ -101,8 +106,8 @@ function Landing() {
             </svg>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            <MetricCard label="Prime ρ" value="+6.4" unit="pts" accent="var(--pos)" />
-            <MetricCard label="Vega net" value="−180" accent="var(--warn)" />
+            <MetricCard label={TR('Prime ρ')} value="+6.4" unit="pts" accent="var(--pos)" />
+            <MetricCard label={TR('Vega net')} value="−180" accent="var(--warn)" />
           </div>
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
             {[['NVDA', '7.3%', '84'], ['TSLA', '1.9%', '88'], ['META', '2.9%', '82']].map((r, i) => (
@@ -130,26 +135,32 @@ function Landing() {
         <div style={eyebrow}>{window.t ? window.t('Comprendre la dispersion') : 'Comprendre la dispersion'}</div>
         <h2 style={h2}>{window.t ? window.t('Les options ne pricent pas que la volatilité.') : 'Les options ne pricent pas que la volatilité.'}</h2>
         <p style={{ ...lede, fontSize: 18, marginTop: 18 }}>
-          La volatilité d'un indice dépend de celle de ses composants <strong style={{ color: 'var(--text)' }}>et</strong> de leur <strong style={{ color: 'var(--text)' }}>corrélation</strong>. Les options d'indice embarquent donc un prix de la corrélation — que l'on peut comparer à la corrélation réellement observée. Une stratégie de dispersion exploite l'écart entre la volatilité de l'indice et celle des actions qui le composent.
+          {L === 'fr'
+            ? <>La volatilité d'un indice dépend de celle de ses composants <strong style={{ color: 'var(--text)' }}>et</strong> de leur <strong style={{ color: 'var(--text)' }}>corrélation</strong>. Les options d'indice embarquent donc un prix de la corrélation — que l'on peut comparer à la corrélation réellement observée. Une stratégie de dispersion exploite l'écart entre la volatilité de l'indice et celle des actions qui le composent.</>
+            : TR("La volatilité d'un indice dépend de celle de ses composants et de leur corrélation. Les options d'indice embarquent donc un prix de la corrélation — que l'on peut comparer à la corrélation réellement observée. Une stratégie de dispersion exploite l'écart entre la volatilité de l'indice et celle des actions qui le composent.")}
         </p>
         <p style={{ ...lede, fontSize: 18, marginTop: 14 }}>
-          Quand les actions bougent beaucoup individuellement mais que leurs mouvements se compensent, l'indice reste relativement stable. C'est précisément cette différence que la dispersion mesure et cherche à monétiser.
+          {TR("Quand les actions bougent beaucoup individuellement mais que leurs mouvements se compensent, l'indice reste relativement stable. C'est précisément cette différence que la dispersion mesure et cherche à monétiser.")}
         </p>
 
         {/* Formule centrale */}
         <div style={{ marginTop: 28, background: 'var(--bg-card)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius-lg)', padding: '24px 28px', display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
           <div style={{ font: '700 26px/1.3 var(--font-mono)', color: 'var(--text)', whiteSpace: 'nowrap' }}>
-            ρ<sub style={{ fontSize: 14, color: 'var(--info)' }}>implicite</sub> − ρ̂<sub style={{ fontSize: 14, color: 'var(--info)' }}>réalisée</sub>
+            ρ<sub style={{ fontSize: 14, color: 'var(--info)' }}>{TR('implicite')}</sub> − ρ̂<sub style={{ fontSize: 14, color: 'var(--info)' }}>{TR('réalisée')}</sub>
             <span style={{ color: 'var(--text-dim)' }}> = </span>
-            <span style={{ color: 'var(--pos-bright)' }}>prime de corrélation</span>
+            <span style={{ color: 'var(--pos-bright)' }}>{TR('prime de corrélation')}</span>
           </div>
           <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', flex: 1, minWidth: 240 }}>
-            Une prime <strong style={{ color: 'var(--pos-bright)' }}>positive</strong> signifie que le marché price une synchronisation plus forte que celle réellement observée : un contexte historiquement favorable à la dispersion.
+            {L === 'fr'
+              ? <>Une prime <strong style={{ color: 'var(--pos-bright)' }}>positive</strong> signifie que le marché price une synchronisation plus forte que celle réellement observée : un contexte historiquement favorable à la dispersion.</>
+              : TR("Une prime positive signifie que le marché price une synchronisation plus forte que celle réellement observée : un contexte historiquement favorable à la dispersion.")}
           </div>
         </div>
 
         <p style={{ ...lede, fontSize: 18, marginTop: 22 }}>
-          Concrètement : on <strong style={{ color: 'var(--text)' }}>vend la volatilité de l'indice</strong> (short straddle) et on <strong style={{ color: 'var(--text)' }}>achète celle des composants</strong> (long straddles), en équilibrant les deux jambes pour ne garder que le pari sur la dispersion.
+          {L === 'fr'
+            ? <>Concrètement : on <strong style={{ color: 'var(--text)' }}>vend la volatilité de l'indice</strong> (short straddle) et on <strong style={{ color: 'var(--text)' }}>achète celle des composants</strong> (long straddles), en équilibrant les deux jambes pour ne garder que le pari sur la dispersion.</>
+            : TR("Concrètement : on vend la volatilité de l'indice (short straddle) et on achète celle des composants (long straddles), en équilibrant les deux jambes pour ne garder que le pari sur la dispersion.")}
         </p>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 28 }}>
@@ -158,8 +169,8 @@ function Landing() {
               <div style={{ width: 40, height: 40, borderRadius: 'var(--radius)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-hover)', marginBottom: 16 }}>
                 <Icon d={c.icon} />
               </div>
-              <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 8px' }}>{c.t}</h3>
-              <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0 }}>{c.d}</p>
+              <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 8px' }}>{TR(c.t)}</h3>
+              <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0 }}>{TR(c.d)}</p>
             </div>
           ))}
         </div>
@@ -182,12 +193,12 @@ function Landing() {
         <div style={{ ...sectionPad, ...wrap }}>
           <div style={eyebrow}>{window.t ? window.t('Pourquoi cette approche est utile') : 'Pourquoi cette approche est utile'}</div>
           <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t('Elle oblige à analyser sous plusieurs angles.') : 'Elle oblige à analyser sous plusieurs angles.'}</h2>
-          <p style={{ ...lede, marginBottom: 36 }}>Volatilité implicite, volatilité historique, corrélation, liquidité, grecs, theta, scénario de stress et coût d'exécution — chaque dimension est mesurée, jamais supposée.</p>
+          <p style={{ ...lede, marginBottom: 36 }}>{TR("Volatilité implicite, volatilité historique, corrélation, liquidité, grecs, theta, scénario de stress et coût d'exécution — chaque dimension est mesurée, jamais supposée.")}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
             {WHY.map(([t, d]) => (
               <div key={t} className="dx-lift" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 22 }}>
-                <h3 style={{ font: 'var(--type-title)', color: 'var(--text)', margin: '0 0 8px' }}>{t}</h3>
-                <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>{d}</p>
+                <h3 style={{ font: 'var(--type-title)', color: 'var(--text)', margin: '0 0 8px' }}>{TR(t)}</h3>
+                <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.55 }}>{TR(d)}</p>
               </div>
             ))}
           </div>
@@ -215,8 +226,8 @@ function Landing() {
           {STEPS.map(([n, t, d]) => (
             <div key={n} style={{ position: 'relative', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
               <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 13px/1 var(--font-mono)', marginBottom: 14 }}>{n}</div>
-              <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 6 }}>{t}</div>
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 }}>{d}</div>
+              <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 6 }}>{TR(t)}</div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 }}>{TR(d)}</div>
             </div>
           ))}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10, padding: 18 }}>
@@ -242,14 +253,14 @@ function Landing() {
         <div style={{ ...sectionPad, ...wrap }}>
           <div style={eyebrow}>{window.t ? window.t('Les risques, rendus visibles') : 'Les risques, rendus visibles'}</div>
           <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t("Un portefeuille vega-neutre n'est pas sans risque.") : "Un portefeuille vega-neutre n'est pas sans risque."}</h2>
-          <p style={{ ...lede, marginBottom: 32 }}>La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.</p>
+          <p style={{ ...lede, marginBottom: 32 }}>{TR('La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.')}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
             {RISKS.map(([t, d]) => (
               <div key={t} style={{ display: 'flex', gap: 14, background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: '3px solid var(--neg)', borderRadius: 'var(--radius)', padding: '16px 18px' }}>
                 <span style={{ color: 'var(--neg-bright)', flexShrink: 0, marginTop: 2 }}><Icon d="M12 2 2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7L12 2Z" size={18} /></span>
                 <div>
-                  <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 4 }}>{t}</div>
-                  <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', lineHeight: 1.55 }}>{d}</div>
+                  <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 4 }}>{TR(t)}</div>
+                  <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', lineHeight: 1.55 }}>{TR(d)}</div>
                 </div>
               </div>
             ))}
@@ -257,15 +268,15 @@ function Landing() {
 
           <div style={{ marginTop: 32, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 40, alignItems: 'center' }}>
             <div>
-              <div style={eyebrow}>Ce que le site ne fait pas</div>
-              <h3 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>Un outil d'analyse, pas une promesse.</h3>
-              <p style={{ ...lede, marginTop: 14 }}>DispersionX sert à analyser, construire, simuler et comprendre. L'exécution et la décision restent sous votre contrôle.</p>
+              <div style={eyebrow}>{TR('Ce que le site ne fait pas')}</div>
+              <h3 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: 0 }}>{TR("Un outil d'analyse, pas une promesse.")}</h3>
+              <p style={{ ...lede, marginTop: 14 }}>{TR("DispersionX sert à analyser, construire, simuler et comprendre. L'exécution et la décision restent sous votre contrôle.")}</p>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {BOUNDARIES.map(t => (
                 <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '14px 16px' }}>
                   <span style={{ color: 'var(--neg-bright)', flexShrink: 0 }}><Icon d="M18 6 6 18M6 6l12 12" size={17} /></span>
-                  <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{t}</span>
+                  <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{TR(t)}</span>
                 </div>
               ))}
             </div>
@@ -282,11 +293,11 @@ function Landing() {
         <div style={{ ...eyebrow, textAlign: 'center' }}>{window.t ? window.t('Où exécuter la stratégie') : 'Où exécuter la stratégie'}</div>
         <h2 style={{ ...h2, maxWidth: 720, margin: '0 auto 18px' }}>{window.t ? window.t("La construction ici, l'exécution sous votre contrôle.") : "La construction ici, l'exécution sous votre contrôle."}</h2>
         <p style={{ ...lede, margin: '0 auto', textAlign: 'center' }}>
-          La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.
+          {TR("La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.")}
         </p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 26, flexWrap: 'wrap' }}>
           {['IBKR TWS', 'IBKR OptionTrader', 'Options multi-jambes'].map(p => (
-            <Badge key={p} tone="neutral" size="md">{p}</Badge>
+            <Badge key={p} tone="neutral" size="md">{TR(p)}</Badge>
           ))}
         </div>
       </section>
@@ -302,7 +313,9 @@ function Landing() {
             <div style={{ ...eyebrow, textAlign: 'center' }}>{window.t ? window.t('DispersionX Pro') : 'DispersionX Pro'}</div>
             <h2 style={{ ...h2, maxWidth: 780, margin: '0 auto 16px' }}>{window.t ? window.t("Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel.") : "Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel."}</h2>
             <p style={{ ...lede, margin: '0 auto', textAlign: 'center' }}>
-              Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur <strong style={{ color: 'var(--text-soft)' }}>construit les meilleures dispersions tout seul</strong>, et le suivi valorise vos positions au marché réel, jour après jour.
+              {L === 'fr'
+                ? <>Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur <strong style={{ color: 'var(--text-soft)' }}>construit les meilleures dispersions tout seul</strong>, et le suivi valorise vos positions au marché réel, jour après jour.</>
+                : TR("Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur construit les meilleures dispersions tout seul, et le suivi valorise vos positions au marché réel, jour après jour.")}
             </p>
           </div>
           {window.ProBenefits ? <window.ProBenefits onNav={window.__dxNav} /> : null}

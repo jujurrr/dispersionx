@@ -224,6 +224,7 @@ const DX_PRO_FLAGSHIPS = [
 
 /* Mock visuel : classement d'opportunités (aperçu de l'auto-chercheur). */
 function ProDemoOpportunities() {
+  const TR = window.t || ((s) => s);
   const rows = [
     { n: 1, score: 84, tickers: ['NVDA', 'AMD', 'AVGO', 'MU', 'QCOM'], prime: '11.2' },
     { n: 2, score: 78, tickers: ['AAPL', 'MSFT', 'GOOGL', 'META'], prime: '9.4' },
@@ -233,19 +234,19 @@ function ProDemoOpportunities() {
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
       <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Meilleures opportunités · NDX</span>
+        <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>{TR('Meilleures opportunités')} · NDX</span>
         <span style={{ font: '600 10px/1 var(--font-mono)', padding: '3px 8px', borderRadius: 999, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)' }}>auto</span>
       </div>
       {rows.map((r, i) => (
         <div key={r.n} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderBottom: i < rows.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
           <div style={{ width: 38, height: 38, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: i === 0 ? 'var(--accent)' : 'var(--accent-soft)', border: '1px solid var(--accent-border)', font: '700 14px/1 var(--font-mono)', color: i === 0 ? '#fff' : 'var(--accent-hover)' }}>{r.score}</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ font: '600 12px/1.2 var(--font-sans)', color: 'var(--text)', marginBottom: 5 }}>#{r.n} · {r.tickers.length} actions</div>
+            <div style={{ font: '600 12px/1.2 var(--font-sans)', color: 'var(--text)', marginBottom: 5 }}>#{r.n} · {r.tickers.length} {TR('actions')}</div>
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>{r.tickers.map(chip)}</div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ font: 'var(--type-data)', color: 'var(--pos-bright)' }}>+{r.prime}</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>prime ρ</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{TR('prime ρ')}</div>
           </div>
         </div>
       ))}
@@ -255,6 +256,7 @@ function ProDemoOpportunities() {
 
 /* Mock visuel : suivi de positions + courbe P&L. */
 function ProDemoSuivi() {
+  const TR = window.t || ((s) => s);
   const cards = [
     { name: 'Tech US · 14/07', idx: 'NDX', pnl: 1840, dte: 22, up: true },
     { name: 'Semis · 02/07', idx: 'NDX', pnl: 3110, dte: 31, up: true },
@@ -275,7 +277,7 @@ function ProDemoSuivi() {
         </div>
       ))}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 14px' }}>
-        <div style={{ font: 'var(--type-caption)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Évolution du P&L</div>
+        <div style={{ font: 'var(--type-caption)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>{TR('Évolution du P&L')}</div>
         <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
           <path d={`${d} L${W},${H} L0,${H} Z`} fill="var(--pos-soft)" opacity="0.5" />
           <path d={d} fill="none" stroke="var(--pos-bright)" strokeWidth="2" />
@@ -343,6 +345,7 @@ function ProDemoJournal() {
 function ProBenefits({ onNav, addToast, showCta = true }) {
   const demos = { opportunities: ProDemoOpportunities, positions: ProDemoSuivi };
   const { signedIn, busy, goPro } = useProCheckout(onNav, addToast, 'benefits');
+  const TR = window.t || ((s) => s);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       {DX_PRO_FLAGSHIPS.map((f, i) => {
@@ -351,12 +354,12 @@ function ProBenefits({ onNav, addToast, showCta = true }) {
         return (
           <div key={f.key} style={{ display: 'flex', gap: 26, alignItems: 'center', flexWrap: 'wrap', flexDirection: reverse ? 'row-reverse' : 'row', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '22px 24px' }}>
             <div style={{ flex: '1 1 300px', minWidth: 260 }}>
-              <span style={{ display: 'inline-block', font: '600 10px/1 var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 9px', borderRadius: 999, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', marginBottom: 10 }}>{f.badge}</span>
-              <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 8px', letterSpacing: 'var(--track-snug)' }}>{f.title}</h3>
-              <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.6 }}>{f.tagline}</p>
+              <span style={{ display: 'inline-block', font: '600 10px/1 var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 9px', borderRadius: 999, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', marginBottom: 10 }}>{TR(f.badge)}</span>
+              <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 8px', letterSpacing: 'var(--track-snug)' }}>{TR(f.title)}</h3>
+              <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '0 0 12px', lineHeight: 1.6 }}>{TR(f.tagline)}</p>
               <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {f.points.map((p, j) => (
-                  <li key={j} style={{ display: 'flex', gap: 8, font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}><span style={{ color: 'var(--pos-bright)', flexShrink: 0 }}>✓</span>{p}</li>
+                  <li key={j} style={{ display: 'flex', gap: 8, font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}><span style={{ color: 'var(--pos-bright)', flexShrink: 0 }}>✓</span>{TR(p)}</li>
                 ))}
               </ul>
             </div>
@@ -368,9 +371,9 @@ function ProBenefits({ onNav, addToast, showCta = true }) {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
           <button onClick={goPro} disabled={busy}
             style={{ font: '600 14px/1 var(--font-sans)', padding: '13px 28px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.7 : 1 }}>
-            {busy ? 'Redirection…' : (signedIn ? `Passer Pro — ${DX_PRO.price} ${DX_PRO.currency}/${DX_PRO.period}` : 'Se connecter pour passer Pro')}
+            {busy ? TR('Redirection…') : (signedIn ? `${TR('Passer Pro')} — ${DX_PRO.price} ${DX_PRO.currency}/${TR(DX_PRO.period)}` : TR('Se connecter pour passer Pro'))}
           </button>
-          {onNav && <button onClick={() => onNav('pricing')} style={{ font: '600 13px/1 var(--font-sans)', background: 'none', border: 'none', color: 'var(--accent-hover)', cursor: 'pointer' }}>Voir les tarifs →</button>}
+          {onNav && <button onClick={() => onNav('pricing')} style={{ font: '600 13px/1 var(--font-sans)', background: 'none', border: 'none', color: 'var(--accent-hover)', cursor: 'pointer' }}>{TR('Voir les tarifs →')}</button>}
         </div>
       )}
     </div>
