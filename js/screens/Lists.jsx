@@ -193,6 +193,25 @@ function Lists({ onNav, onListsChange, addToast }) {
   );
 
   const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 };
+
+  // Actions compactes d'une liste (ranger, télécharger, partager, supprimer) —
+  // réutilisées dans la vue Chronologique. stopPropagation pour ne pas ouvrir la liste.
+  const smallBtn = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 'var(--radius)', background: 'transparent', cursor: 'pointer', font: '600 13px/1 var(--font-sans)', flexShrink: 0 };
+  const rowActions = (list) => (
+    <div style={{ display: 'flex', gap: 6, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+      <button title={guest ? 'Groupes — compte requis' : (list.group_name ? 'Changer de groupe' : 'Ranger dans un groupe')}
+        onClick={e => { e.stopPropagation(); if (needAccount()) { onNav('login'); return; } setGroupFor(list); setNewGroupName(''); }}
+        style={{ ...smallBtn, border: '1px dashed var(--border)', color: guest ? 'var(--text-dim)' : 'var(--text-muted)', opacity: guest ? 0.6 : 1 }}>{guest ? '🔒' : '🗂'}</button>
+      <button title="Télécharger (JSON)" onClick={e => handleExport(list, e)}
+        style={{ ...smallBtn, border: '1px solid var(--border)', color: 'var(--text-soft)' }}>↓</button>
+      {cloudOn && (
+        <button title="Partager" onClick={e => openShare(list, e)}
+          style={{ ...smallBtn, border: '1px dashed var(--border)', color: 'var(--text-muted)' }}>⤳</button>
+      )}
+      <button title="Supprimer" onClick={e => { e.stopPropagation(); handleDelete(list); }}
+        style={{ ...smallBtn, border: '1px solid var(--neg)', color: 'var(--neg-bright)' }}>×</button>
+    </div>
+  );
   // `locked` → bouton grisé qui invite à se connecter au lieu de changer de vue.
   const viewBtn = (key, label, locked) => (
     <button key={key} onClick={() => { if (locked) { needAccount(); return; } setView(key); }}
@@ -385,6 +404,7 @@ function Lists({ onNav, onListsChange, addToast }) {
                           <div style={{ font: '700 17px/1 var(--font-mono)', color: scoreColor(list.avg_score) }}>{list.avg_score}</div>
                           <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 2 }}>score</div>
                         </div>
+                        {rowActions(list)}
                       </div>
                     </div>
                   </React.Fragment>
