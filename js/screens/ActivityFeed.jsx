@@ -63,6 +63,35 @@ function dxToneSoft(tone) {
 }
 window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo, tone: dxActionTone, who: dxWho, toneColor: dxToneColor, toneSoft: dxToneSoft };
 
+// ── Cible de navigation d'une notification / d'un événement d'audit ──
+// On déduit la destination du `kind` + `ref` (ex. « pos:<id>:delta »). Renvoie
+// { screen, params } | null. La nav passe par window.__dxNav (défini par l'app).
+function dxNotifTarget(n) {
+  const ref = (n && n.ref) || '';
+  switch (n && n.kind) {
+    case 'subscription': return { screen: 'preferences' };                 // section Abonnement
+    case 'correlation':  return { screen: 'market-pro' };                  // baromètre ρ (Pro)
+    case 'greek_drift':
+    case 'pnl': {
+      const m = ref.match(/^pos:(.+):[^:]+$/);
+      return m ? { screen: 'position', params: { positionId: m[1] } } : { screen: 'positions' };
+    }
+    default: return null;
+  }
+}
+function dxAuditTarget(e) {
+  // Ajout/retrait d'action, création/renommage/partage → la liste concernée.
+  if (e && e.list_id && e.action !== 'list_deleted') return { screen: 'list-detail', params: { listId: e.list_id } };
+  return null;
+}
+function dxGo(target) {
+  if (target && window.__dxNav) window.__dxNav(target.screen, target.params || {});
+}
+// Petite flèche de lien en fin de texte.
+function DxArrow() {
+  return <span aria-hidden="true" style={{ color: 'var(--accent-hover)', fontWeight: 700, marginLeft: 5 }}>→</span>;
+}
+
 const DX_ACT_LIMIT = 200;                    // on récupère jusqu'à 200 entrées…
 const DX_ACT_WINDOW_MS = 30 * 86400000;      // …mais on n'affiche que les 30 derniers jours
 
@@ -284,24 +313,30 @@ function ActivityFeed() {
             if (item.type === 'notif') {
               const n = item.n;
               const col = A.toneColor(n.tone);
+              const target = dxNotifTarget(n);
+              const go = target ? () => { dxGo(target); setOpen(false); } : undefined;
               return (
-                <div key={item.key} style={{ display: 'flex', gap: 9, padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone) }}>
+                <div key={item.key} onClick={go} title={target ? 'Ouvrir' : undefined}
+                  style={{ display: 'flex', gap: 9, padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone), cursor: target ? 'pointer' : 'default' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0, marginTop: 4, boxShadow: `0 0 0 2px ${A.toneSoft(n.tone)}` }} />
                   <div style={{ minWidth: 0, flex: 1 }}>
-                    <div style={{ font: '600 11px/1.35 var(--font-sans)', color: 'var(--text)' }}>{n.title}</div>
-                    {n.body && <div style={{ font: '10px/1.4 var(--font-sans)', color: 'var(--text-soft)', marginTop: 2 }}>{n.body}</div>}
+                    <div style={{ font: '600 11px/1.35 var(--font-sans)', color: 'var(--text)' }}>{n.title}{!n.body && target && <DxArrow />}</div>
+                    {n.body && <div style={{ font: '10px/1.4 var(--font-sans)', color: 'var(--text-soft)', marginTop: 2 }}>{n.body}{target && <DxArrow />}</div>}
                     <div style={{ font: '9px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 3 }}>{A.timeAgo(n.created_at)}</div>
                   </div>
                 </div>
               );
             }
             const e = item.e;
+            const eTarget = dxAuditTarget(e);
+            const eGo = eTarget ? () => { dxGo(eTarget); setOpen(false); } : undefined;
             return (
-              <div key={item.key} style={{ display: 'flex', gap: 9, padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+              <div key={item.key} onClick={eGo} title={eTarget ? 'Ouvrir la liste' : undefined}
+                style={{ display: 'flex', gap: 9, padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)', cursor: eTarget ? 'pointer' : 'default' }}>
                 <span style={{ width: 7, height: 7, borderRadius: '50%', background: A.tone(e.action), flexShrink: 0, marginTop: 4 }} />
                 <div style={{ minWidth: 0, flex: 1 }}>
                   <div style={{ font: '11px/1.4 var(--font-sans)', color: 'var(--text-soft)' }}>
-                    <strong style={{ color: 'var(--text)' }}>{dxWho(e.actor_email)}</strong> {A.sentence(e)}
+                    <strong style={{ color: 'var(--text)' }}>{dxWho(e.actor_email)}</strong> {A.sentence(e)}{eTarget && <DxArrow />}
                   </div>
                   <div style={{ font: '9px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 2 }}>{A.timeAgo(e.created_at)}</div>
                 </div>
