@@ -88,41 +88,24 @@ function PrimeGauge({ implied, realized, size = 240 }) {
   );
 }
 
-// Courbe historique ρ implicite (accent) vs réalisée (atténuée).
-// Axe Y en HTML (valeurs de ρ, commun aux deux séries) ; point final en HTML
-// pour rester un CERCLE parfait (le SVG est étiré horizontalement → un <circle>
-// y deviendrait une ellipse « pixelisée »).
+// Courbe historique ρ implicite (accent) vs réalisée (atténuée) — via le graphe
+// interactif réutilisable (croix de visée, valeurs aux axes, zoom molette).
 function BaroChart({ series }) {
-  if (!series || series.length < 3) return null;
-  const impl = series.map(s => s.impl), real = series.map(s => s.real);
-  const W = 620, H = 120, P = 8, n = series.length;
-  const min = Math.min(...impl, ...real), max = Math.max(...impl, ...real);
-  const range = (max - min) || 1;
-  const x = i => P + (i / (n - 1)) * (W - 2 * P);
-  const y = v => P + (1 - (v - min) / range) * (H - 2 * P);
-  const line = arr => arr.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-  const ticks = [max, min + range / 2, min];               // repères ρ : haut · milieu · bas
-  const dotLeft = (x(n - 1) / W) * 100;                     // position % du dernier point
+  if (!series || series.length < 3 || !window.DXChart) return null;
+  const xFmt = (t) => {
+    const d = new Date(typeof t === 'number' && t < 1e12 ? t * 1000 : t);
+    return isNaN(d) ? '' : d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' });
+  };
   return (
-    <div style={{ display: 'flex', gap: 6 }}>
-      {/* Axe Y (HTML) — valeurs de ρ (implicite ET réalisée partagent l'échelle) */}
-      <div style={{ position: 'relative', width: 34, height: H, flexShrink: 0 }}>
-        {ticks.map((tv, i) => (
-          <span key={i} style={{ position: 'absolute', right: 3, top: y(tv), transform: 'translateY(-50%)', font: '9px/1 var(--font-mono)', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{tv.toFixed(2)}</span>
-        ))}
-      </div>
-      {/* Tracé (SVG étiré) + point final en HTML */}
-      <div style={{ position: 'relative', flex: 1, height: H }}>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: H, display: 'block' }}>
-          {ticks.map((tv, i) => (
-            <line key={i} x1="0" y1={y(tv)} x2={W} y2={y(tv)} stroke="var(--border-subtle)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-          ))}
-          <path d={line(real)} fill="none" stroke="var(--text-dim)" strokeWidth="1.5" strokeDasharray="3 3" vectorEffect="non-scaling-stroke" opacity="0.8" />
-          <path d={line(impl)} fill="none" stroke="var(--accent-hover)" strokeWidth="2" vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-        </svg>
-        <span style={{ position: 'absolute', left: dotLeft + '%', top: y(impl[n - 1]), transform: 'translate(-50%, -50%)', width: 9, height: 9, borderRadius: '50%', background: 'var(--accent-hover)', border: '2px solid var(--bg-card)' }} />
-      </div>
-    </div>
+    <window.DXChart
+      data={series} xKey="date"
+      lines={[
+        { key: 'impl', color: 'var(--accent-hover)', label: 'ρ implicite' },
+        { key: 'real', color: 'var(--text-dim)', label: 'ρ̂ réalisée', dash: true },
+      ]}
+      height={132} padFrac={0.16} yAxisWidth={42} ticksY={3}
+      yFmt={(v) => v.toFixed(2)} xFmt={xFmt} zoom
+    />
   );
 }
 

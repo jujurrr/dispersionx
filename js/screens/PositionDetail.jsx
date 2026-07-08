@@ -295,27 +295,15 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         </div>
       )}
 
-      {/* Évolution du P&L — hauteur fixe, axes en HTML (pas de distorsion ni chevauchement) */}
+      {/* Évolution du P&L — graphe interactif (croix de visée, valeurs aux axes, zoom molette) */}
       {(() => {
         // Fenêtre cohérente : 30 derniers relevés (intraday du jour + jours récents).
-        const raw = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: s.taken_at, v: s.total_pnl })).slice(-30);
+        const raw = snaps.filter(s => s.mtm && typeof s.total_pnl === 'number').map(s => ({ t: s.taken_at, v: s.total_pnl })).slice(-90);
         if (raw.length < 2) return null;
-        const vals = raw.map(p => p.v);
-        let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
-        const pad0 = (hi - lo) * 0.14 || 1; lo -= pad0; hi += pad0;
-        const span = (hi - lo) || 1;
-        const PH = 150, VW = 1000;                         // hauteur px fixe ; largeur viewBox
-        const x = i => (i / (raw.length - 1)) * VW;
-        const y = v => (hi - v) / span * PH;
-        const ticks = Array.from({ length: 4 }, (_, i) => hi - (i / 3) * span);   // haut → bas
-        const axisFmt = v => Math.round(v).toLocaleString('fr-FR');
+        const last = raw[raw.length - 1].v;
+        const col = last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
         const days = new Set(raw.map(p => (p.t || '').slice(0, 10)));
         const fmtX = iso => { const dd = new Date(iso); if (isNaN(dd)) return ''; return days.size <= 1 ? dd.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : dd.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }); };
-        let xIdx = raw.length <= 2 ? [0, raw.length - 1] : [0, Math.floor((raw.length - 1) / 2), raw.length - 1];
-        xIdx = [...new Set(xIdx)];                          // dédup → pas de dates superposées
-        const d = raw.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
-        const last = vals[vals.length - 1];
-        const col = last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
         return (
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -325,40 +313,15 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                 {pctBase && dxPct(last, pctBase) && <span style={{ color: last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600, marginLeft: 6 }}>· {dxPct(last, pctBase)}</span>}
               </span>
             </div>
-            <div style={{ padding: '12px 16px 10px' }}>
-              <div style={{ display: 'flex' }}>
-                {/* Axe Y (HTML) */}
-                <div style={{ position: 'relative', width: 52, height: PH, flexShrink: 0 }}>
-                  {ticks.map((tv, i) => (
-                    <span key={i} style={{ position: 'absolute', right: 8, top: y(tv), transform: 'translateY(-50%)', font: '10px/1 var(--font-mono)', color: 'var(--text-dim)', whiteSpace: 'nowrap' }}>{axisFmt(tv)}</span>
-                  ))}
-                </div>
-                {/* Tracé (SVG, hauteur fixe) */}
-                <div style={{ position: 'relative', flex: 1, height: PH }}>
-                  <svg viewBox={`0 0 ${VW} ${PH}`} width="100%" height={PH} preserveAspectRatio="none" style={{ display: 'block' }}>
-                    <defs>
-                      <linearGradient id="dxpnl" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={col} stopOpacity="0.26" />
-                        <stop offset="100%" stopColor={col} stopOpacity="0.02" />
-                      </linearGradient>
-                    </defs>
-                    {ticks.map((tv, i) => (
-                      <line key={i} x1="0" y1={y(tv)} x2={VW} y2={y(tv)} stroke="var(--border-subtle)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
-                    ))}
-                    <line x1="0" y1={y(0)} x2={VW} y2={y(0)} stroke="var(--border-strong)" strokeWidth="1" strokeDasharray="4 3" vectorEffect="non-scaling-stroke" />
-                    <path d={`${d} L${VW},${y(0).toFixed(1)} L0,${y(0).toFixed(1)} Z`} fill="url(#dxpnl)" />
-                    <path d={d} fill="none" stroke={col} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-                  </svg>
-                  {/* Dernier point (HTML → pas d'ellipse) */}
-                  <span style={{ position: 'absolute', left: '100%', top: y(last), transform: 'translate(-50%, -50%)', width: 9, height: 9, borderRadius: '50%', background: col, border: '2px solid var(--bg-card)' }} />
-                </div>
-              </div>
-              {/* Axe X (HTML) */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginLeft: 52, marginTop: 8, font: '10px/1 var(--font-mono)', color: 'var(--text-dim)' }}>
-                {xIdx.map((idx, i) => (
-                  <span key={i} style={{ textAlign: i === 0 ? 'left' : i === xIdx.length - 1 ? 'right' : 'center' }}>{fmtX(raw[idx].t)}</span>
-                ))}
-              </div>
+            <div style={{ padding: '16px 16px 12px' }}>
+              {window.DXChart ? (
+                <window.DXChart
+                  data={raw} xKey="t"
+                  lines={[{ key: 'v', color: col, fill: true }]}
+                  baseline={0} height={200} padFrac={0.22} yAxisWidth={62} ticksY={4}
+                  yFmt={v => Math.round(v).toLocaleString('fr-FR')} xFmt={fmtX} zoom
+                />
+              ) : null}
             </div>
           </div>
         );

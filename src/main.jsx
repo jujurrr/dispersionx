@@ -38,6 +38,7 @@ import '../js/lib/market-hours.js';
 import '../js/screens/ConfirmDialog.jsx';   // window.ConfirmDialog, utilisé par plusieurs écrans
 import '../js/screens/ShareDialog.jsx';     // window.ShareDialog (partage liste/construction)
 import '../js/screens/ActivityFeed.jsx';    // window.ActivityFeed + window.DXActivity (helpers audit)
+import '../js/screens/DXChart.jsx';          // window.DXChart (graphe en courbes interactif réutilisable)
 import '../js/screens/Shell.jsx';
 import '../js/screens/Home.jsx';
 import '../js/screens/IndexDetail.jsx';
