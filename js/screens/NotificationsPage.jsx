@@ -1,9 +1,9 @@
-/* ─── Page Notifications : vue détaillée des notifications « intelligentes »
-   + activité (audit), avec liens cliquables vers le contexte. Ouverte depuis la
-   cloche de la barre du haut. Plus détaillée que le petit onglet en bas à gauche.
-   Notifications = store partagé window.DXNotifStore (cohérent avec la cloche). */
+/* ─── Page Notifications : notifications « intelligentes » (cliquables, détaillées)
+   + activité récente reprise TELLE QUELLE du Dashboard (2 panneaux : compte vs
+   partagé, via window.ActivityPanel). Ouverte depuis la cloche de la barre du haut.
+   Notifications = store partagé window.DXNotifStore (cohérent avec l'onglet). */
 
-// Libellé + destination lisible d'une notification, selon son type.
+// Libellé + CTA lisibles d'une notification, selon son type.
 function dxNotifMeta(kind) {
   switch (kind) {
     case 'greek_drift': return { label: 'Grecs', cta: 'Voir la position' };
@@ -18,9 +18,8 @@ function NotificationsPage({ onNav, lists }) {
   const A = window.DXActivity;
   const store = window.DXNotifStore;
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
-  const isMobile = window.useIsMobile ? window.useIsMobile() : false;   // 2 colonnes sur grand écran, empilé sinon
   const [, force] = React.useState(0);
-  const [audit, setAudit] = React.useState([]);
+  const [activity, setActivity] = React.useState(null);   // { account, shared, nameMap } — comme le Dashboard
 
   // Notifications (store partagé) + « tout lu » à l'ouverture → réinitialise la cloche.
   React.useEffect(() => {
@@ -33,13 +32,29 @@ function NotificationsPage({ onNav, lists }) {
     return () => window.removeEventListener('dx-notif-store', h);
   }, []);
 
-  // Activité (audit) — fenêtre large pour la vue détaillée.
+  // Activité récente : global (RLS) partitionné en « compte » (mes listes) et
+  // « partagé » (listes partagées avec moi) — MÊME logique que le Dashboard.
+  const loadActivity = React.useCallback(() => {
+    if (!(window.DXCloud && window.DXCloud.enabled)) { setActivity(null); return; }
+    Promise.all([DXApi.getGlobalActivity(200), DXApi.getSharedLists().catch(() => [])]).then(([acts, shared]) => {
+      const nameMap = {};
+      (lists || []).forEach(l => { if (l && l.id) nameMap[l.id] = l.name; });
+      (shared || []).forEach(l => { if (l && l.id) nameMap[l.id] = l.name; });
+      const sharedIds = new Set((shared || []).map(l => l.id));
+      const account = [], shr = [];
+      (acts || []).forEach(e => { (sharedIds.has(e.list_id) ? shr : account).push(e); });
+      setActivity({ account, shared: shr, nameMap });
+    }).catch(() => setActivity({ account: [], shared: [], nameMap: {} }));
+  }, [lists]);
+
   React.useEffect(() => {
     if (!cloudOn) return;
-    window.DXApi.getGlobalActivity(200).then(list => { if (Array.isArray(list)) setAudit(list); }).catch(() => {});
-  }, [cloudOn]);
-
-  const go = (target) => { if (target) { A.go(target); } };
+    loadActivity();
+    const onChg = () => loadActivity();
+    window.addEventListener('dx-activity-poke', onChg);
+    window.addEventListener('dx-lists-changed', onChg);
+    return () => { window.removeEventListener('dx-activity-poke', onChg); window.removeEventListener('dx-lists-changed', onChg); };
+  }, [cloudOn, loadActivity]);
 
   if (!cloudOn) {
     return (
@@ -58,22 +73,18 @@ function NotificationsPage({ onNav, lists }) {
   }
 
   const notifs = store ? store.getNotifs() : [];
-  const nameMap = {}; (lists || []).forEach(l => { nameMap[l.id] = l.name; });
   const sectionCard = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' };
   const sectionHead = { padding: '13px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 };
   const headLabel = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' };
 
   return (
-    <div style={{ maxWidth: isMobile ? 820 : 1160, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 22 }}>
+    <div style={{ maxWidth: 1080, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div>
         <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Notifications</h1>
-        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>Alertes de tes positions et de ton compte, et activité partagée. Clique une entrée pour aller au bon endroit.</p>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>Alertes de tes positions et de ton compte, et activité récente. Clique une entrée pour aller au bon endroit.</p>
       </div>
 
-      {/* Deux colonnes sur grand écran (notifs | activité partagée), empilé sur mobile. */}
-      <div style={{ display: isMobile ? 'flex' : 'grid', flexDirection: 'column', gridTemplateColumns: isMobile ? undefined : '1.15fr 0.85fr', gap: 22, alignItems: 'start' }}>
-
-      {/* ── Notifications « intelligentes » ── */}
+      {/* ── Notifications « intelligentes » (cliquables) ── */}
       <section style={sectionCard}>
         <div style={sectionHead}>
           <span style={headLabel}>Notifications {notifs.length > 0 && <span style={{ color: 'var(--text-dim)' }}>· {notifs.length}</span>}</span>
@@ -86,7 +97,7 @@ function NotificationsPage({ onNav, lists }) {
           const meta = dxNotifMeta(n.kind);
           const target = A.notifTarget(n);
           return (
-            <div key={n.id} onClick={target ? () => go(target) : undefined}
+            <div key={n.id} onClick={target ? () => A.go(target) : undefined}
               style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone), cursor: target ? 'pointer' : 'default' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: col, flexShrink: 0, marginTop: 5, boxShadow: `0 0 0 3px ${A.toneSoft(n.tone)}` }} />
               <div style={{ flex: 1, minWidth: 0 }}>
@@ -105,39 +116,19 @@ function NotificationsPage({ onNav, lists }) {
         })}
       </section>
 
-      {/* ── Activité partagée (audit collaboratif) ── */}
-      <section style={sectionCard}>
-        <div style={sectionHead}><span style={headLabel}>Activité partagée {audit.length > 0 && <span style={{ color: 'var(--text-dim)' }}>· {audit.length}</span>}</span></div>
-        {audit.length === 0 ? (
-          <div style={{ padding: '30px 20px', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-body-sm)' }}>Aucune activité récente.</div>
-        ) : (
-          <div style={{ maxHeight: 460, overflowY: 'auto' }}>
-            {audit.map((e, i) => {
-              const tone = A.tone(e.action);
-              const who = A.who(e.actor_email);
-              const listName = (e.list_id && nameMap[e.list_id]) || (e.detail && e.detail.name) || null;
-              const target = A.auditTarget(e);
-              return (
-                <div key={e.id ?? i} onClick={target ? () => go(target) : undefined}
-                  style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '12px 20px', borderBottom: i < audit.length - 1 ? '1px solid var(--border-subtle)' : 'none', cursor: target ? 'pointer' : 'default' }}>
-                  <span style={{ width: 32, height: 32, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-elevated)', border: `1.5px solid ${tone}`, color: tone, font: '700 12px/1 var(--font-mono)', textTransform: 'uppercase' }}>{(who || '?').slice(0, 1)}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ font: 'var(--type-body-sm)', color: 'var(--text)' }}>
-                      <strong>{who}</strong> <span style={{ color: 'var(--text-soft)' }}>{A.sentence(e)}</span>{target && <span style={{ color: 'var(--accent-hover)', fontWeight: 700, marginLeft: 5 }}>→</span>}
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 3 }}>
-                      {listName && <span style={{ padding: '2px 9px', borderRadius: 999, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-soft)', font: '10px/1.5 var(--font-sans)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{listName}</span>}
-                      <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{A.timeAgo(e.created_at)}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+      {/* ── Activité récente : compte vs partagé — IDENTIQUE au Dashboard ── */}
+      {activity && window.ActivityPanel && (
+        <section>
+          <div style={{ marginBottom: 14 }}>
+            <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Activité récente</h2>
+            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}>Qui a modifié quoi, et quand — sur vos listes et celles partagées avec vous (30 derniers jours).</p>
           </div>
-        )}
-      </section>
-
-      </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, alignItems: 'start' }}>
+            <window.ActivityPanel title="Activité du compte" subtitle="Modifications sur vos listes" entries={activity.account} nameMap={activity.nameMap} />
+            <window.ActivityPanel title="Activité partagée" subtitle="Modifications sur les listes partagées avec vous" entries={activity.shared} nameMap={activity.nameMap} />
+          </div>
+        </section>
+      )}
     </div>
   );
 }
