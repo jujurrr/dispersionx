@@ -6,6 +6,13 @@ function dxUsd(n, { sign = true } = {}) {
   const s = r < 0 ? '−' : (sign ? '+' : '');
   return s + Math.abs(r).toLocaleString('fr-FR');
 }
+// Évolution en % d'un P&L rapporté à une base (prime engagée). null si incalculable.
+function dxPct(n, base, { sign = true, dp = 1 } = {}) {
+  if (n == null || !isFinite(n) || !(Math.abs(base) > 0)) return null;
+  const p = n / Math.abs(base) * 100;
+  const s = p < 0 ? '−' : (sign ? '+' : '');
+  return s + Math.abs(p).toFixed(dp) + '%';
+}
 // Horodatage UTC (taken_at/asof en ISO) → heure LOCALE de l'utilisateur.
 function dxLocalDateTime(iso) {
   const d = new Date(iso);
@@ -159,6 +166,15 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   const straddlePnl = liveOn && typeof live.straddle_pnl === 'number' ? live.straddle_pnl : null;
   const hasGreeks = gEntry.vega != null || gEntry.theta != null || gEntry.gamma != null;
 
+  // Base des %  : prime brute engagée à l'entrée (Σ des primes de straddle). Constante
+  // dans le temps → sert de dénominateur cohérent pour le total et l'historique.
+  const strat = data.strategy || {};
+  const sport = strat.portfolio || {};
+  const grossPrem = (liveLegs && liveLegs.length)
+    ? liveLegs.reduce((a, l) => a + Math.abs(l.entry_prem || 0), 0)
+    : (Math.abs(sport.idxPrem || 0) + (strat.components || []).reduce((a, c) => a + Math.abs(c.premium || 0), 0));
+  const pctBase = grossPrem > 0 ? grossPrem : null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
@@ -259,8 +275,13 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
       {/* P&L summary — P&L réel (vs entrée) + variation depuis le dernier relevé */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <MetricCard label="P&L total (vs entrée)" value={dxUsd(totalPnl)} unit={totalPnl != null ? '$' : ''} accent={totalPnl == null ? 'var(--info)' : totalPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
-        <MetricCard label="P&L depuis dernier relevé" value={dxUsd(dailyPnl)} unit={dailyPnl != null ? '$' : ''} accent={dailyPnl == null ? 'var(--info)' : dailyPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
+        <MetricCard label="P&L total (vs entrée)" value={dxUsd(totalPnl)} unit={totalPnl != null ? '$' : ''}
+          delta={dxPct(totalPnl, pctBase)} deltaTone={totalPnl == null ? 'neutral' : totalPnl >= 0 ? 'pos' : 'neg'}
+          hint="Évolution en % de la prime brute engagée à l'entrée (somme des primes de straddle)."
+          accent={totalPnl == null ? 'var(--info)' : totalPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
+        <MetricCard label="P&L depuis dernier relevé" value={dxUsd(dailyPnl)} unit={dailyPnl != null ? '$' : ''}
+          delta={dxPct(dailyPnl, pctBase)} deltaTone={dailyPnl == null ? 'neutral' : dailyPnl >= 0 ? 'pos' : 'neg'}
+          accent={dailyPnl == null ? 'var(--info)' : dailyPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
         <MetricCard label="DTE restant" value={dteVal != null ? String(dteVal) : '—'} unit={dteVal != null ? 'j' : ''} accent="var(--info)" />
         <MetricCard label="Jambes valorisées (réel)" value={coverage ? `${coverage.priced}/${coverage.total}` : (m.n_legs_priced != null ? `${m.n_legs_priced}/${m.n_legs_total}` : String(legs.length))} accent="var(--info)" />
       </div>
@@ -268,9 +289,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
       {/* Décomposition P&L : straddles + couverture Δ (actions/future) */}
       {(straddlePnl != null && hedgePnl != null && Math.abs(hedgePnl) >= 1) && (
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', font: 'var(--type-body-sm)', color: 'var(--text-muted)', padding: '4px 2px' }}>
-          <span>Straddles : <strong style={{ color: straddlePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(straddlePnl)} $</strong></span>
-          <span>· Couverture Δ (actions) : <strong style={{ color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(hedgePnl)} $</strong></span>
-          <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxUsd(totalPnl)} $</strong></span>
+          <span>Straddles : <strong style={{ color: straddlePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(straddlePnl)} $</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(straddlePnl, pctBase)})</span>}</span>
+          <span>· Couverture Δ (actions) : <strong style={{ color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(hedgePnl)} $</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(hedgePnl, pctBase)})</span>}</span>
+          <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxUsd(totalPnl)} $</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(totalPnl, pctBase)})</span>}</span>
         </div>
       )}
 
@@ -299,7 +320,10 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L ($)</span>
-              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{raw.length} points · depuis l'entrée</span>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
+                {raw.length} points · depuis l'entrée
+                {pctBase && dxPct(last, pctBase) && <span style={{ color: last >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600, marginLeft: 6 }}>· {dxPct(last, pctBase)}</span>}
+              </span>
             </div>
             <div style={{ padding: '12px 16px 10px' }}>
               <div style={{ display: 'flex' }}>
@@ -455,7 +479,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)' }}>
-                {['Jambe', 'Sens', 'Qté', 'Prime entrée', 'Prime actuelle', 'IV (Δ)', 'P&L'].map((h, i) => (
+                {['Jambe', 'Sens', 'Qté', 'Prime entrée', 'Prime actuelle', 'IV (Δ)', 'P&L ($ · %)'].map((h, i) => (
                   <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -482,6 +506,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                     </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: l.pnl == null ? 'var(--text-muted)' : lpnlPos ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>
                       {l.pnl != null ? dxUsd(l.pnl) + ' $' : '—'}
+                      {l.pnl != null && dxPct(l.pnl, l.entry_prem) && (
+                        <div style={{ font: 'var(--type-caption)', fontWeight: 500, color: lpnlPos ? 'var(--pos-bright)' : 'var(--neg-bright)', opacity: 0.85 }}>{dxPct(l.pnl, l.entry_prem)}</div>
+                      )}
                     </td>
                   </tr>
                 );
@@ -557,7 +584,10 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                 {snaps.slice().reverse().map((s, i) => (
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{dxLocalDateTime(s.taken_at)}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
-                    <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.total_pnl != null ? dxUsd(s.total_pnl) + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}</td>
+                    <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
+                      {s.total_pnl != null ? dxUsd(s.total_pnl) + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}
+                      {s.total_pnl != null && dxPct(s.total_pnl, pctBase) && <div style={{ font: 'var(--type-caption)', color: s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', opacity: 0.85 }}>{dxPct(s.total_pnl, pctBase)}</div>}
+                    </td>
                     <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? dxUsd(s.daily_pnl) + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
                   </tr>
                 ))}

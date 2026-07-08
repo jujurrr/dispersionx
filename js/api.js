@@ -440,12 +440,17 @@
   function _positionRow(p) {
     const s = p.strategy || {};
     const m = strategyMetrics(s);
+    const port = s.portfolio || {};
+    // Base des % du hub : prime brute engagée à l'entrée (Σ primes de straddle).
+    const grossPrem = Math.abs(port.idxPrem || 0) + (s.components || []).reduce((a, c) => a + Math.abs(c.premium || 0), 0);
     return {
       id: p.id, list_id: p.list_id, name: p.name || m.name,
       index_symbol: (s.indexEtf && s.indexEtf !== s.index) ? s.indexEtf + ' (' + s.index + ')' : (s.index || 'SPX'),
       strategy_type: 'dispersion', status: p.status,
       committed_at: p.committed_at, n_snapshots: (p.snapshots || []).length,
-      pnl: null, dte: m.dte,
+      // `pnl` reste null (pas de reprise live par carte) ; `last_pnl` = dernier P&L
+      // mark-to-market déjà persisté (snapshots), pour afficher $ + % sans réseau.
+      pnl: null, last_pnl: _lastMtmPnl(p.snapshots), entry_prem_gross: grossPrem > 0 ? Math.round(grossPrem) : null, dte: m.dte,
     };
   }
   // Détail (PositionDetail) dérivé d'un objet position BRUT. Suivi THÉORIQUE :

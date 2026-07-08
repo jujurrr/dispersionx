@@ -110,7 +110,11 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
 
 function PositionCard({ pos, onNav, lists }) {
   const isOpen = pos.status === 'open' || pos.status === 'sain' || pos.status === 'surveiller';
-  const pnl = pos.pnl;   // null = P&L de marché non disponible (position locale)
+  // P&L affiché : reprise serveur si dispo, sinon dernier P&L mark-to-market connu
+  // (snapshots). null = aucun P&L de marché encore relevé.
+  const pnl = pos.pnl != null ? pos.pnl : (pos.last_pnl != null ? pos.last_pnl : null);
+  const pctBase = pos.entry_prem_gross;   // prime brute engagée → base du %
+  const pct = (pnl != null && pctBase > 0) ? (pnl / pctBase * 100) : null;
   const date = (pos.committed_at || pos.opened || '').slice(0, 10);
   // Nom de la liste d'origine (si la position en vient) — repère de contexte.
   const listName = (lists || []).find(l => String(l.id) === String(pos.list_id))?.name;
@@ -145,7 +149,12 @@ function PositionCard({ pos, onNav, lists }) {
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ font: 'var(--type-data)', color: pnl == null ? 'var(--text-muted)' : pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-          {pnl == null ? (pos.dte != null ? pos.dte + ' DTE restant' : '—') : (pnl >= 0 ? '+' : '') + pnl.toLocaleString('fr-FR') + ' $'}
+          {pnl == null ? (pos.dte != null ? pos.dte + ' DTE restant' : '—') : (
+            <>
+              {(pnl >= 0 ? '+' : '') + pnl.toLocaleString('fr-FR') + ' $'}
+              {pct != null && <span style={{ font: 'var(--type-caption)', fontWeight: 600, marginLeft: 6 }}>{(pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1) + '%'}</span>}
+            </>
+          )}
         </div>
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
           {pos.n_snapshots || 0} snapshot(s)
