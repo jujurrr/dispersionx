@@ -11,6 +11,22 @@ const DATA_BASE = 'https://data.alpaca.markets';
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const FEED = process.env.ALPACA_DATA_FEED || 'iex';
 
+// Ticker Yahoo de l'INDICE RÉEL (pas l'ETF proxy) — pour le PRIX et les VARIATIONS
+// affichés. L'ETF proxy en USD (EWQ/EWG) fausserait le niveau CAC/DAX (change EUR/USD).
+const INDEX_YF = { SPX: '^GSPC', NDX: '^NDX', DJI: '^DJI', CAC: '^FCHI', DAX: '^GDAXI' };
+
+// Prix + clôture veille RÉELS de l'indice (Yahoo chart meta), quasi temps réel.
+async function fetchIndexQuoteYahoo(ticker) {
+  try {
+    const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
+      { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(4000) });
+    if (!r.ok) return null;
+    const meta = (await r.json())?.chart?.result?.[0]?.meta;
+    if (!meta || meta.regularMarketPrice == null) return null;
+    return { price: meta.regularMarketPrice, prevClose: meta.chartPreviousClose ?? meta.previousClose ?? null };
+  } catch { return null; }
+}
+
 // Prix LIVE de l'ETF proxy (Finnhub, temps réel US) → prix d'indice quasi
 // temps réel au lieu de la dernière clôture journalière.
 async function fetchEtfQuoteFinnhub(etf) {
@@ -50,7 +66,7 @@ async function getBarsAlpaca(etf) {
 }
 
 async function getBarsYahoo(etf) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${etf}?interval=1d&range=1y`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(etf)}?interval=1d&range=1y`;
   const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (!r.ok) return null;
   const data = await r.json();
@@ -106,9 +122,13 @@ export default async (req) => {
   let bars = null;
   let barSource = 'unknown';
 
-  // IV réelle (Cboe, cache CDN 15 min) + prix LIVE de l'ETF, en parallèle des barres
-  const ivPromise   = ivViaApi(new URL(req.url).origin, symbol, 30).catch(() => null);
-  const livePromise = fetchEtfQuoteFinnhub(map.etf).catch(() => null);
+  // IV réelle (Cboe) + prix LIVE de l'ETF (etf_price) + INDICE réel (prix/variations
+  // affichés) — tout en parallèle des barres.
+  const ivPromise      = ivViaApi(new URL(req.url).origin, symbol, 30).catch(() => null);
+  const livePromise    = fetchEtfQuoteFinnhub(map.etf).catch(() => null);
+  const idxTicker      = INDEX_YF[symbol];
+  const idxBarsPromise = idxTicker ? getBarsYahoo(idxTicker).catch(() => null) : Promise.resolve(null);
+  const idxLivePromise = idxTicker ? fetchIndexQuoteYahoo(idxTicker).catch(() => null) : Promise.resolve(null);
 
   // 1) Alpaca bars
   if (process.env.ALPACA_API_KEY_ID) {
@@ -127,16 +147,31 @@ export default async (req) => {
   if (ivReal?.iv != null) { snap.iv_est = ivReal.iv; snap.iv_source = 'cboe_delayed'; }
   else snap.iv_source = 'estimated';
 
-  // Prix quasi temps réel : on remplace la clôture journalière par le prix live
-  // de l'ETF proxy (Finnhub) quand il est disponible.
+  // etf_price = prix RÉEL de l'ETF proxy (ce que le broker trade) — utilisé par les
+  // modules de stratégie. Ne pilote PLUS le prix d'indice affiché.
   const live = await livePromise;
-  if (live && live.price) {
-    snap.etf_price = Number(live.price.toFixed(2));
-    snap.price = Number((live.price * map.scale).toFixed(2));
-    if (live.prevClose) snap.change = Number((((live.price - live.prevClose) / live.prevClose) * 100).toFixed(2));
-    snap.price_source = 'realtime';
-  } else {
-    snap.price_source = 'daily_close';
+  if (live && live.price) snap.etf_price = Number(live.price.toFixed(2));
+
+  // ── PRIX + VARIATIONS de l'INDICE : niveau RÉEL (Yahoo ^ticker), pas l'ETF ×
+  //    échelle (qui dérive, et fausse CAC/DAX via l'EUR/USD des ETF en USD). ──
+  snap.price_source = 'proxy_scale';   // secours par défaut (ETF × échelle du computeSnapshot)
+  const idxBars = await idxBarsPromise;
+  if (idxBars && idxBars.length >= 5) {
+    const ix = computeSnapshot(idxBars, 1);   // scale = 1 → niveau réel de l'indice
+    // Prix + variations RÉELS de l'indice (HV/IV laissés sur l'ETF proxy : entrées
+    // du scoring/IV Cboe — hors périmètre de la correction d'affichage).
+    snap.price   = ix.price;
+    snap.change  = ix.change;
+    snap.perf5d  = ix.perf5d;
+    snap.perf30d = ix.perf30d;
+    snap.ytd     = ix.ytd;
+    snap.price_source = 'index_daily';
+  }
+  const idxLive = await idxLivePromise;
+  if (idxLive && idxLive.price) {
+    snap.price = Number(idxLive.price.toFixed(2));
+    if (idxLive.prevClose) snap.change = Number((((idxLive.price - idxLive.prevClose) / idxLive.prevClose) * 100).toFixed(2));
+    snap.price_source = 'index_realtime';
   }
 
   return Response.json({ ...snap, etf: map.etf, source: barSource });
