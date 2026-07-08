@@ -21,11 +21,12 @@ function Docs({ mode }) {
   ];
 
   const sources = [
-    { status: 'Actuel', desc: 'yfinance (prix EOD), IV estimée depuis HV×1.10, earnings best-effort.' },
-    { status: 'V2 (IBKR)', desc: 'IV ATM réelle, grecs (delta/gamma/theta/vega), chaînes d\'options, straddles.' },
-    { status: 'Options (IV, Greeks, HV)', desc: 'MarketData.app (plan gratuit 100 req/jour) en priorité, IBKR en secours.' },
-    { status: 'Prix temps réel', desc: 'Finnhub + yfinance (variations jour/semaine).' },
-    { status: 'Autres', desc: 'Financial Modeling Prep (earnings), Polygon (optionnel). Configurez la clé API en variable d\'environnement et l\'agrégateur la détectera automatiquement.' },
+    { status: 'Volatilité implicite & HV', desc: 'Cboe (cotations différées ~15 min) : IV ATM réelle par échéance, interpolée en variance au DTE choisi. Indices US en direct ; CAC 40 / DAX 40 via ETF proxy (EWQ, EWG) remis à l\'échelle. Les composants européens sans options US sont estimés (décroissance temporelle).' },
+    { status: 'Grecs (Δ, Γ, vega, theta)', desc: 'Calculés en Black-Scholes sur straddle ATM (strike fixe), à partir du spot et de l\'IV réels. Le delta net part ~neutre et dérive avec le sous-jacent (gamma).' },
+    { status: 'Prix', desc: 'Yahoo Finance (clôtures + variations jour / semaine) et Finnhub (quasi temps réel), agrégés. Données différées — usage pédagogique.' },
+    { status: 'Corrélation', desc: 'ρ implicite (baromètre ~2 ans + rang percentile) vs ρ̂ réalisée multi-fenêtre (20 / 60 / 120 / 252 j) ; prime de corrélation et z-score.' },
+    { status: 'Résultats (earnings)', desc: 'Calendrier des résultats à venir — avertissement quand une date tombe dans la fenêtre de la stratégie.' },
+    { status: 'Suivi mark-to-market', desc: 'Reprise des positions au marché réel (spot + IV Cboe) : P&L, grecs nets, snapshots quotidiens et courbe d\'évolution du P&L.' },
   ];
 
   return (
@@ -33,7 +34,7 @@ function Docs({ mode }) {
       <div>
         <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Formules de référence</h1>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>
-          Les mathématiques derrière le scoring de dispersion d'DispersionX.
+          Les mathématiques et les données réelles derrière le scoring de dispersion de DispersionX.
         </p>
       </div>
 
@@ -72,7 +73,7 @@ function Docs({ mode }) {
 
       {/* Data sources roadmap */}
       <section>
-        <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 14px' }}>Roadmap des sources de données</h2>
+        <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 14px' }}>Sources de données & couverture</h2>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           {sources.map((s, i) => (
             <div key={i} style={{ padding: '14px 20px', borderBottom: i < sources.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
