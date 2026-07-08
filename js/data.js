@@ -317,11 +317,17 @@
     scoreFor,
     synthVol,
     createList: (name, index_symbol, description) => {
-      const l = { id: 'list-' + Date.now(), name, index_symbol, description, n_items: 0, avg_score: 0,
+      const l = { id: 'list-' + Date.now(), name, index_symbol, description, group_name: null, n_items: 0, avg_score: 0,
         created_at: new Date().toISOString().slice(0, 10), updated_at: new Date().toISOString().slice(0, 10), items: [] };
       LISTS.push(l); _saveLists(); return l;
     },
     deleteList: (id) => { LISTS = LISTS.filter(l => l.id !== id); _saveLists(); return { success: true }; },
+    // Affecte une liste à un groupe (chaîne) ou null (aucun). Stocké dans dx-lists.
+    setListGroup: (id, group_name) => {
+      const l = _findList(id); if (!l) return { success: false };
+      l.group_name = (group_name && String(group_name).trim()) || null; _saveLists();
+      return { success: true, group_name: l.group_name };
+    },
     addListItem: (id, ticker, score_data) => {
       const l = _findList(id); if (!l) return { success: false };
       l.items = l.items || [];

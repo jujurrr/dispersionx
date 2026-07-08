@@ -200,6 +200,20 @@
     if (c) { try { const r = await c.lists.remove(id); _poke(); return r; } catch (e) { console.warn('cloud deleteList', e); } }
     return window.DXMock.deleteList(id);
   }
+  // Affecte une liste à un groupe (chaîne libre) ou null (aucun groupe).
+  // Cloud : colonne lists.group_name (voir SUPABASE_SETUP.md). On laisse REMONTER
+  // l'erreur cloud (ex. colonne absente → migration à appliquer) pour que l'UI
+  // puisse l'afficher, au lieu de la masquer silencieusement.
+  async function setListGroup(id, group) {
+    const c = _cloud();
+    if (c) {
+      if (!c.lists.setGroup) throw new Error('groupes non supportés par cette version cloud');
+      const r = await c.lists.setGroup(id, group);
+      _poke();
+      return r;
+    }
+    return window.DXMock.setListGroup(id, group);
+  }
   async function addListItem(id, ticker, score_data, notes = '') {
     const c = _cloud();
     if (c) { try { const r = await c.lists.addItem(id, ticker, score_data); _poke(); return r; } catch (e) { console.warn('cloud addListItem', e); } }
@@ -649,7 +663,7 @@
     getIndices, getIndex, getSnapshot, getComponents, getSources,
     batchQuotes, getMarketCaps,
     autoScore, getCachedScore, clearScoreCache, getOptionAtm,
-    getLists, createList, getList, updateList, deleteList,
+    getLists, createList, getList, updateList, deleteList, setListGroup,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
     getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity,

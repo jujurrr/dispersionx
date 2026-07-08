@@ -144,6 +144,7 @@ function shapeList(l, items) {
   const sc = its.map(i => i.score).filter(s => s != null);
   return {
     id: l.id, name: l.name, index_symbol: l.index_symbol, description: l.description || '',
+    group_name: l.group_name || null,   // groupe (colonne optionnelle) ; null si absent
     n_items: its.length,
     avg_score: sc.length ? Math.round(sc.reduce((a, b) => a + b, 0) / sc.length) : 0,
     created_at: (l.created_at || '').slice(0, 10),
@@ -193,6 +194,15 @@ const lists = {
     const { data, error } = await supa.from('lists').update({ name, description, updated_at: new Date().toISOString() }).eq('id', id).select().single();
     if (error) throw error;
     return shapeList(data, []);
+  },
+  // Affecte la liste à un groupe (chaîne) ou null. Nécessite la colonne
+  // lists.group_name (voir SUPABASE_SETUP.md). L'erreur remonte si la colonne
+  // n'existe pas encore → l'UI invite à appliquer la migration.
+  async setGroup(id, group_name) {
+    const g = (group_name && String(group_name).trim()) || null;
+    const { error } = await supa.from('lists').update({ group_name: g, updated_at: new Date().toISOString() }).eq('id', id);
+    if (error) throw error;
+    return { success: true, group_name: g };
   },
   async remove(id) {
     // RPC delete_list : supprime en UNE transaction avec app.skip_item_audit →

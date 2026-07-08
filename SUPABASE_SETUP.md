@@ -642,6 +642,21 @@ create policy "trades_rw" on public.trades
 Le P&L est **saisi par l'utilisateur** (son suivi réel). Un bouton « Journaliser »
 sur chaque opportunité pré-remplit une entrée.
 
+## 16. Groupes de listes (optionnel)
+
+Permet d'organiser les listes en **groupes/dossiers** (vue « Groupes » de l'écran
+Mes listes). Une seule colonne à ajouter — **non-cassant** : sans cette migration,
+l'app fonctionne comme avant, mais l'affectation d'une liste à un groupe échouera
+avec un message invitant à l'appliquer.
+
+```sql
+-- Un groupe = une simple étiquette texte sur la liste (pas de table dédiée).
+alter table public.lists add column if not exists group_name text;
+```
+
+Rien d'autre : la RLS existante de `lists` couvre déjà cette colonne, et le tri
+chronologique s'appuie sur `created_at` (déjà présent).
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).
