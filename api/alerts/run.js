@@ -8,6 +8,8 @@
 // l'alerte est marquée déclenchée et reste visible dans l'app.
 export const config = { runtime: 'edge' };
 
+import { correlationNotif, insertNotif } from '../_lib/notify.js';
+
 const SB_BASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SB_KEY  = process.env.SUPABASE_SERVICE_KEY || '';
 
@@ -92,6 +94,8 @@ export default async (req) => {
     if (pct >= a.threshold && armed) {
       const emailed = await sendEmail(a.email, a.index_symbol, pct, cur.verdict || '');
       await sbPatch(a.id, { triggered_at: new Date().toISOString(), notified_at: emailed ? new Date().toISOString() : null, last_percentile: pct });
+      // Notification in-app (fil Activité), en plus de l'e-mail. Non bloquant.
+      try { if (a.user_id) await insertNotif(SB_BASE, sbHeaders, a.user_id, correlationNotif({ index: a.index_symbol, percentile: pct, verdict: cur.verdict })); } catch {}
       fired++;
     } else if (pct < a.threshold && !armed) {
       await sbPatch(a.id, { triggered_at: null, last_percentile: pct });   // ré-armée

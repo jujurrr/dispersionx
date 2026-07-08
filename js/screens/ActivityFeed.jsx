@@ -42,7 +42,26 @@ function dxActionTone(action) {
   }
 }
 const dxWho = (email) => (email || 'Quelqu’un').split('@')[0];
-window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo, tone: dxActionTone, who: dxWho };
+// Couleur d'un ton de notification « intelligente » — variantes VIVES pour rester
+// bien visibles, y compris le vert (demande explicite).
+function dxToneColor(tone) {
+  switch (tone) {
+    case 'pos': return 'var(--pos-bright)';
+    case 'neg': return 'var(--neg-bright)';
+    case 'warn': return 'var(--warn)';
+    default:    return 'var(--accent-hover)';
+  }
+}
+// Fond teinté discret assorti au ton (pour les notifs, « bien visibles »).
+function dxToneSoft(tone) {
+  switch (tone) {
+    case 'pos': return 'var(--pos-soft)';
+    case 'neg': return 'var(--neg-soft)';
+    case 'warn': return 'var(--warn-soft)';
+    default:    return 'var(--accent-soft)';
+  }
+}
+window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo, tone: dxActionTone, who: dxWho, toneColor: dxToneColor, toneSoft: dxToneSoft };
 
 const DX_ACT_LIMIT = 200;                    // on récupère jusqu'à 200 entrées…
 const DX_ACT_WINDOW_MS = 30 * 86400000;      // …mais on n'affiche que les 30 derniers jours
@@ -101,17 +120,22 @@ const ActivityIcon = (
 function ActivityFeed() {
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
   const meEmail = (window.DXCloud && window.DXCloud.user && window.DXCloud.user.email) || '';
-  const seenKey = 'dx-activity-seen-' + ((window.DXCloud && window.DXCloud.user && window.DXCloud.user.id) || 'anon');
+  const uid = (window.DXCloud && window.DXCloud.user && window.DXCloud.user.id) || 'anon';
+  const seenKey = 'dx-activity-seen-' + uid;
+  const notifSeenKey = 'dx-notif-seen-' + uid;
 
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState([]);
+  const [notifs, setNotifs] = React.useState([]);     // notifications « intelligentes » (cloud)
   const [reveal, setReveal] = React.useState(null);   // dernière modif « live » à révéler
   const [shown, setShown] = React.useState(false);
-  const [unseen, setUnseen] = React.useState(0);       // modifs par d'autres depuis la dernière visite
+  const [unseen, setUnseen] = React.useState(0);       // NON-VU depuis la dernière visite (audit + notifs)
   const [loginNotice, setLoginNotice] = React.useState(0);   // bannière persistante à la (re)connexion
 
   const seenRef = React.useRef(null);        // baseline session (révélations live)
-  const lastSeenRef = React.useRef(null);    // dernier id vu, PERSISTÉ (badge « depuis la dernière visite »)
+  const lastSeenRef = React.useRef(null);    // dernier id audit vu, PERSISTÉ
+  const lastNotifSeenRef = React.useRef(null); // dernier id notif vu, PERSISTÉ
+  const notifMaxRef = React.useRef(0);
   const latestMaxRef = React.useRef(0);
   const firstRef = React.useRef(true);
   const revealTimers = React.useRef([]);
@@ -128,40 +152,57 @@ function ActivityFeed() {
 
   const markSeen = React.useCallback(() => {
     lastSeenRef.current = latestMaxRef.current;
+    lastNotifSeenRef.current = notifMaxRef.current;
     try { localStorage.setItem(seenKey, String(latestMaxRef.current)); } catch {}
+    try { localStorage.setItem(notifSeenKey, String(notifMaxRef.current)); } catch {}
     setUnseen(0); setLoginNotice(0);
-  }, [seenKey]);
+  }, [seenKey, notifSeenKey]);
 
   const poll = React.useCallback(() => {
-    if (!(window.DXCloud && window.DXCloud.enabled)) { setRows([]); return; }
+    if (!(window.DXCloud && window.DXCloud.enabled)) { setRows([]); setNotifs([]); return; }
     if (lastSeenRef.current == null) {
       const raw = (() => { try { return localStorage.getItem(seenKey); } catch { return null; } })();
       lastSeenRef.current = raw != null ? (parseInt(raw, 10) || 0) : 0;
     }
-    DXApi.getGlobalActivity(DX_ACT_LIMIT).then(list => {
-      if (!Array.isArray(list)) return;
-      const cutoff = Date.now() - DX_ACT_WINDOW_MS;
-      setRows(list.filter(e => new Date(e.created_at).getTime() >= cutoff));   // fenêtre glissante 30 j
-      if (!list.length) return;
-      const maxId = list.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 0);  // vrai max (created_at peut être à égalité)
-      latestMaxRef.current = maxId;
-      // Non-vu depuis la dernière visite = modifs par D'AUTRES au-delà de lastSeen.
-      const uc = list.filter(e => Number(e.id) > lastSeenRef.current && e.actor_email && e.actor_email !== meEmail).length;
-      setUnseen(uc);
-      // Révélation « live » : nouvelles entrées depuis le début de session.
-      if (seenRef.current == null) {
-        seenRef.current = maxId;
-        if (firstRef.current && uc > 0) setLoginNotice(uc);   // bannière à la (re)connexion
-        firstRef.current = false;
-        return;
+    if (lastNotifSeenRef.current == null) {
+      const raw = (() => { try { return localStorage.getItem(notifSeenKey); } catch { return null; } })();
+      lastNotifSeenRef.current = raw != null ? (parseInt(raw, 10) || 0) : 0;
+    }
+    const cutoff = Date.now() - DX_ACT_WINDOW_MS;
+    Promise.all([
+      DXApi.getGlobalActivity(DX_ACT_LIMIT).catch(() => null),
+      DXApi.getNotifications(50).catch(() => null),
+    ]).then(([alist, nlist]) => {
+      // ── Notifications « intelligentes » ──
+      let notifUnseen = 0;
+      if (Array.isArray(nlist)) {
+        const recentN = nlist.filter(n => new Date(n.created_at).getTime() >= cutoff);
+        setNotifs(recentN);
+        notifMaxRef.current = recentN.reduce((mx, n) => Math.max(mx, Number(n.id) || 0), 0);
+        notifUnseen = recentN.filter(n => Number(n.id) > lastNotifSeenRef.current).length;
       }
-      const fresh = list.filter(e => Number(e.id) > seenRef.current);
-      if (fresh.length) {
-        seenRef.current = maxId;
-        showReveal(fresh.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a)));
+      // ── Audit collaboratif (logique existante) ──
+      let auditUnseen = 0;
+      if (Array.isArray(alist)) {
+        setRows(alist.filter(e => new Date(e.created_at).getTime() >= cutoff));   // fenêtre 30 j
+        if (alist.length) {
+          const maxId = alist.reduce((mx, e) => Math.max(mx, Number(e.id) || 0), 0);
+          latestMaxRef.current = maxId;
+          // Non-vu = modifs par D'AUTRES au-delà de lastSeen.
+          auditUnseen = alist.filter(e => Number(e.id) > lastSeenRef.current && e.actor_email && e.actor_email !== meEmail).length;
+          if (seenRef.current == null) {
+            seenRef.current = maxId;
+            if (firstRef.current && (auditUnseen + notifUnseen) > 0) setLoginNotice(auditUnseen + notifUnseen);
+            firstRef.current = false;
+          } else {
+            const fresh = alist.filter(e => Number(e.id) > seenRef.current);
+            if (fresh.length) { seenRef.current = maxId; showReveal(fresh.reduce((a, b) => (Number(b.id) > Number(a.id) ? b : a))); }
+          }
+        }
       }
+      setUnseen(auditUnseen + notifUnseen);
     }).catch(() => {});
-  }, [showReveal, meEmail, seenKey]);
+  }, [showReveal, meEmail, seenKey, notifSeenKey]);
 
   React.useEffect(() => {
     if (!cloudOn) return;
@@ -187,6 +228,12 @@ function ActivityFeed() {
   const toggle = () => setOpen(o => { const n = !o; if (n) markSeen(); return n; });
   const lifting = ((loginNotice > 0) || (reveal && shown)) && !open;
 
+  // Fil fusionné : notifications « intelligentes » + audit collaboratif, trié récent→ancien.
+  const feed = [
+    ...notifs.map(n => ({ type: 'notif', key: 'n' + n.id, ts: n.created_at, n })),
+    ...rows.map(e => ({ type: 'audit', key: 'a' + e.id, ts: e.created_at, e })),
+  ].sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
   return (
     <div style={{ borderTop: '1px solid var(--border-subtle)' }}>
       {/* Onglet Activité — se soulève légèrement quand il y a du neuf */}
@@ -198,10 +245,11 @@ function ActivityFeed() {
           transition: 'transform 0.3s var(--ease), background var(--dur-fast) var(--ease)' }}>
         <span style={{ display: 'inline-flex', color: 'var(--accent-hover)' }}>{ActivityIcon}</span>
         <span style={{ flex: 1, textAlign: 'left' }}>Activité</span>
+        {/* Badge = NON-VU uniquement → se remet à 0 dès qu'on ouvre le menu (plus de total figé). */}
         {unseen > 0 ? (
           <span className="dx-pulse" style={{ font: '600 10px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 999, background: 'var(--accent)', color: '#fff', border: '1px solid var(--accent)' }}>{unseen} nouveau{unseen > 1 ? 'x' : ''}</span>
-        ) : rows.length > 0 ? (
-          <span style={{ font: '500 10px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>{rows.length}</span>
+        ) : feed.length > 0 ? (
+          <span title="Aucune nouveauté" style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--border-strong)', flexShrink: 0 }} />
         ) : null}
         <span style={{ fontSize: 8, color: 'var(--text-dim)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform var(--dur-fast) var(--ease)' }}>▾</span>
       </button>
@@ -227,19 +275,39 @@ function ActivityFeed() {
         </div>
       )}
 
-      {/* Liste déroulante — 5 lignes visibles, molette pour le reste */}
+      {/* Liste déroulante — notifications colorées + audit, molette pour le reste */}
       {open && (
-        <div style={{ maxHeight: 190, overflowY: 'auto', borderTop: '1px solid var(--border-subtle)' }}>
-          {rows.length === 0 ? (
+        <div style={{ maxHeight: 220, overflowY: 'auto', borderTop: '1px solid var(--border-subtle)' }}>
+          {feed.length === 0 ? (
             <div style={{ padding: '14px', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Aucune activité récente.</div>
-          ) : rows.map(e => (
-            <div key={e.id} style={{ padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
-              <div style={{ font: '11px/1.4 var(--font-sans)', color: 'var(--text-soft)' }}>
-                <strong style={{ color: 'var(--text)' }}>{dxWho(e.actor_email)}</strong> {A.sentence(e)}
+          ) : feed.map(item => {
+            if (item.type === 'notif') {
+              const n = item.n;
+              const col = A.toneColor(n.tone);
+              return (
+                <div key={item.key} style={{ display: 'flex', gap: 9, padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone) }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0, marginTop: 4, boxShadow: `0 0 0 2px ${A.toneSoft(n.tone)}` }} />
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <div style={{ font: '600 11px/1.35 var(--font-sans)', color: 'var(--text)' }}>{n.title}</div>
+                    {n.body && <div style={{ font: '10px/1.4 var(--font-sans)', color: 'var(--text-soft)', marginTop: 2 }}>{n.body}</div>}
+                    <div style={{ font: '9px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 3 }}>{A.timeAgo(n.created_at)}</div>
+                  </div>
+                </div>
+              );
+            }
+            const e = item.e;
+            return (
+              <div key={item.key} style={{ display: 'flex', gap: 9, padding: '8px 14px', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span style={{ width: 7, height: 7, borderRadius: '50%', background: A.tone(e.action), flexShrink: 0, marginTop: 4 }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ font: '11px/1.4 var(--font-sans)', color: 'var(--text-soft)' }}>
+                    <strong style={{ color: 'var(--text)' }}>{dxWho(e.actor_email)}</strong> {A.sentence(e)}
+                  </div>
+                  <div style={{ font: '9px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 2 }}>{A.timeAgo(e.created_at)}</div>
+                </div>
               </div>
-              <div style={{ font: '9px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 2 }}>{A.timeAgo(e.created_at)}</div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

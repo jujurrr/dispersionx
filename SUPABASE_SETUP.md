@@ -657,6 +657,43 @@ alter table public.lists add column if not exists group_name text;
 Rien d'autre : la RLS existante de `lists` couvre déjà cette colonne, et le tri
 chronologique s'appuie sur `created_at` (déjà présent).
 
+## 17. Notifications « intelligentes » (fil Activité)
+
+Notifications personnelles affichées, colorées, dans le fil **Activité** : dérive
+des grecs / seuils de P&L des positions, expiration d'abonnement Pro, corrélation
+attractive. Les clients les **lisent** (RLS) ; ce sont les **crons serveur** (clé
+service) qui les **écrivent**. Non-cassant : sans cette table, l'app fonctionne
+comme avant (les inserts des crons échouent silencieusement).
+
+```sql
+create table if not exists public.notifications (
+  id          bigint generated always as identity primary key,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  kind        text not null,                 -- greek_drift | pnl | subscription | correlation
+  tone        text not null default 'info',  -- pos | neg | warn | info
+  title       text not null,
+  body        text,
+  ref         text,                          -- clé de dédup (anti-spam), ex. « pos:<id>:delta »
+  created_at  timestamptz not null default now()
+);
+alter table public.notifications enable row level security;
+-- Lecture : chacun voit UNIQUEMENT les siennes. Écriture réservée à la clé service.
+drop policy if exists "notifications_read" on public.notifications;
+create policy "notifications_read" on public.notifications
+  for select using (auth.uid() = user_id);
+create index if not exists notifications_user_created
+  on public.notifications (user_id, created_at desc);
+```
+
+**Crons (scheduler externe, ex. cron-job.org), ~1×/jour après clôture US** — mêmes
+`ALERTS_KEY` + `SUPABASE_SERVICE_KEY` que les crons existants :
+- `GET /api/monitor/snapshot-run?key=…` → relevé des positions **+ notifs grecs/P&L** (déjà planifié pour le suivi).
+- `GET /api/notifications/run?key=…` → **expiration d'abonnement** (paliers 7/3/1 j).
+- `GET /api/alerts/run?key=…` → alertes de corrélation (insère aussi une notif quand elles se déclenchent).
+
+Anti-spam : chaque notif porte un `ref` ; une même condition n'est ré-écrite qu'au
+plus ~1×/20 h (dédup côté serveur).
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

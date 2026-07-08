@@ -529,6 +529,16 @@ const trades = {
   },
 };
 
+// ── Notifications « intelligentes » (lecture seule côté client, RLS par user).
+// Produites par les crons serveur (voir api/_lib/notify.js). ─────────────────
+const notifications = {
+  async list(limit = 50) {
+    const { data, error } = await supa.from('notifications').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(limit);
+    if (error) throw error;
+    return data || [];
+  },
+};
+
 // ── API publique exposée au reste de l'app (js/api.js, Auth.jsx, app.jsx) ────
 window.DXCloud = {
   configured: !!supa,
@@ -550,6 +560,7 @@ window.DXCloud = {
   audit: supa ? audit : null,
   alerts: supa ? alerts : null,
   trades: supa ? trades : null,
+  notifications: supa ? notifications : null,
 };
 
 // ── Suivi de session : maintient currentUser + prévient l'app ───────────────

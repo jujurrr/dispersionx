@@ -15,13 +15,14 @@
 export const config = { runtime: 'edge' };
 
 import { repriceStrategy, cboeMarket, compactSnapshots } from '../_lib/reprice.js';
+import { deltaDriftNotif, pnlNotif, insertNotif } from '../_lib/notify.js';
 
 const SB_BASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SB_KEY  = process.env.SUPABASE_SERVICE_KEY || '';
 const sbHeaders = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' };
 
 async function sbOpenPositions() {
-  const url = `${SB_BASE}/rest/v1/positions?status=eq.open&select=id,strategy,snapshots`;
+  const url = `${SB_BASE}/rest/v1/positions?status=eq.open&select=id,user_id,name,strategy,snapshots`;
   const r = await fetch(url, { headers: sbHeaders, signal: AbortSignal.timeout(8000) });
   return r.ok ? r.json() : [];
 }
@@ -51,7 +52,7 @@ export default async (req) => {
   const positions = await sbOpenPositions();
   if (!positions.length) return Response.json({ checked: 0, snapped: 0 });
 
-  let snapped = 0, failed = 0;
+  let snapped = 0, failed = 0, notified = 0;
   // Séquentiel : ménage le CDN Cboe (throttlé) ; le cache 15 min partagé
   // dédoublonne les symboles récurrents entre positions.
   for (const p of positions) {
@@ -77,7 +78,17 @@ export default async (req) => {
       // par jour antérieur.
       const r = await sbPatchSnapshots(p.id, compactSnapshots(snaps));
       if (r && r.ok) snapped++; else failed++;
+
+      // Notifications « intelligentes » (dérive de delta + seuils de P&L).
+      // Isolé : une erreur ici ne doit JAMAIS compromettre le relevé ci-dessus.
+      if (p.user_id) {
+        try {
+          for (const n of [deltaDriftNotif(p, v), pnlNotif(p, v)]) {
+            if (n && await insertNotif(SB_BASE, sbHeaders, p.user_id, n)) notified++;
+          }
+        } catch { /* table notifications absente ou réseau → on ignore */ }
+      }
     } catch { failed++; }
   }
-  return Response.json({ checked: positions.length, snapped, failed });
+  return Response.json({ checked: positions.length, snapped, failed, notified });
 };

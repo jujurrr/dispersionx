@@ -204,6 +204,12 @@
   // Cloud : colonne lists.group_name (voir SUPABASE_SETUP.md). On laisse REMONTER
   // l'erreur cloud (ex. colonne absente → migration à appliquer) pour que l'UI
   // puisse l'afficher, au lieu de la masquer silencieusement.
+  // Notifications « intelligentes » (cloud, RLS). Local/invité → aucune (liste vide).
+  async function getNotifications(limit = 50) {
+    const c = _cloud();
+    if (c && c.notifications) { try { return await c.notifications.list(limit); } catch (e) { console.warn('cloud getNotifications', e); } }
+    return [];
+  }
   async function setListGroup(id, group) {
     const c = _cloud();
     if (c) {
@@ -666,7 +672,7 @@
     getLists, createList, getList, updateList, deleteList, setListGroup,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
-    getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity,
+    getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity, getNotifications,
     createShareLink, getShareLinks, revokeShareLink, redeemShareLink,
     getCorrelation, backtestDispersion, correlationBarometer, earningsCalendar,
     getTickerVol, getBatchVol,
