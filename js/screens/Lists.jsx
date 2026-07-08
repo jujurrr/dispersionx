@@ -107,6 +107,15 @@ function Lists({ onNav, onListsChange, addToast }) {
   const [newGroupName, setNewGroupName] = React.useState(''); // saisie « nouveau groupe » dans la modale
   const [collapsed, setCollapsed] = React.useState({});       // { [groupe]: bool } — sections repliées
 
+  // Les groupes (synchronisés cloud) nécessitent un compte connecté. En mode
+  // invité on grise l'action et on invite à se connecter / créer un compte.
+  const guest = !cloudOn;
+  function needAccount() {
+    if (!guest) return false;
+    addToast && addToast('Connectez-vous ou créez un compte (gratuit) pour organiser vos listes en groupes.', 'info');
+    return true;
+  }
+
   // Groupes existants (étiquettes distinctes présentes sur les listes), triés.
   const groupNames = React.useMemo(() => {
     const s = new Set();
@@ -131,6 +140,13 @@ function Lists({ onNav, onListsChange, addToast }) {
     const d = new Date(ym + '-01T00:00:00');
     if (isNaN(d)) return ym;
     return d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+  };
+  // Format jour, grande date sur une ligne (« Lundi 8 juillet ») à partir d'un ISO YYYY-MM-DD.
+  const dayLabel = (ymd) => {
+    const d = new Date(ymd + 'T00:00:00');
+    if (isNaN(d)) return ymd;
+    const s = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
   };
 
   // Carte de liste (réutilisée par les vues Grille et Groupes).
@@ -163,8 +179,11 @@ function Lists({ onNav, onListsChange, addToast }) {
           style={{ font: '600 11px/1 var(--font-sans)', padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={e => { e.stopPropagation(); setGroupFor(list); setNewGroupName(''); }}
-          style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>🗂 {list.group_name ? 'Changer de groupe' : 'Ranger dans un groupe'}</button>
+        <button onClick={e => { e.stopPropagation(); if (needAccount()) { onNav('login'); return; } setGroupFor(list); setNewGroupName(''); }}
+          title={guest ? 'Réservé aux comptes connectés' : undefined}
+          style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: guest ? 'var(--text-dim)' : 'var(--text-muted)', cursor: 'pointer', opacity: guest ? 0.6 : 1 }}>
+          {guest ? '🔒 Groupes — compte requis' : `🗂 ${list.group_name ? 'Changer de groupe' : 'Ranger dans un groupe'}`}
+        </button>
         {cloudOn && (
           <button onClick={e => openShare(list, e)}
             style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>⤳ Partager</button>
@@ -174,12 +193,15 @@ function Lists({ onNav, onListsChange, addToast }) {
   );
 
   const gridStyle = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 };
-  const viewBtn = (key, label) => (
-    <button key={key} onClick={() => setView(key)} style={{
-      font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
-      background: view === key ? 'var(--accent)' : 'transparent', color: view === key ? '#fff' : 'var(--text-muted)',
-      transition: 'all var(--dur-fast) var(--ease)',
-    }}>{label}</button>
+  // `locked` → bouton grisé qui invite à se connecter au lieu de changer de vue.
+  const viewBtn = (key, label, locked) => (
+    <button key={key} onClick={() => { if (locked) { needAccount(); return; } setView(key); }}
+      title={locked ? 'Réservé aux comptes connectés' : undefined}
+      style={{
+        font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
+        background: view === key && !locked ? 'var(--accent)' : 'transparent', color: view === key && !locked ? '#fff' : 'var(--text-muted)',
+        opacity: locked ? 0.5 : 1, transition: 'all var(--dur-fast) var(--ease)',
+      }}>{locked ? '🔒 ' + label : label}</button>
   );
 
   return (
@@ -202,7 +224,7 @@ function Lists({ onNav, onListsChange, addToast }) {
       {!loading && lists.length > 0 && (
         <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 3, alignSelf: 'flex-start' }}>
           {viewBtn('grid', '▦ Grille')}
-          {viewBtn('groups', '🗂 Groupes')}
+          {viewBtn('groups', '🗂 Groupes', guest)}
           {viewBtn('chrono', '↕ Chronologique')}
         </div>
       )}
@@ -280,6 +302,16 @@ function Lists({ onNav, onListsChange, addToast }) {
       ) : view === 'grid' ? (
         /* ── Vue Grille (par défaut) ── */
         <div style={gridStyle}>{lists.map(cardOf)}</div>
+      ) : view === 'groups' && guest ? (
+        /* ── Vue Groupes en mode invité : informer + inviter à se connecter ── */
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '40px 28px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+          <div style={{ font: '30px/1' }}>🔒</div>
+          <div style={{ font: 'var(--type-h3)', color: 'var(--text)' }}>Les groupes nécessitent un compte</div>
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', maxWidth: 420 }}>
+            Connectez-vous ou créez un compte (gratuit) pour organiser vos listes en groupes, synchronisés sur tous vos appareils.
+          </div>
+          <button onClick={() => onNav('login')} style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', marginTop: 6 }}>Se connecter / créer un compte</button>
+        </div>
       ) : view === 'groups' ? (
         /* ── Vue Groupes : sections repliables + « Sans groupe » en dernier ── */
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
@@ -305,22 +337,30 @@ function Lists({ onNav, onListsChange, addToast }) {
           })}
         </div>
       ) : (
-        /* ── Vue Chronologique : frise verticale, récentes en haut, séparateurs de mois ── */
+        /* ── Vue Chronologique : frise verticale, récentes en haut, séparateurs de mois PUIS de jour ── */
         (() => {
           const sorted = [...lists].sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
-          let lastMonth = null;
+          let lastMonth = null, lastDay = null;
           return (
             <div style={{ display: 'flex', flexDirection: 'column' }}>
               {sorted.map((list, i) => {
                 const ym = String(list.created_at || '').slice(0, 7);
+                const ymd = String(list.created_at || '').slice(0, 10);
                 const showMonth = ym && ym !== lastMonth;
                 if (showMonth) lastMonth = ym;
-                const dm = String(list.created_at || '').slice(8, 10) + '/' + String(list.created_at || '').slice(5, 7);
+                const showDay = ymd && ymd !== lastDay;
+                if (showDay) lastDay = ymd;
                 return (
                   <React.Fragment key={list.id}>
                     {showMonth && (
-                      <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', margin: (i === 0 ? '0' : '18px') + ' 0 8px', paddingLeft: 2 }}>
+                      <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)', margin: (i === 0 ? '0' : '22px') + ' 0 4px', paddingLeft: 2 }}>
                         {monthLabel(ym)}
+                      </div>
+                    )}
+                    {showDay && (
+                      /* Séparateur de JOUR : grande date sur une seule ligne */
+                      <div style={{ font: '700 18px/1.3 var(--font-sans)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: (showMonth ? '6px' : '16px') + ' 0 10px', paddingBottom: 8, borderBottom: '1px solid var(--border-subtle)' }}>
+                        {dayLabel(ymd)}
                       </div>
                     )}
                     <div onClick={() => onNav('list-detail', { listId: list.id })}
@@ -334,7 +374,6 @@ function Lists({ onNav, onListsChange, addToast }) {
                       </div>
                       {/* Contenu */}
                       <div data-row style={{ flex: 1, marginBottom: 8, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, transition: 'background var(--dur-fast) var(--ease)' }}>
-                        <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text-soft)', width: 42, flexShrink: 0 }}>{dm}</span>
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ font: 'var(--type-title)', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             {list.name}
