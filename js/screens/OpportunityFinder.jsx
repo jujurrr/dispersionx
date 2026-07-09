@@ -370,7 +370,7 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
       {/* Bandeau honnête */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--info)', borderRadius: 'var(--radius-lg)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
         <span style={{ color: 'var(--info)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>i</span>
-        <span>Recherche <strong style={{ color: 'var(--text)' }}>indicative</strong> sur données différées/estimées. Les paniers sont un <strong style={{ color: 'var(--text)' }}>point de départ à valider</strong> — pas un conseil ni une garantie de gain.</span>
+        <span>Recherche <strong style={{ color: 'var(--text)' }}>indicative et non personnalisée</strong> sur données différées/estimées. Les paniers sont un <strong style={{ color: 'var(--text)' }}>point de départ à valider</strong> — pas une recommandation, pas un conseil en investissement, ni une garantie de gain.</span>
       </div>
 
       {/* Contrôles */}

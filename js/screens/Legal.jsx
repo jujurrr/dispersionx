@@ -64,6 +64,18 @@ function Legal({ onNav }) {
         <span style={strong}> différées (15 min)</span> et parfois estimées. L'éditeur ne saurait être tenu
         responsable des décisions prises sur la base des informations fournies (voir les CGU).
       </P>
+      <P>
+        <span style={strong}>Statut réglementaire&nbsp;:</span> l'éditeur n'est pas un prestataire de services
+        d'investissement (PSI) ni un conseiller en investissements financiers (CIF), n'est pas enregistré à l'ORIAS
+        ni agréé par l'AMF ou l'ACPR, et ne fournit aucun service d'investissement au sens de l'article L321-1 du
+        Code monétaire et financier ni de la directive MiFID II. Le Service ne relève pas de ces réglementations.
+      </P>
+      <P>
+        <span style={strong}>Sources de données&nbsp;:</span> les cotations et volatilités affichées proviennent de
+        fournisseurs tiers (notamment Cboe, Yahoo Finance, Finnhub), sont <span style={strong}>différées</span> et
+        fournies à titre informatif. Elles restent la propriété de leurs fournisseurs respectifs&nbsp;; leur
+        réutilisation ou redistribution en dehors d'un usage personnel est interdite.
+      </P>
 
       <H>7. Données personnelles</H>
       <P>

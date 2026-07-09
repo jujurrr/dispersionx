@@ -78,6 +78,14 @@ function Terms({ onNav }) {
         <span style={strong}> données de marché sont différées d'au moins 15 minutes</span> et peuvent être estimées
         ou incomplètes&nbsp;; leur exactitude n'est pas garantie.
       </P>
+      <P>
+        Les données de marché (cotations, volatilités, chaînes d'options) proviennent de fournisseurs tiers et
+        demeurent leur propriété. Elles sont mises à disposition pour un <span style={strong}>usage strictement
+        personnel</span> au sein du Service&nbsp;: toute extraction, revente, rediffusion ou redistribution à des
+        tiers est interdite. Le Service n'affiche que des données <span style={strong}>différées</span> et des
+        <span style={strong}> résultats calculés</span> (indicateurs, statistiques, graphiques), à l'exclusion de
+        tout flux temps réel destiné à l'exécution d'ordres.
+      </P>
 
       <H>8. Avertissement — absence de conseil en investissement</H>
       <div style={{ margin: '4px 0 8px', padding: '14px 18px', background: 'var(--warn-soft, var(--bg-card))', border: '1px solid var(--warn, var(--border))', borderRadius: 'var(--radius-lg)' }}>
@@ -91,6 +99,12 @@ function Terms({ onNav }) {
           relève de votre seule responsabilité&nbsp;; consultez un professionnel habilité (conseiller en
           investissements financiers) avant d'agir.
         </P>
+        <P>
+          <span style={strong}>L'éditeur n'est ni un prestataire de services d'investissement (PSI), ni un
+          conseiller en investissements financiers (CIF)</span>, n'est pas enregistré à l'ORIAS ni agréé par l'AMF,
+          et ne fournit aucun service d'investissement au sens de l'article L321-1 du Code monétaire et financier ni
+          de la directive MiFID II. Le Service ne constitue pas du démarchage bancaire ou financier.
+        </P>
       </div>
 
       <H>9. Limitation de responsabilité</H>
@@ -103,9 +117,10 @@ function Terms({ onNav }) {
       <H>10. Suspension et résiliation de compte</H>
       <P>
         L'éditeur peut suspendre ou résilier un compte en cas de manquement aux présentes CGU (notamment §5), après
-        information lorsque cela est possible. L'utilisateur peut à tout moment supprimer son compte depuis
-        l'application ou en écrivant à <a href={`mailto:${L.email}`} style={link}>{L.email}</a>&nbsp;; les modalités
-        relatives à l'abonnement payant figurent dans les CGV.
+        information lorsque cela est possible. L'utilisateur peut à tout moment supprimer ses données depuis
+        l'application (listes, stratégies, positions) et demander la <span style={strong}>suppression complète de son
+        compte</span> en écrivant à <a href={`mailto:${L.email}`} style={link}>{L.email}</a> (traitée sous 30 jours,
+        art. 17 RGPD)&nbsp;; les modalités relatives à l'abonnement payant figurent dans les CGV.
       </P>
 
       <H>11. Données personnelles</H>

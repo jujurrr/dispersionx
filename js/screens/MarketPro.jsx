@@ -45,7 +45,7 @@ function MarketPro({ onNav, addToast, pro, lists }) {
       {/* Bandeau honnête */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '10px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--info)', borderRadius: 'var(--radius-lg)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
         <span style={{ color: 'var(--info)', font: '700 13px/1 var(--font-mono)', flexShrink: 0 }}>i</span>
-        <span>Signaux <strong style={{ color: 'var(--text)' }}>indicatifs</strong> sur données différées/estimées — pas un conseil en investissement.</span>
+        <span>Signaux <strong style={{ color: 'var(--text)' }}>indicatifs et non personnalisés</strong> sur données différées/estimées — pas une recommandation ni un conseil en investissement.</span>
       </div>
 
       {/* Sélecteur d'indice */}
