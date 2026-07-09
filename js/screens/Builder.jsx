@@ -145,26 +145,41 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
   );
 }
 
+// Brouillon du Builder conservé EN MÉMOIRE : survit aux changements de page /
+// module pendant la session (l'écran est démonté/remonté à chaque navigation)
+// → on ne perd ni l'étape ni la sélection en quittant puis revenant. Repart à
+// zéro au rechargement complet de la page. Ignoré si on entre avec un listId
+// ciblé (on charge alors cette liste, pas le brouillon).
+let _builderDraft = null;
+
 /* ─── Strategy Builder: 8-step wizard ──────────────────────────── */
 function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, pro }) {
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
-  const [step, setStep] = React.useState(listId ? 3 : 0);
+  const d0 = listId ? null : _builderDraft;   // brouillon à restaurer (hors entrée ciblée)
+  const [step, setStep] = React.useState(d0 ? d0.step : (listId ? 3 : 0));
   const [list, setList] = React.useState(null);
   const [stratData, setStratData] = React.useState(null);
-  const [selectedIndex, setSelectedIndex] = React.useState('SPX');
-  const [selectedDuration, setSelectedDuration] = React.useState(30);
+  const [selectedIndex, setSelectedIndex] = React.useState(d0 ? d0.selectedIndex : 'SPX');
+  const [selectedDuration, setSelectedDuration] = React.useState(d0 ? d0.selectedDuration : 30);
   const [idxComps, setIdxComps] = React.useState([]);  // constituants réels (objets) de l'indice
   const [scoreTick, setScoreTick] = React.useState(0); // re-render quand le store met les scores à jour
-  const [selectedItems, setSelectedItems] = React.useState(new Set());
-  const [extraTickers, setExtraTickers] = React.useState(new Set());  // tickers ajoutés à la recherche (hors base)
-  const [sourceListId, setSourceListId] = React.useState(null);       // liste existante choisie comme source
-  const [draftListId, setDraftListId] = React.useState(null);     // liste-brouillon créée depuis le Builder
+  const [selectedItems, setSelectedItems] = React.useState(() => new Set(d0 ? d0.selectedItems : []));
+  const [extraTickers, setExtraTickers] = React.useState(() => new Set(d0 ? d0.extraTickers : []));  // tickers ajoutés à la recherche (hors base)
+  const [sourceListId, setSourceListId] = React.useState(d0 ? d0.sourceListId : null);       // liste existante choisie comme source
+  const [draftListId, setDraftListId] = React.useState(d0 ? d0.draftListId : null);     // liste-brouillon créée depuis le Builder
   const [creatingDraft, setCreatingDraft] = React.useState(false);
   const lastDraftRef = React.useRef(null);                        // dernier brouillon (pour le supprimer au remplacement)
   const [building, setBuilding] = React.useState(false);
-  const [nIndexContracts, setNIndexContracts] = React.useState(1);
+  const [nIndexContracts, setNIndexContracts] = React.useState(d0 ? d0.nIndexContracts : 1);
   const [buildError, setBuildError] = React.useState(null);
+
+  // Sauvegarde continue du brouillon (hors entrée ciblée sur un listId) → l'état
+  // est restauré à l'identique si on quitte puis revient sur le Builder.
+  React.useEffect(() => {
+    if (listId) return;
+    _builderDraft = { step, selectedIndex, selectedDuration, selectedItems, extraTickers, sourceListId, draftListId, nIndexContracts };
+  }, [listId, step, selectedIndex, selectedDuration, selectedItems, extraTickers, sourceListId, draftListId, nIndexContracts]);
 
   React.useEffect(() => {
     if (listId) {
@@ -176,6 +191,17 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
     }
   }, [listId]);
 
+  // Changement d'indice → panier vidé (les actions sont propres à l'indice).
+  // Le ref garde le clear pour qu'il NE s'applique PAS au montage/restauration
+  // (sinon on effacerait la sélection restaurée du brouillon). Ignoré si une
+  // liste (ciblée ou source) pilote la sélection.
+  const prevIndexRef = React.useRef(selectedIndex);
+  React.useEffect(() => {
+    if (prevIndexRef.current === selectedIndex) return;   // montage / restauration
+    prevIndexRef.current = selectedIndex;
+    if (!listId && !sourceListId) { setSelectedItems(new Set()); setExtraTickers(new Set()); }
+  }, [selectedIndex]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Constituants RÉELS et COMPLETS de l'indice sélectionné via l'endpoint
   // /api/indices/:symbol/components (FMP → repli statique → base mock). Peuple
   // l'étape Composants avec TOUTES les actions de l'indice choisi (et lui seul).
@@ -185,15 +211,8 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
       if (cancelled) return;
       const comps = Array.isArray(arr) ? arr.filter(c => c && c.ticker) : [];
       setIdxComps(comps);
-      // Pré-sélection par défaut (sauf si une liste pilote) : un panier de
-      // dispersion raisonnable (~12 noms par poids). PAS toute la cote :
-      // sur-charger la sélection sature la matrice de corrélation (capée) et
-      // les modules, et donne un panier trop corrélé. Tout reste listé →
-      // « Tout sélectionner » pour aller plus loin.
-      if (!listId && !sourceListId) {
-        const sorted = comps.slice().sort((a, b) => (b.weight || 0) - (a.weight || 0));
-        setSelectedItems(new Set(sorted.slice(0, 12).map(c => c.ticker)));
-      }
+      // Aucune pré-sélection : le panier démarre VIDE, l'utilisateur choisit
+      // lui-même les actions (tout reste listé ; « Tout sélectionner » dispo).
     }).catch(() => { if (!cancelled) setIdxComps([]); });
     return () => { cancelled = true; };
   }, [selectedIndex]);
