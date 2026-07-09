@@ -112,7 +112,7 @@ async function fetchIVFromMD(sym, dte, token) {
 //    cache mémoire isolate + Supabase (12 h) pour ne PAS refaire l'appel à
 //    chaque score → évite le rate-limit Finnhub. Horizon plafonné à 60 j. ──
 const EARN_HORIZON = 60;                 // fenêtre de détection (jours)
-const EARN_TTL_MS  = 12 * 3600 * 1000;   // les dates d'earnings bougent lentement
+const EARN_TTL_MS  = 24 * 3600 * 1000;   // ≥ cycle du pré-réchauffeur (api/earnings/warm.js)
 const _earnMem = new Map();              // sym -> { val, at } (survit sur isolate chaud)
 
 async function fetchNextEarningsRaw(sym, token) {

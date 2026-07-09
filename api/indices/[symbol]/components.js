@@ -369,7 +369,9 @@ const DAX = [
   ["BNR.DE",0.503,"Brenntag","Materials"],
 ];
 
-const INDEX_DATA = { SPX, NDX, DJI, CAC, DAX };
+// Exporté aussi pour le pré-réchauffeur du cache earnings (api/earnings/warm.js),
+// qui a besoin de l'univers des tickers de tous les indices.
+export const INDEX_DATA = { SPX, NDX, DJI, CAC, DAX };
 
 export default async (req) => {
   const parts  = new URL(req.url).pathname.split('/');

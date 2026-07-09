@@ -113,6 +113,28 @@ alter table public.iv_cache enable row level security;
 
 Sans `SUPABASE_SERVICE_KEY`, le cache est simplement désactivé (rien ne casse).
 
+### 7b. Pré-remplir le cache des résultats (earnings) — recommandé
+
+Le sous-score « Risque événement » lit le prochain **earnings** de chaque titre
+(Finnhub). Finnhub est plafonné (~60 appels/min) → sans pré-remplissage, en
+descendant dans une longue liste de composants, les titres du bas finissent par
+afficher « momentanément indisponible ».
+
+`/api/earnings/warm` remplit le cache Supabase (`EARN:<sym>`) **de façon régulée
+et en rotation** (une tranche de l'univers par exécution). L'app lit alors le
+cache au lieu d'appeler Finnhub pendant le scoring.
+
+**Cron externe** (comme le réchauffeur d'IV), **toutes les ~3 min** :
+```
+GET https://TON-DOMAINE/api/earnings/warm?key=LA_CLE
+```
+- Clé = `WARM_KEY` (ou `ALERTS_KEY`). Nécessite `FINNHUB_API_KEY` + `SUPABASE_SERVICE_KEY`.
+- Couvre tout l'univers (tous les indices) sur plusieurs passes, puis le rafraîchit
+  en boucle. Cache valable 24 h. Sans ce cron, le cache se remplit quand même peu
+  à peu au fil des scores (plus lentement, avec des « indisponible » transitoires).
+- Note : la couverture earnings de Finnhub est surtout US ; certains composants
+  européens (CAC/DAX) peuvent rester sans date (« aucun résultat »).
+
 ## 8. Stratégies + positions synchronisées (recommandé)
 Même principe que les listes : une fois connecté, tes **stratégies construites**
 (Builder / Construction) et tes **positions suivies** (checklist → suivi) sont
