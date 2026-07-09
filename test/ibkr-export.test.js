@@ -22,12 +22,46 @@ test('en-têtes exactement conformes à IBKR', () => {
   assert.deepEqual(DX.HEADER, ['Action', 'Quantity', 'Symbol', 'SecType', 'LastTradingDayOrContractMonth', 'Strike', 'Right', 'Exchange', 'Currency']);
 });
 
-test('strike ATM arrondi à l\'incrément coté', () => {
-  assert.equal(DX.roundStrike(598.4), '600');   // ≥500 → pas de 10
-  assert.equal(DX.roundStrike(192.3), '190');   // 100–500 → pas de 5
-  assert.equal(DX.roundStrike(431.7), '430');
-  assert.equal(DX.roundStrike(47.2), '47');     // 25–100 → pas de 1
-  assert.equal(DX.roundStrike(12.4), '12.5');   // <25 → pas de 0,5
+test('strike ATM sur la grille STANDARD OCC (2,5 / 5 / 10)', () => {
+  assert.equal(DX.roundStrike(598.4), '600');   // ≥200 → pas de 10
+  assert.equal(DX.roundStrike(192.3), '190');   // 25–200 → pas de 5
+  assert.equal(DX.roundStrike(431.7), '430');   // ≥200 → pas de 10
+  assert.equal(DX.roundStrike(47.2), '45');     // 25–200 → pas de 5 (plus de pas de 1 !)
+  assert.equal(DX.roundStrike(57.9), '60');     // ex-FITB « 58 » → 60 (strike réellement coté)
+  assert.equal(DX.roundStrike(12.4), '12.5');   // <25 → pas de 2,5
+  assert.equal(DX.roundStrike(22.4), '22.5');   // demi-strike coté
+});
+
+test('échéance snappée à la mensuelle (3ᵉ vendredi) la plus proche', () => {
+  assert.equal(DX.monthlyExp8({ expiry: '2026-08-21' }), '20260821');   // déjà un 3ᵉ vendredi
+  assert.equal(DX.monthlyExp8({ expiry: '2026-08-14' }), '20260821');   // weekly → mensuelle voisine
+  // La date renvoyée est TOUJOURS un vendredi (jour 5) — jamais une weekly arbitraire.
+  const e = DX.monthlyExp8({ duration: 30 });
+  const d = new Date(`${e.slice(0, 4)}-${e.slice(4, 6)}-${e.slice(6, 8)}T00:00:00Z`);
+  assert.equal(d.getUTCDay(), 5);
+});
+
+test('validation chaîne réelle : strike/échéance réels priment, repli heuristique sinon', () => {
+  const resolved = { targetExp8: '20260918', bySymbol: {
+    SPY:  { expiry: '20260918', strike: 597.5, spot: 598.4 },
+    AAPL: { expiry: '20260918', strike: 195,   spot: 192.3 },
+    // MSFT + SAP absents → strike heuristique + échéance cible
+  } };
+  const rows = DX.buildRows(STRAT, resolved);
+  rows.filter(r => r.Symbol === 'SPY' && r.SecType === 'OPT').forEach(r => {
+    assert.equal(r.Strike, '597.5'); assert.equal(r.LastTradingDayOrContractMonth, '20260918');
+  });
+  rows.filter(r => r.Symbol === 'AAPL' && r.SecType === 'OPT').forEach(r => {
+    assert.equal(r.Strike, '195'); assert.equal(r.LastTradingDayOrContractMonth, '20260918');
+  });
+  // MSFT non validé → strike standard (430) MAIS échéance alignée sur la cible.
+  rows.filter(r => r.Symbol === 'MSFT' && r.SecType === 'OPT').forEach(r => {
+    assert.equal(r.Strike, '430'); assert.equal(r.LastTradingDayOrContractMonth, '20260918');
+  });
+  const sum = DX.summary(STRAT, resolved);
+  assert.equal(sum.optionSymbols, 4);   // SPY, AAPL, MSFT, SAP
+  assert.equal(sum.validated, 2);       // SPY + AAPL
+  assert.equal(sum.approximated, 2);
 });
 
 test('suffixe → devise + symbole IBKR de base', () => {

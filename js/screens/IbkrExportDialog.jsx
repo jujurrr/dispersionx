@@ -10,14 +10,29 @@ function IbkrExportDialog({ strategy, onClose }) {
   const s = strategy;
   const sum = React.useMemo(() => (s && window.DXIbkr ? window.DXIbkr.summary(s) : null), [s]);
   const [done, setDone] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [stats, setStats] = React.useState(null);   // résumé après validation (jambes réelles)
   if (!s || !window.DXIbkr) return null;
 
   const hedgeLabel = s.deltaHedge === 'index' ? 'globale (actions ETF indice)'
     : s.deltaHedge === 'legs' ? 'jambe par jambe (actions des composants + ETF indice)'
     : 'aucune';
-  const expTxt = s.expiry && window.DXExpiry ? window.DXExpiry.fmtExpiry(s.expiry) : (s.expiry || `${s.duration || 30} j`);
+  // Échéance réellement exportée = mensuelle standard (3ᵉ vendredi) la plus proche.
+  const exp8 = window.DXIbkr.monthlyExp8(s);
+  const expIso = `${exp8.slice(0, 4)}-${exp8.slice(4, 6)}-${exp8.slice(6, 8)}`;
+  const expTxt = window.DXExpiry ? window.DXExpiry.fmtExpiry(expIso) : expIso;
 
-  function doDownload() { window.DXIbkr.download(s); setDone(true); }
+  // Valide les contrats sur la vraie chaîne d'options (Cboe) puis télécharge.
+  // Best-effort : en cas d'échec réseau, l'heuristique (mensuelle + grille
+  // standard) prend le relais — le fichier est toujours produit.
+  async function doDownload() {
+    if (busy) return;
+    setBusy(true);
+    let resolved = null;
+    try { resolved = await window.DXIbkr.resolveContracts(s); } catch { /* repli heuristique */ }
+    try { window.DXIbkr.download(s, resolved); setStats(window.DXIbkr.summary(s, resolved)); setDone(true); }
+    finally { setBusy(false); }
+  }
 
   const Card = ({ children, style }) => (
     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px 14px', ...style }}>{children}</div>
@@ -66,8 +81,8 @@ function IbkrExportDialog({ strategy, onClose }) {
 
         {/* Bouton de téléchargement */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <button onClick={doDownload} style={{ font: '600 13px/1 var(--font-sans)', padding: '12px 22px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
-            ↓ Télécharger le CSV (What-If)
+          <button onClick={doDownload} disabled={busy} style={{ font: '600 13px/1 var(--font-sans)', padding: '12px 22px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.75 : 1 }}>
+            {busy ? 'Validation des contrats…' : '↓ Télécharger le CSV (What-If)'}
           </button>
           {done && (
             <span style={{ font: 'var(--type-body-sm)', color: 'var(--pos-bright)', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -75,6 +90,17 @@ function IbkrExportDialog({ strategy, onClose }) {
             </span>
           )}
         </div>
+
+        {/* Résultat de la validation des contrats sur la vraie chaîne d'options */}
+        {done && stats && stats.optionSymbols > 0 && (
+          <div style={{ font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-muted)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
+            {stats.validated === stats.optionSymbols ? (
+              <><strong style={{ color: 'var(--pos-bright)' }}>✓ {stats.validated}/{stats.optionSymbols} sous-jacents validés</strong> sur la chaîne d'options réelle (Cboe) — strikes et échéance réellement listés.</>
+            ) : (
+              <><strong style={{ color: 'var(--text-soft)' }}>{stats.validated}/{stats.optionSymbols} sous-jacents validés</strong> sur la chaîne d'options réelle. Les {stats.approximated} restant{stats.approximated > 1 ? 's' : ''} (composants sans options US ou chaîne indisponible) utilisent le strike standard le plus proche — si TWS en rejette un, choisis le strike listé voisin.</>
+            )}
+          </div>
+        )}
 
         {/* Fiche pas à pas */}
         <div>
@@ -99,7 +125,7 @@ function IbkrExportDialog({ strategy, onClose }) {
 
         {/* Notes de précision */}
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.5 }}>
-          Les strikes sont pris <strong>ATM</strong> (au prix du sous-jacent au moment de la construction), arrondis à l'incrément coté le plus proche : si TWS signale un strike introuvable, choisis le strike listé le plus proche. Le fichier est optimisé pour les sous-jacents cotés aux États-Unis (SPX→SPY, NDX→QQQ, DJI→DIA et leurs composants){sum && sum.foreign ? ' ; pour les composants européens (CAC/DAX), la devise est renseignée mais tu devras éventuellement préciser la place de cotation dans TWS' : ''}.
+          Strikes pris <strong>ATM</strong> et échéance <strong>mensuelle standard (3ᵉ vendredi, {expTxt})</strong> — cotée pour toute action optionnable, contrairement aux échéances hebdomadaires. Les contrats sont validés sur la vraie chaîne d'options quand elle est disponible. Le fichier est optimisé pour les sous-jacents cotés aux États-Unis (SPX→SPY, NDX→QQQ, DJI→DIA et leurs composants){sum && sum.foreign ? ' ; pour les composants européens (CAC/DAX), la devise est renseignée mais tu devras éventuellement préciser la place de cotation dans TWS' : ''}.
         </div>
       </div>
     </div>
