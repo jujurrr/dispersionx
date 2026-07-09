@@ -15,16 +15,26 @@ const FEED = process.env.ALPACA_DATA_FEED || 'iex';
 // affichés. L'ETF proxy en USD (EWQ/EWG) fausserait le niveau CAC/DAX (change EUR/USD).
 const INDEX_YF = { SPX: '^GSPC', NDX: '^NDX', DJI: '^DJI', CAC: '^FCHI', DAX: '^GDAXI' };
 
+// Yahoo chart avec repli query1 → query2 : l'un des hôtes peut être bloqué ou
+// throttlé côté IP datacenter (Vercel). Essayer les DEUX maximise l'obtention du
+// VRAI niveau d'indice (^GSPC…) et évite de retomber sur l'ETF×échelle — faux de
+// ~6 % pour CAC/DAX (ETF en USD → biais EUR/USD).
+async function yahooChartJson(sym, params) {
+  for (const host of ['query1', 'query2']) {
+    try {
+      const r = await fetch(`https://${host}.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?${params}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(5000) });
+      if (r.ok) return await r.json();
+    } catch { /* hôte suivant */ }
+  }
+  return null;
+}
+
 // Prix + clôture veille RÉELS de l'indice (Yahoo chart meta), quasi temps réel.
 async function fetchIndexQuoteYahoo(ticker) {
-  try {
-    const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`,
-      { headers: { 'User-Agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(4000) });
-    if (!r.ok) return null;
-    const meta = (await r.json())?.chart?.result?.[0]?.meta;
-    if (!meta || meta.regularMarketPrice == null) return null;
-    return { price: meta.regularMarketPrice, prevClose: meta.chartPreviousClose ?? meta.previousClose ?? null };
-  } catch { return null; }
+  const meta = (await yahooChartJson(ticker, 'interval=1d&range=1d'))?.chart?.result?.[0]?.meta;
+  if (!meta || meta.regularMarketPrice == null) return null;
+  return { price: meta.regularMarketPrice, prevClose: meta.chartPreviousClose ?? meta.previousClose ?? null };
 }
 
 // Prix LIVE de l'ETF proxy (Finnhub, temps réel US) → prix d'indice quasi
@@ -66,10 +76,7 @@ async function getBarsAlpaca(etf) {
 }
 
 async function getBarsYahoo(etf) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(etf)}?interval=1d&range=1y`;
-  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-  if (!r.ok) return null;
-  const data = await r.json();
+  const data = await yahooChartJson(etf, 'interval=1d&range=1y');
   const result = data?.chart?.result?.[0];
   if (!result) return null;
   const timestamps = result.timestamp || [];
