@@ -94,6 +94,20 @@ export function commonExpiryOf(maps, targetExp8) {
   return best;
 }
 
+// LISTE (triée) des échéances cotées par TOUS les symboles (intersection).
+// Sert à proposer, dès la construction, des échéances valables pour tous.
+export function commonExpiriesOf(maps) {
+  const valid = (maps || []).filter(m => m && m.size);
+  if (!valid.length) return [];
+  let inter = null;
+  for (const m of valid) {
+    const keys = new Set(m.keys());
+    inter = inter == null ? keys : new Set([...inter].filter(k => keys.has(k)));
+    if (!inter.size) return [];
+  }
+  return [...inter].sort();
+}
+
 // Cap de temps par symbole → l'endpoint reste borné même si le CDN Cboe traîne.
 function withTimeout(promise, ms) {
   return Promise.race([promise, new Promise(res => setTimeout(() => res(null), ms))]);
@@ -116,8 +130,12 @@ export default async (req) => {
     } catch { info[sym] = null; }
   }));
 
-  // 2) Échéance COMMUNE à tous les symboles cotés, la plus proche de la cible.
-  const common = commonExpiryOf(Object.values(info).filter(Boolean).map(x => x.map), expiry);
+  // 2) Échéances COMMUNES à tous les symboles cotés (intersection). `common` =
+  //    la plus proche de la cible (pour l'export) ; `commonExpiries` = la liste
+  //    complète (pour proposer les échéances à la construction).
+  const mapsList = Object.values(info).filter(Boolean).map(x => x.map);
+  const commonExpiries = commonExpiriesOf(mapsList);
+  const common = commonExpiryOf(mapsList, expiry);
 
   // 3) Par symbole : strike ATM à l'échéance commune ; repli per-symbole sinon.
   const contracts = {};
@@ -132,7 +150,7 @@ export default async (req) => {
     }
   }
 
-  return Response.json({ expiry, commonExpiry: common || null, contracts }, {
+  return Response.json({ expiry, commonExpiry: common || null, commonExpiries, contracts }, {
     headers: {
       'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600',
       'Netlify-CDN-Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600',

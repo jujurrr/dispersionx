@@ -117,7 +117,7 @@ function IbkrExportDialog({ strategy, onClose }) {
             {resolving ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 9, font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-soft)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
                 <span className="dx-pulse" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
-                Vérification des échéances et strikes sur la chaîne d'options réelle (Cboe) — recherche d'une date cotée par <strong>tous</strong> les sous-jacents…
+                Validation des strikes sur la chaîne d'options réelle (Cboe)… <span style={{ color: 'var(--text-dim)' }}>(l'échéance est déjà cotée par tous les sous-jacents, fixée à la construction)</span>
               </div>
             ) : (
               <div style={{ font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-muted)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>

@@ -37,11 +37,17 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [nIndex,   setNIndex]   = React.useState(1);
   const [sizing,   setSizing]   = React.useState('vega_neutral');
   const [weightBasis, setWeightBasis] = React.useState('capped');  // capped (défaut) | index (w_i) | variance (w_i²) | equal
-  // Échéances réelles : vendredis d'expiration options proches de 14/30/45/60 j.
-  // On stocke la DATE (expiry) dans la stratégie ; duration = DTE jusqu'à elle.
-  const expiryOpts = React.useMemo(() => (window.DXExpiry ? window.DXExpiry.expiriesFor([14, 30, 45, 60]) : []), []);
-  const nearestOpt = (days) => expiryOpts.reduce((best, o) => (!best || Math.abs(o.dte - days) < Math.abs(best.dte - days) ? o : best), null);
-  const initOpt = nearestOpt(durationOverride || 30);
+  // Échéances proposées : les 4 dates réelles (les plus proches de 15/30/45/60 j)
+  // COTÉES PAR TOUS les sous-jacents du panier — calculées une fois au chargement
+  // (voir l'effet plus bas). Repli calendaire (vendredis) tant que la chaîne
+  // n'a pas répondu ou en cas d'indisponibilité. On stocke la DATE (expiry) ;
+  // duration = DTE jusqu'à elle → tout le site suit cette date unique.
+  const TARGETS = [15, 30, 45, 60];
+  const calendarOpts = React.useMemo(() => (window.DXExpiry ? window.DXExpiry.expiriesFor(TARGETS) : []), []);
+  const [expiryOpts, setExpiryOpts] = React.useState(calendarOpts);
+  const [expiryCommon, setExpiryCommon] = React.useState(false);   // true = options cotées par TOUS (chaîne réelle)
+  const nearestOpt = (days, opts) => (opts || expiryOpts).reduce((best, o) => (!best || Math.abs(o.dte - days) < Math.abs(best.dte - days) ? o : best), null);
+  const initOpt = nearestOpt(durationOverride || 30, calendarOpts);
   const [duration, setDuration] = React.useState(initOpt ? initOpt.dte : (durationOverride || 30));
   const [expiry,   setExpiry]   = React.useState(initOpt ? initOpt.date : null);
   const [deltaHedge, setDeltaHedge] = React.useState('none');      // none | index | legs
@@ -49,14 +55,13 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [importMsg, setImportMsg] = React.useState(null);
   const [shareOpen, setShareOpen] = React.useState(false);
   const [ibkrOpen, setIbkrOpen] = React.useState(false);   // export IBKR (What-If) — Pro
-  const [expiryAligned, setExpiryAligned] = React.useState(null);   // { from, to } si l'échéance a été alignée sur une date commune
-  const [expiryChecking, setExpiryChecking] = React.useState(false);   // vérification de l'échéance en cours
+  const [expiryChecking, setExpiryChecking] = React.useState(false);   // calcul des échéances communes en cours
   // Partage de la construction = partage de sa liste (cloud uniquement).
   const canShare = !!(window.DXCloud && window.DXCloud.enabled) && !!listId;
   const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage réservé à Pro
   const shareList = listId ? { id: listId, name: (lists || []).find(l => l.id === listId)?.name || (moduleCtx && moduleCtx.listName) || 'la construction' } : null;
 
-  function pickExpiry(o) { if (!o) return; setExpiryAligned(null); adjustedBasketRef.current = ''; setExpiry(o.date); setDuration(Math.max(1, o.dte)); }
+  function pickExpiry(o) { if (!o) return; setExpiry(o.date); setDuration(Math.max(1, o.dte)); }
 
   // Préremplir depuis une stratégie déjà construite pour cette liste
   React.useEffect(() => {
@@ -258,41 +263,40 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     };
   }, [base, nIndex, sizing, weightBasis]);
 
-  // ── Alignement AUTOMATIQUE de l'échéance sur une date commune à TOUS les
-  // sous-jacents (tous utilisateurs, dès la construction) ──────────────────
-  // Vérifie, sur la vraie chaîne d'options (Cboe), si l'échéance choisie est
-  // cotée pour TOUTES les actions du panier. Sinon, cherche la date cotée par
-  // tous la plus proche, l'adopte, et c'est ELLE qui s'applique partout dans le
-  // site (suivi, monitor, DTE, reprise, export IBKR) via `s.expiry`. Ainsi
-  // l'export n'a plus rien à recalculer. Non-cassant (échec réseau → date
-  // choisie conservée), idempotent (résoudre depuis la date commune la renvoie),
-  // effacé quand le panier change. Concerne aussi le Builder (Construction
-  // embarquée avec durationOverride).
+  // ── Échéances COMMUNES à tous les sous-jacents, calculées 1× au chargement ──
+  // Dès que le panier est prêt, on récupère (sur la vraie chaîne d'options Cboe)
+  // les échéances cotées par TOUTES les actions, et on propose les 4 dates les
+  // plus proches de 15/30/45/60 j. L'utilisateur choisit alors parmi des dates
+  // déjà valables pour tout le monde → aucune vérification/ajustement ailleurs :
+  // `s.expiry` est universelle et tout le site (suivi, monitor, DTE, reprise,
+  // export IBKR) suit. Une seule requête par panier (garde `optsRef`).
+  // Non-cassant : indisponible → repli calendaire (vendredis). Vaut aussi pour
+  // le Builder (Construction embarquée avec durationOverride).
   const compKey = sized ? sized.comps.map(c => c.ticker).join(',') : '';
-  const alignRef = React.useRef('');           // 'compKey|expiry' déjà vérifié → skip re-résolution
-  const adjustedBasketRef = React.useRef('');  // panier déjà auto-ajusté 1× → anti-oscillation (chaînes intermittentes)
-  // Nouveau panier → on repart propre (re-vérification autorisée).
-  React.useEffect(() => { alignRef.current = ''; adjustedBasketRef.current = ''; setExpiryAligned(null); }, [compKey]);
+  const optsRef = React.useRef('');   // panier déjà résolu → une seule requête
   React.useEffect(() => {
-    const curExpiry = expiry, key = compKey + '|' + curExpiry;
-    if (!base || !curExpiry || !compKey || alignRef.current === key || !(window.DXIbkr && window.DXIbkr.resolveCommonExpiry)) { setExpiryChecking(false); return; }
+    if (!base || !compKey || optsRef.current === compKey || !(window.DXIbkr && window.DXIbkr.resolveCommonExpiries)) { setExpiryChecking(false); return; }
     let cancelled = false;
     setExpiryChecking(true);
     const symbols = [base.indexEtf || base.indexSym, ...compKey.split(',')];
-    window.DXIbkr.resolveCommonExpiry(symbols, curExpiry).then(common => {
+    window.DXIbkr.resolveCommonExpiries(symbols).then(list => {
       if (cancelled) return;
       setExpiryChecking(false);
-      alignRef.current = key;                       // (panier, échéance) vérifiée : ne pas re-résoudre
-      if (!common || common === curExpiry) return;  // déjà cotée par tous (ou indispo)
-      if (adjustedBasketRef.current === compKey) return;   // déjà ajusté ce panier → ne pas osciller
-      adjustedBasketRef.current = compKey;
-      const dte = window.DXExpiry ? window.DXExpiry.dteTo(common) : null;
-      setExpiryAligned({ from: curExpiry, to: common });
-      setExpiry(common);                            // → re-run sur la date commune (idempotent), puis stop
-      if (dte != null && dte > 0) setDuration(dte);
+      optsRef.current = compKey;
+      const opts = (list && list.length && window.DXExpiry) ? window.DXExpiry.optionsFromDates(list, TARGETS) : [];
+      if (!opts.length) return;                       // indispo → on garde le repli calendaire
+      setExpiryOpts(opts);
+      setExpiryCommon(true);
+      // Cale l'échéance courante sur une option universelle (la plus proche de
+      // la durée visée) si elle n'en fait pas déjà partie.
+      if (!opts.some(o => o.date === expiry)) {
+        const target = durationOverride || duration || 30;
+        const pick = opts.reduce((b, o) => (!b || Math.abs(o.dte - target) < Math.abs(b.dte - target) ? o : b), null);
+        if (pick) { setExpiry(pick.date); setDuration(pick.dte); }
+      }
     }).catch(() => { if (!cancelled) setExpiryChecking(false); });
     return () => { cancelled = true; };
-  }, [base, compKey, expiry]);
+  }, [base, compKey]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   function buildStrategy() {
     if (!base || !sized) return null;
@@ -458,7 +462,17 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           {/* Échéance — vraies dates d'expiration options (vendredis) */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Échéance{durationOverride ? ' (définie dans le Builder)' : ''}</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Vendredi le plus proche de chaque horizon. Une <strong style={{ color: 'var(--text-soft)' }}>mensuelle</strong> (3ᵉ vendredi) est cotée pour <strong style={{ color: 'var(--text-soft)' }}>toutes</strong> les actions ; une <strong style={{ color: 'var(--text-soft)' }}>hebdo</strong> peut manquer à certaines valeurs peu liquides — l'export IBKR le vérifie sur la vraie chaîne. Le DTE et le suivi sont comptés par rapport à cette date.</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>
+              {expiryCommon
+                ? <>Dates les plus proches de 15/30/45/60 j <strong style={{ color: 'var(--pos-bright)' }}>cotées par TOUS les sous-jacents</strong> — exécutables à la même échéance. Le DTE, le suivi et l'export IBKR sont comptés par rapport à cette date.</>
+                : <>Vendredis d'expiration proches de 15/30/45/60 j.{expiryChecking ? ' Recherche des dates cotées par tous les sous-jacents…' : ''} Le DTE et le suivi sont comptés par rapport à cette date.</>}
+            </div>
+            {expiryChecking && (
+              <div style={{ marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                <span className="dx-pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
+                Calcul des échéances cotées par tous les sous-jacents…
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {expiryOpts.map(o => {
                 const on = expiry === o.date;
@@ -466,25 +480,14 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
                   <button key={o.date} onClick={() => !durationOverride && pickExpiry(o)} disabled={!!durationOverride}
                     style={{ flex: 1, minWidth: 84, padding: '9px 4px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: durationOverride ? 'default' : 'pointer', textAlign: 'center' }}>
                     <div style={{ font: '700 12px/1 var(--font-mono)' }}>{window.DXExpiry ? window.DXExpiry.fmtExpiry(o.date).replace(/ \d{4}$/, '') : o.date}</div>
-                    <div style={{ font: '9px/1.4 var(--font-mono)', color: o.monthly ? 'var(--pos-bright)' : 'var(--text-dim)', marginTop: 3 }}>{o.dte} DTE · {o.monthly ? 'mensuel ✓' : 'hebdo'}</div>
+                    <div style={{ font: '9px/1.4 var(--font-mono)', color: expiryCommon ? 'var(--pos-bright)' : (o.monthly ? 'var(--pos-bright)' : 'var(--text-dim)'), marginTop: 3 }}>{o.dte} DTE{expiryCommon ? '' : (o.monthly ? ' · mensuel ✓' : ' · hebdo')}</div>
                   </button>
                 );
               })}
             </div>
             {expiry && (
               <div style={{ marginTop: 10, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                Expiration : <strong style={{ color: 'var(--text)' }}>{window.DXExpiry ? window.DXExpiry.fmtExpiry(expiry) : expiry}</strong> · {duration} jours restants
-              </div>
-            )}
-            {expiryChecking && !expiryAligned && (
-              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                <span className="dx-pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
-                Vérification que l'échéance est cotée pour tous les sous-jacents…
-              </div>
-            )}
-            {expiryAligned && (
-              <div style={{ marginTop: 8, font: 'var(--type-caption)', color: 'var(--text-soft)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius)', padding: '8px 11px', lineHeight: 1.5 }}>
-                <strong style={{ color: 'var(--accent-hover)' }}>Échéance ajustée</strong> à <strong>{window.DXExpiry ? window.DXExpiry.fmtExpiry(expiryAligned.to) : expiryAligned.to}</strong> — la date {window.DXExpiry ? window.DXExpiry.fmtExpiry(expiryAligned.from) : expiryAligned.from} n'est pas cotée pour tous les sous-jacents. Cette date unique, cotée par <strong>toutes</strong> les actions, s'applique partout (suivi, monitor, export IBKR).
+                Expiration : <strong style={{ color: 'var(--text)' }}>{window.DXExpiry ? window.DXExpiry.fmtExpiry(expiry) : expiry}</strong> · {duration} jours restants{expiryCommon ? <span style={{ color: 'var(--pos-bright)' }}> · cotée par tous les sous-jacents</span> : null}
               </div>
             )}
           </div>

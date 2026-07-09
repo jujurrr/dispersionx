@@ -3,7 +3,7 @@
 // Cboe synthétique, sans réseau.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { occParts, resolveOne, expMapOf, commonExpiryOf } from '../api/options/contracts.js';
+import { occParts, resolveOne, expMapOf, commonExpiryOf, commonExpiriesOf } from '../api/options/contracts.js';
 
 test('occParts : décode le symbole OCC (YYMMDD + C/P + strike×1000)', () => {
   assert.deepEqual(occParts('AAPL260821C00195000'), {
@@ -69,4 +69,14 @@ test('commonExpiryOf : aucune échéance commune → null (repli per-symbole cô
   const b = expMapOf(chainWith(['260821']));
   assert.equal(commonExpiryOf([a, b], '20260807'), null);
   assert.equal(commonExpiryOf([], '20260807'), null);
+});
+
+test('commonExpiriesOf : liste TRIÉE des échéances cotées par tous', () => {
+  const a = expMapOf(chainWith(['260807', '260821', '260918']));
+  const b = expMapOf(chainWith(['260821', '260918', '261016']));   // pas 07/08
+  const c = expMapOf(chainWith(['260717', '260821', '260918']));
+  assert.deepEqual(commonExpiriesOf([a, b, c]), ['20260821', '20260918']);   // intersection triée
+  assert.deepEqual(commonExpiriesOf([]), []);
+  // Aucune intersection → []
+  assert.deepEqual(commonExpiriesOf([expMapOf(chainWith(['260807'])), expMapOf(chainWith(['260821']))]), []);
 });

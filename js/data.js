@@ -111,7 +111,27 @@
       return { date: iso, dte: dteTo(iso), target: t, monthly: _isThirdFriday(d) };
     }).filter(Boolean);
   }
-  window.DXExpiry = { expiriesFor, dteTo, fmtExpiry };
+  // 3e vendredi (échéance mensuelle) à partir d'un ISO 'YYYY-MM-DD'.
+  function isThirdFridayIso(iso) {
+    const d = new Date(String(iso || '').slice(0, 10) + 'T12:00:00');
+    return !isNaN(d) && _isThirdFriday(d);
+  }
+  // Construit des options d'échéance {date,dte,target,monthly} à partir d'une
+  // LISTE de dates réelles (ISO), en prenant la plus proche de chaque durée
+  // cible. Sert à proposer, dès la construction, des échéances cotées par TOUS
+  // les sous-jacents (dédupliquées). Repli : expiriesFor (calendaire) si liste vide.
+  function optionsFromDates(isoList, targets) {
+    const list = (isoList || []).map(s => String(s).slice(0, 10)).filter(s => { const dte = dteTo(s); return dte != null && dte >= 1; });
+    if (!list.length) return [];
+    const seen = {}, out = [];
+    for (const t of (targets || [15, 30, 45, 60])) {
+      let best = null, bestD = Infinity;
+      for (const iso of list) { const d = Math.abs(dteTo(iso) - t); if (d < bestD) { bestD = d; best = iso; } }
+      if (best && !seen[best]) { seen[best] = true; out.push({ date: best, dte: dteTo(best), target: t, monthly: isThirdFridayIso(best) }); }
+    }
+    return out.sort((a, b) => a.dte - b.dte);
+  }
+  window.DXExpiry = { expiriesFor, dteTo, fmtExpiry, isThirdFriday: isThirdFridayIso, optionsFromDates };
 
   const COMPONENTS = {
     SPX: [

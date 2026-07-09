@@ -204,24 +204,22 @@
       .catch(() => base);
   }
 
-  // Résout la SEULE échéance (ISO YYYY-MM-DD) cotée par tous les sous-jacents US
-  // d'un panier, la plus proche de `targetIso`. Sert à ALIGNER la stratégie (et
-  // donc tout le site) sur une date valable pour tout le monde. null si indispo.
-  function resolveCommonExpiry(symbols, targetIso, opts) {
+  // LISTE (ISO YYYY-MM-DD, triée) des échéances cotées par TOUS les sous-jacents
+  // US d'un panier. Sert à la construction pour proposer des échéances valables
+  // pour tout le monde (les plus proches de 15/30/45/60 j). [] si indispo.
+  function resolveCommonExpiries(symbols, opts) {
     opts = opts || {};
     const fetchFn = opts.fetch || (typeof fetch !== 'undefined' ? fetch : null);
     const origin = opts.origin || '';
-    const target8 = String(targetIso || '').slice(0, 10).replace(/-/g, '');
     const syms = [...new Set((symbols || []).map(t => symMeta(t)).filter(m => m.currency === 'USD').map(m => m.symbol))];
-    if (!fetchFn || !syms.length || !/^\d{8}$/.test(target8)) return Promise.resolve(null);
-    const url = `${origin}/api/options/contracts?symbols=${encodeURIComponent(syms.join(','))}&expiry=${target8}`;
+    if (!fetchFn || !syms.length) return Promise.resolve([]);
+    const url = `${origin}/api/options/contracts?symbols=${encodeURIComponent(syms.join(','))}`;
     return Promise.resolve(fetchFn(url))
       .then(r => (r && r.ok ? r.json() : null))
-      .then(d => {
-        const ce = d && d.commonExpiry;
-        return (ce && /^\d{8}$/.test(ce)) ? `${ce.slice(0, 4)}-${ce.slice(4, 6)}-${ce.slice(6, 8)}` : null;
-      })
-      .catch(() => null);
+      .then(d => ((d && d.commonExpiries) || [])
+        .filter(e => /^\d{8}$/.test(e))
+        .map(e => `${e.slice(0, 4)}-${e.slice(4, 6)}-${e.slice(6, 8)}`))
+      .catch(() => []);
   }
 
   function filename(s) { return `dx-ibkr-whatif-${(s && s.index) || 'strat'}-${exportExp8(s)}.csv`; }
@@ -235,5 +233,5 @@
     URL.revokeObjectURL(a.href);
   }
 
-  window.DXIbkr = { HEADER, buildRows, toCsv, summary, filename, download, roundStrike, symMeta, monthlyExp8, exportExp8, resolveContracts, resolveCommonExpiry };
+  window.DXIbkr = { HEADER, buildRows, toCsv, summary, filename, download, roundStrike, symMeta, monthlyExp8, exportExp8, resolveContracts, resolveCommonExpiries };
 })();
