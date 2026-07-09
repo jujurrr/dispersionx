@@ -10,11 +10,18 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
 
   React.useEffect(() => {
     if (!pro) { setLoading(false); return; }
+    let cancelled = false;
     // Toutes les positions (aucun list_id) — serveur, cloud ou store local.
-    DXApi.getPositions().catch(() => null).then(posData => {
-      setPositions(posData?.positions || posData || []);
-      setLoading(false);
+    const load = () => DXApi.getPositions().catch(() => null).then(posData => {
+      if (!cancelled) { setPositions(posData?.positions || posData || []); setLoading(false); }
     });
+    load();
+    // Rechargement au changement de compte (connexion/déconnexion → cloud scopé)
+    // et à toute purge/maj du cache local des positions.
+    const onChange = () => load();
+    window.addEventListener('dx-auth-change', onChange);
+    window.addEventListener('dx-positions-changed', onChange);
+    return () => { cancelled = true; window.removeEventListener('dx-auth-change', onChange); window.removeEventListener('dx-positions-changed', onChange); };
   }, [pro]);
 
   // ── Écran verrouillé (non Pro) : soft-paywall (aperçu flouté + carte) ──

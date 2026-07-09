@@ -647,6 +647,15 @@ async function syncStrategies() {
 }
 
 async function onSignedIn() {
+  // Changement de compte à chaud : si le cache local appartenait à un AUTRE
+  // compte, purger ses positions locales (repli hors-ligne/invité). Les
+  // positions d'un même compte sont préservées (pas de re-sync cloud). Les
+  // stratégies sont, elles, réécrites depuis le cloud par syncStrategies.
+  let owner = ''; try { owner = localStorage.getItem('dx-strat-owner') || ''; } catch {}
+  if (currentUser && owner && owner !== currentUser.id) {
+    try { localStorage.removeItem('dx-positions'); } catch {}
+    window.dispatchEvent(new CustomEvent('dx-positions-changed'));
+  }
   await maybeMigrateLocalLists();
   await syncStrategies();
   proAccess = await checkPro();
@@ -663,8 +672,10 @@ if (supa) {
     let owner = ''; try { owner = localStorage.getItem('dx-strat-owner') || ''; } catch {}
     if (owner !== (currentUser?.id || '')) {
       purgeLocalStrategies();
+      try { localStorage.removeItem('dx-positions'); } catch {}   // positions locales d'un autre compte
       try { if (currentUser) localStorage.setItem('dx-strat-owner', currentUser.id); else localStorage.removeItem('dx-strat-owner'); } catch {}
       window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
+      window.dispatchEvent(new CustomEvent('dx-positions-changed'));
     }
     if (currentUser) onSignedIn();
   });
@@ -675,13 +686,15 @@ if (supa) {
     if (evt === 'PASSWORD_RECOVERY') window.dispatchEvent(new CustomEvent('dx-password-recovery'));
     if (currentUser && currentUser.id !== prev) onSignedIn();
     else if (!currentUser) {
-      // Déconnexion : purger le cache local des stratégies → aucune fuite vers la
-      // session suivante (invité ou autre compte). Rafraîchir le Monitor (vide).
+      // Déconnexion : purger les caches locaux (stratégies + positions) → aucune
+      // fuite vers la session suivante (invité ou autre compte). Rafraîchir l'UI.
       purgeLocalStrategies();
+      try { localStorage.removeItem('dx-positions'); } catch {}
       try { localStorage.removeItem('dx-strat-owner'); } catch {}
       proAccess = false;
       window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: false }));
       window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
+      window.dispatchEvent(new CustomEvent('dx-positions-changed'));
     }
   });
   // Les partages changent (ex. après avoir réclamé un lien) → ré-hydrate les
