@@ -653,8 +653,14 @@ async function onSignedIn() {
   // stratégies sont, elles, réécrites depuis le cloud par syncStrategies.
   let owner = ''; try { owner = localStorage.getItem('dx-strat-owner') || ''; } catch {}
   if (currentUser && owner && owner !== currentUser.id) {
+    // Vrai changement de compte (owner = un AUTRE compte, ≠ invité) → purger les
+    // caches locaux de positions ET de listes AVANT toute migration, pour ne pas
+    // remonter les résidus de l'autre compte. (Invité→compte : owner vide → on ne
+    // purge pas → la migration invité fonctionne.)
     try { localStorage.removeItem('dx-positions'); } catch {}
+    try { localStorage.removeItem('dx-lists'); } catch {}
     window.dispatchEvent(new CustomEvent('dx-positions-changed'));
+    window.dispatchEvent(new CustomEvent('dx-lists-changed'));
   }
   await maybeMigrateLocalLists();
   await syncStrategies();
@@ -673,9 +679,11 @@ if (supa) {
     if (owner !== (currentUser?.id || '')) {
       purgeLocalStrategies();
       try { localStorage.removeItem('dx-positions'); } catch {}   // positions locales d'un autre compte
+      try { localStorage.removeItem('dx-lists'); } catch {}        // listes locales/repli d'un autre compte
       try { if (currentUser) localStorage.setItem('dx-strat-owner', currentUser.id); else localStorage.removeItem('dx-strat-owner'); } catch {}
       window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
       window.dispatchEvent(new CustomEvent('dx-positions-changed'));
+      window.dispatchEvent(new CustomEvent('dx-lists-changed'));
     }
     if (currentUser) onSignedIn();
   });
@@ -690,11 +698,13 @@ if (supa) {
       // fuite vers la session suivante (invité ou autre compte). Rafraîchir l'UI.
       purgeLocalStrategies();
       try { localStorage.removeItem('dx-positions'); } catch {}
+      try { localStorage.removeItem('dx-lists'); } catch {}
       try { localStorage.removeItem('dx-strat-owner'); } catch {}
       proAccess = false;
       window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: false }));
       window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
       window.dispatchEvent(new CustomEvent('dx-positions-changed'));
+      window.dispatchEvent(new CustomEvent('dx-lists-changed'));
     }
   });
   // Les partages changent (ex. après avoir réclamé un lien) → ré-hydrate les
