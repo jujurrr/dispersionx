@@ -60,6 +60,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   // Confirmation in-app (ConfirmDialog) — plus de popup navigateur.
   const [dialog, setDialog] = React.useState(null);
   const [dialogBusy, setDialogBusy] = React.useState(false);
+  // Export IBKR (Risk Navigator · What-If) — réservé Pro.
+  const isProUser = !!(window.DXCloud && window.DXCloud.pro);
+  const [ibkrOpen, setIbkrOpen] = React.useState(false);
   async function runDialog() {
     if (!dialog?.onConfirm) return;
     setDialogBusy(true);
@@ -320,6 +323,12 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
               style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: restoring ? 'default' : 'pointer' }}>
               {restoring ? '…' : 'Ouvrir le Risk Lab'}
             </button>
+            {/* Export IBKR (Risk Navigator · What-If) — réservé Pro */}
+            {isProUser
+              ? <button onClick={() => setIbkrOpen(true)} title="Générer un CSV importable dans le Risk Navigator de TWS (What-If)"
+                  style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>⇪ Exporter vers IBKR</button>
+              : <button onClick={() => onNav && onNav('pricing')} title="Export IBKR réservé à l'offre Pro"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>🔒 Exporter vers IBKR <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 5px', borderRadius: 7, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase' }}>Pro</span></button>}
           </div>
         </div>
       )}
@@ -673,6 +682,10 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
       <window.ConfirmDialog open={!!dialog} title={dialog?.title} message={dialog?.message} confirmLabel={dialog?.confirmLabel} tone={dialog?.tone} busy={dialogBusy}
         onCancel={() => !dialogBusy && setDialog(null)} onConfirm={runDialog} />
+
+      {ibkrOpen && window.IbkrExportDialog && data.strategy && (
+        <window.IbkrExportDialog strategy={data.strategy} onClose={() => setIbkrOpen(false)} />
+      )}
     </div>
   );
 }

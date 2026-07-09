@@ -7,8 +7,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
   const [strats, setStrats] = React.useState(null);
   const [sel, setSel] = React.useState(0);
   const [shareFor, setShareFor] = React.useState(null);   // liste de la construction à partager
+  const [ibkrOpen, setIbkrOpen] = React.useState(false);   // export IBKR (What-If) — Pro
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
-  const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage réservé à Pro
+  const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage + export IBKR réservés à Pro
 
   const reload = React.useCallback(() => {
     setStrats((window.DXApi && DXApi.localStrategies) ? DXApi.localStrategies(lists) : []);
@@ -143,6 +144,10 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {onNav && <button onClick={() => onNav('risk', { listId: cur.s.listId })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Risk Lab →</button>}
               {onNav && <button onClick={() => onNav('construction', { listId: cur.s.listId })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Ajuster</button>}
+              {/* Export IBKR (Risk Navigator · What-If) — réservé Pro */}
+              {isProUser
+                ? <button onClick={() => setIbkrOpen(true)} title="Générer un CSV importable dans le Risk Navigator de TWS (What-If)" style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>⇪ Exporter IBKR</button>
+                : <button onClick={() => onNav && onNav('pricing')} title="Export IBKR réservé à l'offre Pro" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>🔒 Exporter IBKR <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 5px', borderRadius: 7, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase' }}>Pro</span></button>}
               {cloudOn && cur.s.listId && (isProUser
                 ? <button onClick={() => setShareFor({ id: cur.s.listId, name: cur.s.listName || cur.m.name })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>🔗 Partager</button>
                 : <button onClick={() => onNav && onNav('pricing')} title="Partage réservé à l'offre Pro" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>🔒 Partager <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 5px', borderRadius: 7, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase' }}>Pro</span></button>)}
@@ -213,6 +218,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
 
       {shareFor && window.ShareDialog && (
         <window.ShareDialog list={shareFor} kind="construction" onClose={() => setShareFor(null)} addToast={addToast} />
+      )}
+      {ibkrOpen && window.IbkrExportDialog && cur && (
+        <window.IbkrExportDialog strategy={cur.s} onClose={() => setIbkrOpen(false)} />
       )}
     </div>
   );
