@@ -1045,11 +1045,13 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
     else if (e.key === 'Escape') { setShowSugg(false); setOpen(false); }
   }
 
+  // Nom affiché : on privilégie le nom COURANT de la liste (source de vérité
+  // `lists`, donc reflète tout renommage) ; repli sur le nom stocké dans le
+  // contexte si la liste n'est pas (encore) chargée.
+  const activeList = lists?.find(l => l.id === ctx.listId);
   const label = ctx.ticker
     ? ctx.ticker + (ctx.index ? ' / ' + ctx.index : '')
-    : ctx.listName || 'Liste sélectionnée';
-
-  const activeList = lists?.find(l => l.id === ctx.listId);
+    : (activeList?.name || ctx.listName || 'Liste sélectionnée');
   const subLabel = ctx.ticker
     ? 'Actif individuel'
     : (activeList?.n_items || '—') + ' actions · ' + (ctx.listIndex || ctx.index || 'SPX');

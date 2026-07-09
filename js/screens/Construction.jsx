@@ -87,6 +87,18 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
   React.useEffect(() => { if (durationOverride) pickExpiry(nearestOpt(durationOverride)); }, [durationOverride]);
 
+  // Synchronise la barre de contexte (haut de page) avec la liste RÉELLEMENT
+  // ouverte : arrivée depuis Opportunités avec un nouveau listId, ou liste
+  // renommée ailleurs → le sélecteur affiche la bonne liste et son nom courant.
+  React.useEffect(() => {
+    if (embedded || !onModuleCtx || !listId) return;
+    const l = (lists || []).find(x => x.id === listId);
+    if (!l) return;   // liste pas encore chargée → on retentera au prochain lists
+    if (moduleCtx?.listId !== listId || moduleCtx?.listName !== l.name) {
+      onModuleCtx({ listId, listName: l.name, listIndex: l.index_symbol || 'SPX', index: l.index_symbol || 'SPX', ticker: null });
+    }
+  }, [listId, lists, embedded]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   // Charger données marché + grecs locaux (recalcul si durée change)
   React.useEffect(() => {
     if (!hasCtx) return;
@@ -420,7 +432,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     <div style={{ display: 'flex', flexDirection: 'column', gap: embedded ? 16 : 24 }}>
 
       {!embedded && lists && onModuleCtx && ctx.listId && (
-        <window.ModuleCtxBar ctx={ctx} lists={lists} onCtx={upd => onModuleCtx(upd)} onClear={() => onModuleCtx({ listId: null, listName: null })} />
+        <window.ModuleCtxBar ctx={ctx} lists={lists}
+          onCtx={upd => { onModuleCtx(upd); if (upd.listId && upd.listId !== listId && onNav) onNav('construction', { listId: upd.listId }); }}
+          onClear={() => { onModuleCtx({ listId: null, listName: null }); if (onNav) onNav('construction'); }} />
       )}
 
       {!embedded && (
