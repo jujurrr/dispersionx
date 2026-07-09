@@ -691,15 +691,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         onCancel={() => !dialogBusy && setDialog(null)} onConfirm={runDialog} />
 
       {ibkrOpen && window.IbkrExportDialog && data.strategy && (
-        <window.IbkrExportDialog strategy={data.strategy} onClose={() => setIbkrOpen(false)}
-          onAlign={(iso) => {
-            const lid = data.position && data.position.list_id;
-            if (window.DXApi && DXApi.alignStrategyExpiry && lid) DXApi.alignStrategyExpiry(lid, iso);
-            // Refléter la nouvelle échéance SANS re-fetch (pas de load() → pas
-            // de démontage du dialogue → aucune boucle de rendu).
-            const dte = window.DXExpiry ? window.DXExpiry.dteTo(iso) : null;
-            setData(d => (d && d.strategy) ? { ...d, strategy: { ...d.strategy, expiry: iso, duration: (dte != null && dte > 0) ? dte : d.strategy.duration } } : d);
-          }} />
+        <window.IbkrExportDialog strategy={data.strategy} onClose={() => setIbkrOpen(false)} />
       )}
     </div>
   );

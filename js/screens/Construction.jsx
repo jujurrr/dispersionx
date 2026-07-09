@@ -50,12 +50,13 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [shareOpen, setShareOpen] = React.useState(false);
   const [ibkrOpen, setIbkrOpen] = React.useState(false);   // export IBKR (What-If) — Pro
   const [expiryAligned, setExpiryAligned] = React.useState(null);   // { from, to } si l'échéance a été alignée sur une date commune
+  const [expiryChecking, setExpiryChecking] = React.useState(false);   // vérification de l'échéance en cours
   // Partage de la construction = partage de sa liste (cloud uniquement).
   const canShare = !!(window.DXCloud && window.DXCloud.enabled) && !!listId;
   const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage réservé à Pro
   const shareList = listId ? { id: listId, name: (lists || []).find(l => l.id === listId)?.name || (moduleCtx && moduleCtx.listName) || 'la construction' } : null;
 
-  function pickExpiry(o) { if (!o) return; setExpiryAligned(null); setExpiry(o.date); setDuration(Math.max(1, o.dte)); }
+  function pickExpiry(o) { if (!o) return; setExpiryAligned(null); adjustedBasketRef.current = ''; setExpiry(o.date); setDuration(Math.max(1, o.dte)); }
 
   // Préremplir depuis une stratégie déjà construite pour cette liste
   React.useEffect(() => {
@@ -257,12 +258,41 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     };
   }, [base, nIndex, sizing, weightBasis]);
 
-  // Note d'alignement d'échéance : effacée dès que le panier change (nouvelle
-  // signature de composants) → repart propre. L'alignement lui-même est fait au
-  // moment de l'export (clic « Télécharger » du dialogue IBKR, via onAlign),
-  // jamais dans un effet automatique — pour éviter tout rechargement/boucle.
+  // ── Alignement AUTOMATIQUE de l'échéance sur une date commune à TOUS les
+  // sous-jacents (tous utilisateurs, dès la construction) ──────────────────
+  // Vérifie, sur la vraie chaîne d'options (Cboe), si l'échéance choisie est
+  // cotée pour TOUTES les actions du panier. Sinon, cherche la date cotée par
+  // tous la plus proche, l'adopte, et c'est ELLE qui s'applique partout dans le
+  // site (suivi, monitor, DTE, reprise, export IBKR) via `s.expiry`. Ainsi
+  // l'export n'a plus rien à recalculer. Non-cassant (échec réseau → date
+  // choisie conservée), idempotent (résoudre depuis la date commune la renvoie),
+  // effacé quand le panier change. Concerne aussi le Builder (Construction
+  // embarquée avec durationOverride).
   const compKey = sized ? sized.comps.map(c => c.ticker).join(',') : '';
-  React.useEffect(() => { setExpiryAligned(null); }, [compKey]);
+  const alignRef = React.useRef('');           // 'compKey|expiry' déjà vérifié → skip re-résolution
+  const adjustedBasketRef = React.useRef('');  // panier déjà auto-ajusté 1× → anti-oscillation (chaînes intermittentes)
+  // Nouveau panier → on repart propre (re-vérification autorisée).
+  React.useEffect(() => { alignRef.current = ''; adjustedBasketRef.current = ''; setExpiryAligned(null); }, [compKey]);
+  React.useEffect(() => {
+    const curExpiry = expiry, key = compKey + '|' + curExpiry;
+    if (!base || !curExpiry || !compKey || alignRef.current === key || !(window.DXIbkr && window.DXIbkr.resolveCommonExpiry)) { setExpiryChecking(false); return; }
+    let cancelled = false;
+    setExpiryChecking(true);
+    const symbols = [base.indexEtf || base.indexSym, ...compKey.split(',')];
+    window.DXIbkr.resolveCommonExpiry(symbols, curExpiry).then(common => {
+      if (cancelled) return;
+      setExpiryChecking(false);
+      alignRef.current = key;                       // (panier, échéance) vérifiée : ne pas re-résoudre
+      if (!common || common === curExpiry) return;  // déjà cotée par tous (ou indispo)
+      if (adjustedBasketRef.current === compKey) return;   // déjà ajusté ce panier → ne pas osciller
+      adjustedBasketRef.current = compKey;
+      const dte = window.DXExpiry ? window.DXExpiry.dteTo(common) : null;
+      setExpiryAligned({ from: curExpiry, to: common });
+      setExpiry(common);                            // → re-run sur la date commune (idempotent), puis stop
+      if (dte != null && dte > 0) setDuration(dte);
+    }).catch(() => { if (!cancelled) setExpiryChecking(false); });
+    return () => { cancelled = true; };
+  }, [base, compKey, expiry]);
 
   function buildStrategy() {
     if (!base || !sized) return null;
@@ -446,9 +476,15 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
                 Expiration : <strong style={{ color: 'var(--text)' }}>{window.DXExpiry ? window.DXExpiry.fmtExpiry(expiry) : expiry}</strong> · {duration} jours restants
               </div>
             )}
+            {expiryChecking && !expiryAligned && (
+              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+                <span className="dx-pulse" style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
+                Vérification que l'échéance est cotée pour tous les sous-jacents…
+              </div>
+            )}
             {expiryAligned && (
               <div style={{ marginTop: 8, font: 'var(--type-caption)', color: 'var(--text-soft)', background: 'var(--accent-soft)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius)', padding: '8px 11px', lineHeight: 1.5 }}>
-                <strong style={{ color: 'var(--accent-hover)' }}>Échéance alignée</strong> sur <strong>{window.DXExpiry ? window.DXExpiry.fmtExpiry(expiryAligned.to) : expiryAligned.to}</strong> — la date {window.DXExpiry ? window.DXExpiry.fmtExpiry(expiryAligned.from) : expiryAligned.from} n'est pas cotée pour tous les sous-jacents. Cette date unique, valable pour <strong>toute</strong> la stratégie, est utilisée partout (suivi, monitor, export IBKR).
+                <strong style={{ color: 'var(--accent-hover)' }}>Échéance ajustée</strong> à <strong>{window.DXExpiry ? window.DXExpiry.fmtExpiry(expiryAligned.to) : expiryAligned.to}</strong> — la date {window.DXExpiry ? window.DXExpiry.fmtExpiry(expiryAligned.from) : expiryAligned.from} n'est pas cotée pour tous les sous-jacents. Cette date unique, cotée par <strong>toutes</strong> les actions, s'applique partout (suivi, monitor, export IBKR).
               </div>
             )}
           </div>
@@ -713,16 +749,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         <window.ShareDialog list={shareList} kind="construction" onClose={() => setShareOpen(false)} addToast={addToast} />
       )}
       {ibkrOpen && window.IbkrExportDialog && (
-        <window.IbkrExportDialog strategy={buildStrategy()} onClose={() => setIbkrOpen(false)}
-          onAlign={(iso) => {
-            // Échéance commune trouvée par le dialogue → aligner la construction
-            // (et donc toute la stratégie) sur cette date valable pour tous.
-            setExpiryAligned({ from: expiry, to: iso });
-            setExpiry(iso);
-            const dte = window.DXExpiry ? window.DXExpiry.dteTo(iso) : null;
-            if (dte != null && dte > 0) setDuration(dte);
-            if (window.DXApi && DXApi.alignStrategyExpiry) DXApi.alignStrategyExpiry(listId, iso);
-          }} />
+        <window.IbkrExportDialog strategy={buildStrategy()} onClose={() => setIbkrOpen(false)} />
       )}
     </div>
   );

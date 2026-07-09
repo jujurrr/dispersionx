@@ -391,27 +391,6 @@
     const c = _cloud();
     if (c && c.strategies) c.strategies.remove(listId).catch(e => console.warn('cloud deleteStrategy', e));
   }
-  // Aligne l'échéance d'une stratégie (ET des positions locales qui la suivent)
-  // sur une date COMMUNE cotée par tous les sous-jacents → toutes les vues du
-  // site (construction, monitor, suivi, DTE, reprise) reprennent la MÊME date.
-  // best-effort ; émet `dx-strategies-changed` pour rafraîchir les écrans.
-  function alignStrategyExpiry(listId, iso) {
-    const day = String(iso || '').slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return;
-    const dte = window.DXExpiry ? window.DXExpiry.dteTo(day) : null;
-    const patch = (s) => { if (!s) return s; s.expiry = day; if (dte != null && dte > 0) s.duration = dte; return s; };
-    // 1) Stratégie de travail (dx-strategy-<listId>) + cloud (write-through).
-    if (listId) {
-      try { const raw = localStorage.getItem('dx-strategy-' + listId); if (raw) { const s = JSON.parse(raw); if (s) saveStrategy(listId, patch(s)); } } catch {}
-    }
-    // 2) Positions LOCALES rattachées à cette liste (le suivi/monitor reliront).
-    try {
-      const arr = _loadPositions(); let changed = false;
-      for (const p of arr) if (p && p.strategy && String(p.list_id) === String(listId)) { patch(p.strategy); changed = true; }
-      if (changed) _savePositions(arr);
-    } catch {}
-    try { window.dispatchEvent(new CustomEvent('dx-strategies-changed')); } catch {}
-  }
   // Métriques dérivées d'une stratégie sauvegardée (DTE restant, état, alerte).
   function strategyMetrics(s) {
     const p = s.portfolio || {};
@@ -701,7 +680,7 @@
     getCorrelation, backtestDispersion, correlationBarometer, earningsCalendar,
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
-    localStrategies, saveStrategy, deleteLocalStrategy, alignStrategyExpiry, strategyMetrics,
+    localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
     getRisk,
     getChecklist, commitPosition,
     getPositions, getPosition, snapshotPosition, closePosition, deletePosition, reprice, renamePosition,

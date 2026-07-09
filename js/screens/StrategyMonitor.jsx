@@ -220,8 +220,7 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
         <window.ShareDialog list={shareFor} kind="construction" onClose={() => setShareFor(null)} addToast={addToast} />
       )}
       {ibkrOpen && window.IbkrExportDialog && cur && (
-        <window.IbkrExportDialog strategy={cur.s} onClose={() => setIbkrOpen(false)}
-          onAlign={(iso) => { if (window.DXApi && DXApi.alignStrategyExpiry) DXApi.alignStrategyExpiry(cur.s.listId, iso); reload(); }} />
+        <window.IbkrExportDialog strategy={cur.s} onClose={() => setIbkrOpen(false)} />
       )}
     </div>
   );

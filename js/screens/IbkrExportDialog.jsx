@@ -6,12 +6,11 @@
    comment l'importer, et rappelle que RIEN n'est exécuté : c'est virtuel tant
    qu'aucun ordre n'est transmis. Contrôlée : l'écran rend <IbkrExportDialog
    strategy=… onClose=… /> quand il veut l'ouvrir. */
-function IbkrExportDialog({ strategy, onClose, onAlign }) {
+function IbkrExportDialog({ strategy, onClose }) {
   const s = strategy;
   const [resolved, setResolved] = React.useState(null);
   const [resolving, setResolving] = React.useState(true);
   const [done, setDone] = React.useState(false);
-  const alignedRef = React.useRef('');
 
   // Signature stable de la stratégie → évite de re-vérifier à chaque rendu
   // (buildStrategy() renvoie un nouvel objet à chaque fois).
@@ -46,17 +45,12 @@ function IbkrExportDialog({ strategy, onClose, onAlign }) {
   const expTxt = window.DXExpiry ? window.DXExpiry.fmtExpiry(expIso) : expIso;
 
   // Le fichier est produit à partir des contrats DÉJÀ vérifiés à l'ouverture.
-  // C'est ICI (clic délibéré, une seule fois via alignedRef) qu'on propage
-  // l'échéance commune au reste du site — jamais dans un effet automatique.
+  // L'échéance est déjà alignée à la construction (cotée par tous) → rien à
+  // recalculer ici : on télécharge simplement.
   function doDownload() {
     if (resolving) return;
     window.DXIbkr.download(s, resolved);
     setDone(true);
-    const ce = resolved && resolved.commonExpiry;
-    if (ce && ce !== resolved.selectedExp8 && onAlign && alignedRef.current !== ce) {
-      alignedRef.current = ce;
-      onAlign(`${ce.slice(0, 4)}-${ce.slice(4, 6)}-${ce.slice(6, 8)}`);
-    }
   }
   const sum = stats;
 
