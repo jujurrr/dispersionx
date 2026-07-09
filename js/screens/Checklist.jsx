@@ -29,7 +29,17 @@ function Checklist({ listId, onNav, addToast, mode, pro }) {
     if (!pro) { onNav('positions'); return; }
     setCommitting(true);
     try {
-      const res = await DXApi.commitPosition(listId, commitName || null);
+      const nm = (commitName || '').trim();
+      await DXApi.commitPosition(listId, nm || null);
+      // Interconnexion des noms : si l'utilisateur a saisi un nom, renommer AUSSI
+      // la liste liée → le même nom se propage partout (liste, Strategy Monitor,
+      // suivi), exactement comme le renommage depuis le suivi.
+      if (nm) {
+        try {
+          const l = await DXApi.getList(listId);
+          if (l && l.id) { await DXApi.updateList(listId, nm, l.description || ''); window.dispatchEvent(new CustomEvent('dx-lists-changed')); }
+        } catch { /* liste absente → on garde le nom de la position seule */ }
+      }
       addToast && addToast('Position créée et suivie.', 'ok');
       onNav('positions');
     } catch (err) {
