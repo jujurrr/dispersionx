@@ -274,8 +274,8 @@
       'Ne remplace pas Risk Navigator ni une validation humaine': 'Does not replace Risk Navigator or human validation',
       "N'exécute jamais automatiquement sans contrôle": 'Never executes automatically without control',
       // Exécution
-      "La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.":
-        'The strategy can be reproduced manually on multi-leg options platforms — notably IBKR TWS or OptionTrader. DispersionX stays agnostic: it prepares the analysis and the construction, you keep control of the execution.',
+      "La stratégie peut être reproduite sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.":
+        'The strategy can be reproduced on multi-leg options platforms — notably IBKR TWS or OptionTrader. DispersionX stays agnostic: it prepares the analysis and the construction, you keep control of the execution.',
       'Options multi-jambes': 'Multi-leg options',
       // Pro
       "Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur construit les meilleures dispersions tout seul, et le suivi valorise vos positions au marché réel, jour après jour.":
@@ -301,6 +301,20 @@
       'actions': 'stocks',
       'prime ρ': 'ρ premium',
       'Évolution du P&L': 'P&L evolution',
+      // ── Pro — export IBKR (Landing §5 Exécution + carte phare ProBenefits) ──
+      'Du clic au courtier': 'From click to broker',
+      'Découvrir Pro': 'Discover Pro',
+      'Exportez toute la stratégie vers IBKR en un clic': 'Export the whole strategy to IBKR in one click',
+      "Pro génère un fichier prêt à importer dans le Risk Navigator de TWS — options indice, straddles composants et couverture delta en actions comprises. Il s'ouvre en portefeuille « What-If » : vous suivez la position virtuellement, puis vous exécutez chez votre courtier quand vous voulez. Rien n'est jamais transmis sans vous.":
+        'Pro generates a file ready to import into the TWS Risk Navigator — index options, component straddles and the stock delta hedge included. It opens as a "What-If" portfolio: you follow the position virtually, then execute at your broker whenever you want. Nothing is ever transmitted without you.',
+      'Exportez la stratégie vers IBKR — prête à trader': 'Export the strategy to IBKR — ready to trade',
+      "Un seul clic et toute la construction part dans un fichier importable dans le Risk Navigator de TWS : options indice, straddles composants et couverture delta en actions. Plus rien à ressaisir — vous suivez la position en What-If, puis vous exécutez chez votre courtier quand vous le décidez.":
+        'A single click and the whole construction goes into a file you can import into the TWS Risk Navigator: index options, component straddles and the stock delta hedge. Nothing to re-enter — you follow the position in What-If, then execute at your broker whenever you decide.',
+      'CSV importable en 1 clic — toutes les jambes reproduites fidèlement': 'CSV importable in 1 click — every leg faithfully reproduced',
+      'Jambes de couverture delta en actions incluses': 'Stock delta-hedge legs included',
+      "What-If : suivez virtuellement, puis transmettez l'ordre — rien n'est exécuté sans vous": 'What-If: follow it virtually, then transmit the order — nothing is executed without you',
+      'call + put': 'call + put',
+      'actions (hedge)': 'stock (hedge)',
     },
     zh: {
       // ── Navigation (barre latérale) ──
@@ -545,8 +559,8 @@
       'Ne remplace pas Risk Navigator ni une validation humaine': '不替代 Risk Navigator 或人工验证',
       "N'exécute jamais automatiquement sans contrôle": '绝不会在没有监督的情况下自动执行',
       // Exécution
-      "La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.":
-        '该策略可以在多腿期权平台上手动复制 — 尤其是 IBKR TWS 或 OptionTrader。DispersionX 保持中立：它负责分析与构建，执行则由您掌控。',
+      "La stratégie peut être reproduite sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.":
+        '该策略可以在多腿期权平台上复制 — 尤其是 IBKR TWS 或 OptionTrader。DispersionX 保持中立：它负责分析与构建，执行则由您掌控。',
       'Options multi-jambes': '多腿期权',
       // Pro
       "Les outils d'analyse restent gratuits. Pro ajoute le moteur qui vous fait gagner des heures : l'auto-chercheur construit les meilleures dispersions tout seul, et le suivi valorise vos positions au marché réel, jour après jour.":
@@ -572,6 +586,20 @@
       'actions': '只股票',
       'prime ρ': 'ρ 溢价',
       'Évolution du P&L': '盈亏走势',
+      // ── Pro — export IBKR (Landing §5 Exécution + carte phare ProBenefits) ──
+      'Du clic au courtier': '从点击到券商',
+      'Découvrir Pro': '了解 Pro',
+      'Exportez toute la stratégie vers IBKR en un clic': '一键将整个策略导出到 IBKR',
+      "Pro génère un fichier prêt à importer dans le Risk Navigator de TWS — options indice, straddles composants et couverture delta en actions comprises. Il s'ouvre en portefeuille « What-If » : vous suivez la position virtuellement, puis vous exécutez chez votre courtier quand vous voulez. Rien n'est jamais transmis sans vous.":
+        'Pro 会生成一个可直接导入 TWS Risk Navigator 的文件 — 包含指数期权、成分股跨式以及股票 Delta 对冲。它以“What-If”投资组合形式打开：您可以虚拟跟踪该持仓，随后在任何时候于您的券商处执行。没有您的操作，绝不会传输任何订单。',
+      'Exportez la stratégie vers IBKR — prête à trader': '将策略导出到 IBKR — 可直接交易',
+      "Un seul clic et toute la construction part dans un fichier importable dans le Risk Navigator de TWS : options indice, straddles composants et couverture delta en actions. Plus rien à ressaisir — vous suivez la position en What-If, puis vous exécutez chez votre courtier quand vous le décidez.":
+        '只需一键，整个构建即可进入一个可导入 TWS Risk Navigator 的文件：指数期权、成分股跨式以及股票 Delta 对冲。无需重新录入 — 您在 What-If 中跟踪持仓，然后在您决定时于券商处执行。',
+      'CSV importable en 1 clic — toutes les jambes reproduites fidèlement': '一键可导入的 CSV — 忠实还原每一条腿',
+      'Jambes de couverture delta en actions incluses': '包含股票 Delta 对冲腿',
+      "What-If : suivez virtuellement, puis transmettez l'ordre — rien n'est exécuté sans vous": 'What-If：虚拟跟踪，随后再传输订单 — 没有您的操作不会执行',
+      'call + put': '看涨 + 看跌',
+      'actions (hedge)': '股票（对冲）',
     },
   };
 
