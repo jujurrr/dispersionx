@@ -691,7 +691,8 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         onCancel={() => !dialogBusy && setDialog(null)} onConfirm={runDialog} />
 
       {ibkrOpen && window.IbkrExportDialog && data.strategy && (
-        <window.IbkrExportDialog strategy={data.strategy} onClose={() => setIbkrOpen(false)} />
+        <window.IbkrExportDialog strategy={data.strategy} onClose={() => setIbkrOpen(false)}
+          onAlign={(iso) => { const lid = data.position && data.position.list_id; if (window.DXApi && DXApi.alignStrategyExpiry && lid) DXApi.alignStrategyExpiry(lid, iso); load(); }} />
       )}
     </div>
   );

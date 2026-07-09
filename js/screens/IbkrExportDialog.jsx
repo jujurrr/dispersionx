@@ -6,33 +6,55 @@
    comment l'importer, et rappelle que RIEN n'est exécuté : c'est virtuel tant
    qu'aucun ordre n'est transmis. Contrôlée : l'écran rend <IbkrExportDialog
    strategy=… onClose=… /> quand il veut l'ouvrir. */
-function IbkrExportDialog({ strategy, onClose }) {
+function IbkrExportDialog({ strategy, onClose, onAlign }) {
   const s = strategy;
-  const sum = React.useMemo(() => (s && window.DXIbkr ? window.DXIbkr.summary(s) : null), [s]);
+  const [resolved, setResolved] = React.useState(null);
+  const [resolving, setResolving] = React.useState(true);
   const [done, setDone] = React.useState(false);
-  const [busy, setBusy] = React.useState(false);
-  const [stats, setStats] = React.useState(null);   // résumé après validation (jambes réelles)
+  const alignedRef = React.useRef('');
+
+  // Signature stable de la stratégie → évite de re-vérifier à chaque rendu
+  // (buildStrategy() renvoie un nouvel objet à chaque fois).
+  const sig = s ? [s.index, s.indexEtf, s.expiry, s.duration, s.deltaHedge, (s.components || []).map(c => c.ticker + ':' + c.nContracts).join(',')].join('|') : '';
+
+  // VÉRIFICATION À L'OUVERTURE : résout l'échéance COMMUNE + les strikes réels
+  // sur la vraie chaîne d'options AVANT tout téléchargement. Best-effort : en
+  // cas d'échec réseau, l'heuristique prend le relais (le fichier reste produit).
+  React.useEffect(() => {
+    if (!s || !window.DXIbkr) return;
+    let cancelled = false;
+    setResolving(true); setResolved(null); setDone(false);
+    window.DXIbkr.resolveContracts(s).then(r => {
+      if (cancelled) return;
+      setResolved(r); setResolving(false);
+      // Propage l'échéance commune (si ≠ sélection) → TOUT le site s'aligne.
+      if (r && r.commonExpiry && r.commonExpiry !== r.selectedExp8 && onAlign && alignedRef.current !== r.commonExpiry) {
+        alignedRef.current = r.commonExpiry;
+        const ce = r.commonExpiry;
+        onAlign(`${ce.slice(0, 4)}-${ce.slice(4, 6)}-${ce.slice(6, 8)}`);
+      }
+    }).catch(() => { if (!cancelled) setResolving(false); });
+    return () => { cancelled = true; };
+  }, [sig]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const stats = React.useMemo(() => (s && window.DXIbkr ? window.DXIbkr.summary(s, resolved) : null), [sig, resolved]);   // eslint-disable-line react-hooks/exhaustive-deps
   if (!s || !window.DXIbkr) return null;
 
   const hedgeLabel = s.deltaHedge === 'index' ? 'globale (actions ETF indice)'
     : s.deltaHedge === 'legs' ? 'jambe par jambe (actions des composants + ETF indice)'
     : 'aucune';
-  // Échéance réellement exportée = celle de la stratégie (identique au reste du site).
-  const exp8 = window.DXIbkr.exportExp8(s);
-  const expIso = `${exp8.slice(0, 4)}-${exp8.slice(4, 6)}-${exp8.slice(6, 8)}`;
+  // Échéance réellement ÉCRITE = l'échéance commune résolue (sinon celle de la stratégie).
+  const usedExp8 = (resolved && resolved.targetExp8) || window.DXIbkr.exportExp8(s);
+  const expIso = `${usedExp8.slice(0, 4)}-${usedExp8.slice(4, 6)}-${usedExp8.slice(6, 8)}`;
   const expTxt = window.DXExpiry ? window.DXExpiry.fmtExpiry(expIso) : expIso;
 
-  // Valide les contrats sur la vraie chaîne d'options (Cboe) puis télécharge.
-  // Best-effort : en cas d'échec réseau, l'heuristique (mensuelle + grille
-  // standard) prend le relais — le fichier est toujours produit.
-  async function doDownload() {
-    if (busy) return;
-    setBusy(true);
-    let resolved = null;
-    try { resolved = await window.DXIbkr.resolveContracts(s); } catch { /* repli heuristique */ }
-    try { window.DXIbkr.download(s, resolved); setStats(window.DXIbkr.summary(s, resolved)); setDone(true); }
-    finally { setBusy(false); }
+  // Le fichier est produit à partir des contrats DÉJÀ vérifiés à l'ouverture.
+  function doDownload() {
+    if (resolving) return;
+    window.DXIbkr.download(s, resolved);
+    setDone(true);
   }
+  const sum = stats;
 
   const Card = ({ children, style }) => (
     <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '12px 14px', ...style }}>{children}</div>
@@ -79,10 +101,10 @@ function IbkrExportDialog({ strategy, onClose }) {
           </div>
         </Card>
 
-        {/* Bouton de téléchargement */}
+        {/* Bouton de téléchargement — actif seulement après la vérification */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <button onClick={doDownload} disabled={busy} style={{ font: '600 13px/1 var(--font-sans)', padding: '12px 22px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: busy ? 'default' : 'pointer', opacity: busy ? 0.75 : 1 }}>
-            {busy ? 'Validation des contrats…' : '↓ Télécharger le CSV (What-If)'}
+          <button onClick={doDownload} disabled={resolving} style={{ font: '600 13px/1 var(--font-sans)', padding: '12px 22px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: resolving ? 'default' : 'pointer', opacity: resolving ? 0.7 : 1 }}>
+            {resolving ? 'Vérification des échéances…' : '↓ Télécharger le CSV (What-If)'}
           </button>
           {done && (
             <span style={{ font: 'var(--type-body-sm)', color: 'var(--pos-bright)', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -91,22 +113,28 @@ function IbkrExportDialog({ strategy, onClose }) {
           )}
         </div>
 
-        {/* Résultat de la validation des contrats sur la vraie chaîne d'options */}
-        {done && stats && stats.optionSymbols > 0 && (
+        {/* Vérification des contrats sur la vraie chaîne d'options — dès l'ouverture */}
+        {stats && stats.optionSymbols > 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <div style={{ font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-muted)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
-              {stats.validated === stats.optionSymbols ? (
-                <><strong style={{ color: 'var(--pos-bright)' }}>✓ {stats.validated}/{stats.optionSymbols} sous-jacents validés</strong> sur la chaîne d'options réelle (Cboe) — strikes et échéance réellement listés.</>
-              ) : (
-                <><strong style={{ color: 'var(--text-soft)' }}>{stats.validated}/{stats.optionSymbols} sous-jacents validés</strong> sur la chaîne d'options réelle. Les {stats.approximated} restant{stats.approximated > 1 ? 's' : ''} (composants sans options US ou chaîne indisponible) utilisent le strike standard le plus proche — si TWS en rejette un, choisis le strike listé voisin.</>
-              )}
-            </div>
-            {stats.expiryAdjusted && stats.usedExp8 && (() => {
-              const u = stats.usedExp8, uIso = `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}`;
-              const uTxt = window.DXExpiry ? window.DXExpiry.fmtExpiry(uIso) : uIso;
+            {resolving ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-soft)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
+                <span className="dx-pulse" style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--warn)', flexShrink: 0 }} />
+                Vérification des échéances et strikes sur la chaîne d'options réelle (Cboe) — recherche d'une date cotée par <strong>tous</strong> les sous-jacents…
+              </div>
+            ) : (
+              <div style={{ font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-muted)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
+                {stats.validated === stats.optionSymbols ? (
+                  <><strong style={{ color: 'var(--pos-bright)' }}>✓ {stats.validated}/{stats.optionSymbols} sous-jacents validés</strong> sur la chaîne d'options réelle (Cboe) — strikes et échéance réellement listés.</>
+                ) : (
+                  <><strong style={{ color: 'var(--text-soft)' }}>{stats.validated}/{stats.optionSymbols} sous-jacents validés</strong> sur la chaîne d'options réelle. Les {stats.approximated} restant{stats.approximated > 1 ? 's' : ''} (composants sans options US ou chaîne indisponible) utilisent le strike standard le plus proche — si TWS en rejette un, choisis le strike listé voisin.</>
+                )}
+              </div>
+            )}
+            {!resolving && stats.expiryAdjusted && stats.usedExp8 && stats.selectedExp8 && (() => {
+              const fmt = e => { const iso = `${e.slice(0, 4)}-${e.slice(4, 6)}-${e.slice(6, 8)}`; return window.DXExpiry ? window.DXExpiry.fmtExpiry(iso) : iso; };
               return (
                 <div style={{ font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-soft)', background: 'var(--warn-soft, rgba(234,179,8,0.1))', border: '1px solid var(--warn-border, rgba(234,179,8,0.35))', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
-                  <strong style={{ color: 'var(--warn)' }}>Échéance commune : {uTxt}.</strong> La date de la stratégie ({expTxt}) n'est pas cotée par toutes les actions — <strong>toutes les jambes</strong> utilisent donc une seule échéance cotée par l'ensemble des sous-jacents. À la construction, cette date est alignée automatiquement partout dans le site.
+                  <strong style={{ color: 'var(--warn)' }}>Échéance alignée sur {fmt(stats.usedExp8)}.</strong> La date sélectionnée ({fmt(stats.selectedExp8)}) n'est pas cotée par toutes les actions — <strong>toutes les jambes</strong> utilisent donc une seule échéance cotée par l'ensemble des sous-jacents, et cette date s'applique partout dans le site (suivi, monitor).
                 </div>
               );
             })()}

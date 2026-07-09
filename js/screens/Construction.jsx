@@ -728,7 +728,16 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         <window.ShareDialog list={shareList} kind="construction" onClose={() => setShareOpen(false)} addToast={addToast} />
       )}
       {ibkrOpen && window.IbkrExportDialog && (
-        <window.IbkrExportDialog strategy={buildStrategy()} onClose={() => setIbkrOpen(false)} />
+        <window.IbkrExportDialog strategy={buildStrategy()} onClose={() => setIbkrOpen(false)}
+          onAlign={(iso) => {
+            // Échéance commune trouvée par le dialogue → aligner la construction
+            // (et donc toute la stratégie) sur cette date valable pour tous.
+            setExpiryAligned({ from: expiry, to: iso });
+            setExpiry(iso);
+            const dte = window.DXExpiry ? window.DXExpiry.dteTo(iso) : null;
+            if (dte != null && dte > 0) setDuration(dte);
+            if (window.DXApi && DXApi.alignStrategyExpiry) DXApi.alignStrategyExpiry(listId, iso);
+          }} />
       )}
     </div>
   );
