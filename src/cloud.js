@@ -291,9 +291,11 @@ async function importListDirect(raw, items) {
 // soit le format d'id de liste.
 const strategies = {
   async getAll() {
-    const { data, error } = await supa.from('strategies').select('list_id, data');
+    // `user_id` : distingue MES stratégies (à afficher/nettoyer) des stratégies
+    // simplement rendues lisibles par la RLS de partage (owner ≠ moi).
+    const { data, error } = await supa.from('strategies').select('list_id, data, user_id');
     if (error) throw error;
-    return (data || []).map(r => ({ listId: String(r.list_id), data: r.data }));
+    return (data || []).map(r => ({ listId: String(r.list_id), data: r.data, owner: r.user_id }));
   },
   async save(listId, data) {
     const row = { user_id: currentUser.id, list_id: String(listId), data, built_at: data?.builtAt || null, updated_at: new Date().toISOString() };
@@ -586,33 +588,60 @@ async function maybeMigrateLocalLists() {
   } catch (e) { console.warn('[cloud] migration listes :', e?.message); }
 }
 
-// Stratégies : le cloud est la source de vérité. On REMONTE d'abord les
-// stratégies présentes seulement en local (migration unique), puis on REDESCEND
-// toutes les stratégies cloud dans localStorage — ainsi les lectures SYNCHRONES
-// de l'app (dx-strategy-<listId>) reflètent le cloud sans changer leur code.
+// Purge le cache LOCAL des stratégies (clés dx-strategy-<listId>). Utilisé à la
+// déconnexion et avant chaque hydratation → aucune stratégie d'un compte/session
+// précédent ne subsiste dans localStorage.
+function purgeLocalStrategies() {
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.indexOf('dx-strategy-') === 0) localStorage.removeItem(k);
+    }
+  } catch {}
+}
+
+// Stratégies : le cloud est la SEULE source de vérité, STRICTEMENT scopé au
+// compte (RLS). À la connexion on : (1) auto-répare le cloud en supprimant MES
+// stratégies orphelines (liste plus détenue — résidu de l'ancien bug de
+// migration inter-comptes) ; (2) remonte les stratégies locales UNIQUEMENT si
+// leur liste m'appartient (jamais les fuites d'un autre compte) ; (3) PURGE le
+// cache local et le réécrit EXACTEMENT depuis le cloud (mes stratégies +
+// partagées). Résultat : le Monitor ne montre QUE les stratégies du compte.
 async function syncStrategies() {
   try {
     if (!currentUser) return;
-    const cloud = await strategies.getAll();               // [{ listId, data }]
+    const ownLists = await lists.getAll().catch(() => []);
+    const ownIds = new Set((ownLists || []).map(l => String(l.id)));
+    let cloud = await strategies.getAll();               // [{ listId, data, owner }] — miennes + partagées
+
+    // (1) Auto-réparation : mes stratégies dont la liste ne m'appartient PLUS
+    //     (contamination d'un autre compte, ou liste supprimée) → à retirer.
+    const orphans = cloud.filter(s => s.owner === currentUser.id && !ownIds.has(s.listId));
+    for (const s of orphans) { try { await strategies.remove(s.listId); } catch {} }
+    if (orphans.length) cloud = cloud.filter(s => !(s.owner === currentUser.id && !ownIds.has(s.listId)));
+
+    // (2) Migration guest→compte (1×) : uniquement les stratégies locales dont
+    //     la liste M'APPARTIENT (une stratégie construite hors-ligne pour une de
+    //     mes listes). Jamais les résidus d'un autre compte.
     const have = new Set(cloud.map(s => s.listId));
     const flag = 'dx-strat-migrated-' + currentUser.id;
     if (!localStorage.getItem(flag)) {
       const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.indexOf('dx-strategy-') === 0) keys.push(k);
-      }
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('dx-strategy-') === 0) keys.push(k); }
       for (const k of keys) {
         const listId = k.slice('dx-strategy-'.length);
-        if (have.has(listId)) continue;
+        if (have.has(listId) || !ownIds.has(listId)) continue;
         let s; try { s = JSON.parse(localStorage.getItem(k)); } catch { continue; }
         if (s && Array.isArray(s.components)) { await strategies.save(listId, s); cloud.push({ listId, data: s }); have.add(listId); }
       }
       localStorage.setItem(flag, '1');
     }
-    for (const s of cloud) {
-      try { localStorage.setItem('dx-strategy-' + s.listId, JSON.stringify(s.data)); } catch {}
-    }
+
+    // (3) Le cache local REFLÈTE EXACTEMENT le cloud du compte + on marque son
+    //     propriétaire (scoping : purge auto si un autre compte réouvre l'app).
+    purgeLocalStrategies();
+    for (const s of cloud) { try { localStorage.setItem('dx-strategy-' + s.listId, JSON.stringify(s.data)); } catch {} }
+    try { localStorage.setItem('dx-strat-owner', currentUser.id); } catch {}
     window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
   } catch (e) { console.warn('[cloud] sync stratégies :', e?.message); }
 }
@@ -628,6 +657,15 @@ if (supa) {
   supa.auth.getSession().then(({ data }) => {
     currentUser = userFromSession(data.session);
     window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
+    // Cache local scopé au dernier compte hydraté : si la session au démarrage
+    // (ou son absence : session expirée / invité) ne correspond pas, on purge le
+    // résidu — aucune stratégie d'un autre compte ne survit à une réouverture.
+    let owner = ''; try { owner = localStorage.getItem('dx-strat-owner') || ''; } catch {}
+    if (owner !== (currentUser?.id || '')) {
+      purgeLocalStrategies();
+      try { if (currentUser) localStorage.setItem('dx-strat-owner', currentUser.id); else localStorage.removeItem('dx-strat-owner'); } catch {}
+      window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
+    }
     if (currentUser) onSignedIn();
   });
   supa.auth.onAuthStateChange((evt, session) => {
@@ -636,7 +674,15 @@ if (supa) {
     window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
     if (evt === 'PASSWORD_RECOVERY') window.dispatchEvent(new CustomEvent('dx-password-recovery'));
     if (currentUser && currentUser.id !== prev) onSignedIn();
-    else if (!currentUser) { proAccess = false; window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: false })); }
+    else if (!currentUser) {
+      // Déconnexion : purger le cache local des stratégies → aucune fuite vers la
+      // session suivante (invité ou autre compte). Rafraîchir le Monitor (vide).
+      purgeLocalStrategies();
+      try { localStorage.removeItem('dx-strat-owner'); } catch {}
+      proAccess = false;
+      window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: false }));
+      window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
+    }
   });
   // Les partages changent (ex. après avoir réclamé un lien) → ré-hydrate les
   // constructions : getAll() renvoie AUSSI celles partagées (RLS §9), donc les
