@@ -39,7 +39,9 @@ export default async (req) => {
   } catch {}
   if (!customer) return Response.json({ error: 'aucun_abonnement' }, { status: 404 });
 
-  const origin = req.headers.get('origin') || process.env.APP_URL || '';
+  // return_url DOIT être une URL absolue (exigence Stripe). Repli sur l'origine de
+  // la requête si l'en-tête Origin est absent (jamais de chemin relatif nu).
+  const origin = req.headers.get('origin') || process.env.APP_URL || new URL(req.url).origin;
   const form = new URLSearchParams();
   form.set('customer', customer);
   form.set('return_url', `${origin}/?pro=managed`);

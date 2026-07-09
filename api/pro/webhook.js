@@ -81,7 +81,13 @@ export default async (req) => {
         });
       }
     } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
-      const status = event.type === 'customer.subscription.deleted' ? 'canceled' : obj.status;
+      // Résiliation programmée (cancel_at_period_end) : l'accès reste dû jusqu'à la
+      // fin de la période payée → statut « canceling » (encore actif mais NON
+      // renouvelé). La suppression réelle en fin de période coupe l'accès →
+      // « canceled ». Réactivation (uncancel) → obj.status ('active') repris.
+      const status = event.type === 'customer.subscription.deleted'
+        ? 'canceled'
+        : (obj.cancel_at_period_end ? 'canceling' : obj.status);
       const cpe = iso(obj.current_period_end);
       const userId = obj.metadata?.user_id;
       if (userId) {

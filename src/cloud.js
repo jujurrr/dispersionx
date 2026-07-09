@@ -42,7 +42,10 @@ async function checkPro() {
       .select('status,current_period_end,stripe_customer_id,stripe_subscription_id').eq('user_id', currentUser.id).maybeSingle();
     if (error || !data) return false;
     const status = data.status || 'active';                       // octroi manuel = actif
-    if (status !== 'active' && status !== 'trialing') return false;
+    // 'canceling' = résiliation programmée (Stripe cancel_at_period_end) : l'accès
+    // reste dû jusqu'à la fin de la période payée — la validité est bornée plus bas
+    // par current_period_end (donc jamais « à vie »). 'canceled' = accès coupé.
+    if (status !== 'active' && status !== 'trialing' && status !== 'canceling') return false;
     const cpe = data.current_period_end ? new Date(data.current_period_end).getTime() : null;
     const isSubscription = !!data.stripe_subscription_id;          // abonnement Stripe (mensuel/annuel)
     if (isSubscription) {
