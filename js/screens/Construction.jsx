@@ -420,7 +420,16 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   }
 
   if (loading || !sized) return (
-    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du dimensionnement…</div>
+    window.DXLoader ? (
+      <window.DXLoader title="Construction de la stratégie" steps={[
+        'Récupération des cours et de la volatilité réelle (Cboe)…',
+        'Calcul des grecs de chaque jambe (indice + composants)…',
+        'Dimensionnement vega-neutre du panier…',
+        'Recherche des échéances cotées par tous les sous-jacents…',
+      ]} />
+    ) : (
+      <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du dimensionnement…</div>
+    )
   );
 
   // Libellé de la jambe indice : l'ETF réellement tradé (QQQ, SPY…) + l'indice

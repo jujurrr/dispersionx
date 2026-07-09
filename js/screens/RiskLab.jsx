@@ -581,7 +581,16 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   }
 
   if (loading || !model) return (
-    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du risque…</div>
+    window.DXLoader ? (
+      <window.DXLoader title="Analyse du risque" steps={[
+        'Valorisation Black-Scholes de chaque jambe…',
+        'Calcul des grecs nets (vega, theta, gamma, delta $)…',
+        'Simulation des scénarios de stress (sell-off, vol crush, hausse IV)…',
+        'Estimation du P&L et des seuils de risque…',
+      ]} />
+    ) : (
+      <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du risque…</div>
+    )
   );
 
   // ── Garde : le Risk Lab analyse une stratégie construite. Sans stratégie

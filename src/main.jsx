@@ -36,6 +36,7 @@ import '../js/lib/market-hours.js';
 import '../js/lib/ibkr-export.js';   // window.DXIbkr (CSV Risk Navigator/What-If à partir d'une stratégie)
 
 // 5) Écrans (ordre identique à index.html — dépendances de globals au top-level).
+import '../js/screens/LoadingSpinner.jsx';  // window.DXLoader (roue + texte tournant, écrans de chargement)
 import '../js/screens/ConfirmDialog.jsx';   // window.ConfirmDialog, utilisé par plusieurs écrans
 import '../js/screens/ShareDialog.jsx';     // window.ShareDialog (partage liste/construction)
 import '../js/screens/IbkrExportDialog.jsx'; // window.IbkrExportDialog (export CSV IBKR What-If, Pro)

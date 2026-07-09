@@ -409,9 +409,19 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
       )}
 
       {running && (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
-          Analyse du vivier, matrice de corrélation, recherche des meilleurs paniers…
-        </div>
+        window.DXLoader ? (
+          <window.DXLoader title="Recherche des meilleures dispersions" pad={52} steps={[
+            'Analyse du vivier d\'actions et de leurs scores…',
+            'Construction de la matrice de corrélation…',
+            'Recherche gloutonne des meilleurs paniers…',
+            'Calcul de la prime de corrélation capturée…',
+            'Sizing vega-neutre et stress-tests des candidats…',
+          ]} />
+        ) : (
+          <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+            Analyse du vivier, matrice de corrélation, recherche des meilleurs paniers…
+          </div>
+        )
       )}
 
       {!running && results && results.length === 0 && (
