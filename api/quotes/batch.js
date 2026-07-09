@@ -2,6 +2,9 @@
 // Cascade : Finnhub (temps réel) → Alpaca iex (15min délai)
 export const config = { runtime: 'edge' };
 
+import { cleanSymbols } from '../_lib/symbols.js';
+import { allow, tooMany } from '../_lib/ratelimit.js';
+
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 const DATA_BASE = 'https://data.alpaca.markets';
 const FEED = process.env.ALPACA_DATA_FEED || 'iex';
@@ -90,6 +93,7 @@ async function fetchAlpaca(symbols) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 60, windowMs: 10000 })) return tooMany();
   let symbols = [];
   try {
     const body = await req.json();
@@ -98,7 +102,9 @@ export default async (req) => {
     const u = new URL(req.url);
     symbols = (u.searchParams.get('symbols') || '').split(',').filter(Boolean);
   }
-  symbols = symbols.map(s => String(s).toUpperCase().trim()).filter(Boolean);
+  // Normalise, valide le format (anti-injection dans les URLs fournisseurs) et
+  // PLAFONNE le lot à 100 symboles (anti-abus / coût fournisseur).
+  symbols = cleanSymbols(symbols, 100);
   if (!symbols.length) return Response.json([], { status: 200 });
 
   const finnhubKey = process.env.FINNHUB_API_KEY;

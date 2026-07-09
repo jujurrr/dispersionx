@@ -97,6 +97,7 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
     if (pw.length < 6) return setError('Le mot de passe doit faire au moins 6 caractères.');
     if (mode === 'signup') {
       if (!name.trim()) return setError('Indiquez votre nom.');
+      if (pw.length < 8) return setError('Le mot de passe doit faire au moins 8 caractères.');
       if (pw !== pw2) return setError('Les mots de passe ne correspondent pas.');
       if (!accept) return setError("Vous devez accepter les CGU et la politique de confidentialité pour créer un compte.");
     }

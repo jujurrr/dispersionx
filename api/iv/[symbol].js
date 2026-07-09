@@ -8,11 +8,14 @@
 export const config = { runtime: 'edge' };
 
 import { cboeIvBundle } from '../_lib/cboe.js';
+import { cleanSymbol } from '../_lib/symbols.js';
+import { allow, tooMany } from '../_lib/ratelimit.js';
 
 export default async (req) => {
+  if (!allow(req, { limit: 60, windowMs: 10000 })) return tooMany();
   const url = new URL(req.url);
   const parts = url.pathname.split('/');
-  const symbol = decodeURIComponent(parts[3] || '').toUpperCase().trim();
+  const symbol = cleanSymbol(decodeURIComponent(parts[3] || ''));
   const dteTarget = Math.max(5, Math.min(Number(url.searchParams.get('dte')) || 30, 180));
   if (!symbol) return Response.json({ error: 'symbol_required' }, { status: 400 });
 

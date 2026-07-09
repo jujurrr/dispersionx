@@ -1,0 +1,5 @@
+# DispersionX — politique de divulgation de vulnérabilités (RFC 9116)
+Contact: mailto:contact@dispersionx.app
+Preferred-Languages: fr, en
+Expires: 2027-01-01T00:00:00.000Z
+Canonical: https://dispersionx.app/.well-known/security.txt
