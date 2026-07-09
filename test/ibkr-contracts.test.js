@@ -3,7 +3,7 @@
 // Cboe synthétique, sans réseau.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { occParts, resolveOne } from '../api/options/contracts.js';
+import { occParts, resolveOne, expMapOf, commonExpiryOf } from '../api/options/contracts.js';
 
 test('occParts : décode le symbole OCC (YYMMDD + C/P + strike×1000)', () => {
   assert.deepEqual(occParts('AAPL260821C00195000'), {
@@ -42,4 +42,31 @@ test('resolveOne : échéance cible NON listée → échéance listée la plus p
 test('resolveOne : chaîne vide → null (le client retombe sur l\'heuristique)', () => {
   assert.equal(resolveOne({ spot: 100, options: [] }, '20260821'), null);
   assert.equal(resolveOne(null, '20260821'), null);
+});
+
+// Échéance COMMUNE : intersection des échéances de plusieurs sous-jacents.
+function chainWith(exps) {
+  const opts = [];
+  exps.forEach(e => [95, 100, 105].forEach(k => {
+    opts.push({ option: `X${e}C${String(k * 1000).padStart(8, '0')}` });
+    opts.push({ option: `X${e}P${String(k * 1000).padStart(8, '0')}` });
+  }));
+  return { spot: 100, options: opts };
+}
+
+test('commonExpiryOf : intersection des échéances, la plus proche de la cible', () => {
+  const a = expMapOf(chainWith(['260807', '260821', '260918']));   // weekly + 2 mensuelles
+  const b = expMapOf(chainWith(['260821', '260918']));             // pas de weekly 07/08
+  const c = expMapOf(chainWith(['260717', '260821', '260918']));
+  // Cible 20260807 : seule 20260821 est commune aux trois et la plus proche.
+  assert.equal(commonExpiryOf([a, b, c], '20260807'), '20260821');
+  // Cible 20260918 → l'autre échéance commune.
+  assert.equal(commonExpiryOf([a, b, c], '20260918'), '20260918');
+});
+
+test('commonExpiryOf : aucune échéance commune → null (repli per-symbole côté endpoint)', () => {
+  const a = expMapOf(chainWith(['260807']));
+  const b = expMapOf(chainWith(['260821']));
+  assert.equal(commonExpiryOf([a, b], '20260807'), null);
+  assert.equal(commonExpiryOf([], '20260807'), null);
 });

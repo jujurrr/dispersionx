@@ -50,38 +50,38 @@ test('monthlyExp8 (repli durée) : 3ᵉ vendredi mensuel le plus proche', () => 
   assert.equal(DX.monthlyExp8({ expiry: '2026-08-14' }), '20260821');   // weekly → mensuelle voisine
 });
 
-test('validation chaîne réelle : strike/échéance réels priment, repli heuristique sinon', () => {
-  const resolved = { targetExp8: '20260918', bySymbol: {
-    SPY:  { expiry: '20260918', strike: 597.5, spot: 598.4 },
-    AAPL: { expiry: '20260918', strike: 195,   spot: 192.3 },
-    // MSFT + SAP absents → strike heuristique + échéance cible
+test('validation chaîne réelle : échéance COMMUNE unique + strikes réels (repli standard sinon)', () => {
+  // Échéance commune imposée = date sélectionnée → toutes les jambes s'alignent.
+  const resolved = { targetExp8: '20260821', selectedExp8: '20260821', bySymbol: {
+    SPY:  { expiry: '20260821', strike: 600 },
+    AAPL: { expiry: '20260821', strike: 195 },
+    // MSFT + SAP absents → strike standard, MAIS même échéance commune
   } };
   const rows = DX.buildRows(STRAT, resolved);
-  rows.filter(r => r.Symbol === 'SPY' && r.SecType === 'OPT').forEach(r => {
-    assert.equal(r.Strike, '597.5'); assert.equal(r.LastTradingDayOrContractMonth, '20260918');
-  });
-  rows.filter(r => r.Symbol === 'AAPL' && r.SecType === 'OPT').forEach(r => {
-    assert.equal(r.Strike, '195'); assert.equal(r.LastTradingDayOrContractMonth, '20260918');
-  });
-  // MSFT non validé → strike standard (430) MAIS échéance alignée sur la cible.
-  rows.filter(r => r.Symbol === 'MSFT' && r.SecType === 'OPT').forEach(r => {
-    assert.equal(r.Strike, '430'); assert.equal(r.LastTradingDayOrContractMonth, '20260918');
-  });
+  // TOUTES les jambes d'options partagent l'échéance commune.
+  rows.filter(r => r.SecType === 'OPT').forEach(r => assert.equal(r.LastTradingDayOrContractMonth, '20260821'));
+  rows.filter(r => r.Symbol === 'SPY'  && r.SecType === 'OPT').forEach(r => assert.equal(r.Strike, '600'));
+  rows.filter(r => r.Symbol === 'AAPL' && r.SecType === 'OPT').forEach(r => assert.equal(r.Strike, '195'));   // strike réel
+  rows.filter(r => r.Symbol === 'MSFT' && r.SecType === 'OPT').forEach(r => assert.equal(r.Strike, '430'));   // repli standard
   const sum = DX.summary(STRAT, resolved);
   assert.equal(sum.optionSymbols, 4);   // SPY, AAPL, MSFT, SAP
   assert.equal(sum.validated, 2);       // SPY + AAPL
   assert.equal(sum.approximated, 2);
-  assert.equal(sum.expiryAdjusted, 0);  // SPY + AAPL cotent bien la date cible
+  assert.equal(sum.expiryAdjusted, false);   // date commune == date sélectionnée
 });
 
-test('échéance ajustée signalée quand un sous-jacent ne cote pas la date cible', () => {
-  const resolved = { targetExp8: '20260918', bySymbol: {
-    SPY:  { expiry: '20260918', strike: 597.5, spot: 598.4 },
-    AAPL: { expiry: '20260821', strike: 190, spot: 192.3 },   // date cotée la plus proche ≠ cible
+test('échéance commune ajustée signalée quand ≠ date sélectionnée', () => {
+  // La date sélectionnée (20260807) n'est pas cotée par tous → commune = 20260821.
+  const resolved = { targetExp8: '20260821', selectedExp8: '20260807', bySymbol: {
+    SPY:  { expiry: '20260821', strike: 600 },
+    AAPL: { expiry: '20260821', strike: 190 },
   } };
   const rows = DX.buildRows(STRAT, resolved);
-  rows.filter(r => r.Symbol === 'AAPL' && r.SecType === 'OPT').forEach(r => assert.equal(r.LastTradingDayOrContractMonth, '20260821'));
-  assert.equal(DX.summary(STRAT, resolved).expiryAdjusted, 1);   // AAPL ajusté
+  rows.filter(r => r.SecType === 'OPT').forEach(r => assert.equal(r.LastTradingDayOrContractMonth, '20260821'));
+  const sum = DX.summary(STRAT, resolved);
+  assert.equal(sum.usedExp8, '20260821');
+  assert.equal(sum.selectedExp8, '20260807');
+  assert.equal(sum.expiryAdjusted, true);
 });
 
 test('suffixe → devise + symbole IBKR de base', () => {

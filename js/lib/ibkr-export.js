@@ -152,12 +152,10 @@
     const rows = buildRows(s, resolved);
     const opts = rows.filter(r => r.SecType === 'OPT');
     const R = (resolved && resolved.bySymbol) || {};
-    const targetExp8 = (resolved && resolved.targetExp8) || exportExp8(s);
+    const selectedExp8 = (resolved && resolved.selectedExp8) || exportExp8(s);
+    const usedExp8 = (resolved && resolved.targetExp8) || exportExp8(s);   // échéance COMMUNE réellement écrite
     const optSyms = [...new Set(opts.map(r => r.Symbol))];
     const validated = optSyms.filter(sym => R[sym] && R[sym].strike != null).length;
-    // Sous-jacents validés dont l'échéance cotée la plus proche DIFFÈRE de celle
-    // de la stratégie (la date ne « convient » pas telle quelle → ajustée).
-    const expiryAdjusted = optSyms.filter(sym => R[sym] && R[sym].expiry && String(R[sym].expiry) !== targetExp8).length;
     return {
       rows: rows.length,
       optionLegs: opts.length,
@@ -168,20 +166,22 @@
       optionSymbols: optSyms.length,
       validated,                                  // symboles validés sur la vraie chaîne
       approximated: optSyms.length - validated,   // symboles laissés au strike standard
-      targetExp8,                                 // échéance visée = celle de la stratégie
-      expiryAdjusted,                             // symboles dont l'échéance a dû être ajustée
+      selectedExp8,                               // échéance de la stratégie
+      usedExp8,                                   // échéance COMMUNE écrite dans le CSV (toutes les jambes)
+      expiryAdjusted: usedExp8 !== selectedExp8,  // la date commune diffère-t-elle de la sélection ?
     };
   }
 
   // Valide strikes + échéance contre la vraie chaîne d'options (Cboe) via
-  // /api/options/contracts. Best-effort : toute erreur → {} (repli heuristique).
-  // Renvoie { targetExp8, bySymbol:{ SYM:{expiry,strike,spot} } }.
+  // /api/options/contracts. Best-effort : toute erreur → repli heuristique.
+  // Renvoie { targetExp8 (= échéance COMMUNE écrite pour toutes les jambes),
+  // selectedExp8 (échéance de la stratégie), commonExpiry, bySymbol:{ SYM:{expiry,strike,spot} } }.
   function resolveContracts(s, opts) {
     opts = opts || {};
     const fetchFn = opts.fetch || (typeof fetch !== 'undefined' ? fetch : null);
     const origin = opts.origin || '';
     const targetExp8 = exportExp8(s);
-    const base = { targetExp8, bySymbol: {} };
+    const base = { targetExp8, selectedExp8: targetExp8, commonExpiry: null, bySymbol: {} };
     if (!s || !fetchFn) return Promise.resolve(base);
     // Symboles US uniquement (les composants étrangers n'ont pas d'options US).
     const syms = new Set();
@@ -193,12 +193,35 @@
     return Promise.resolve(fetchFn(url))
       .then(r => (r && r.ok ? r.json() : null))
       .then(d => {
-        const out = { targetExp8, bySymbol: {} };
+        // Échéance COMMUNE (cotée par toutes les actions) → écrite pour TOUTES les
+        // jambes. À défaut, on garde la date sélectionnée.
+        const common = (d && d.commonExpiry) || targetExp8;
+        const out = { targetExp8: common, selectedExp8: targetExp8, commonExpiry: (d && d.commonExpiry) || null, bySymbol: {} };
         const c = d && d.contracts;
         if (c) for (const k in c) if (c[k] && c[k].strike != null && c[k].expiry) out.bySymbol[k] = c[k];
         return out;
       })
       .catch(() => base);
+  }
+
+  // Résout la SEULE échéance (ISO YYYY-MM-DD) cotée par tous les sous-jacents US
+  // d'un panier, la plus proche de `targetIso`. Sert à ALIGNER la stratégie (et
+  // donc tout le site) sur une date valable pour tout le monde. null si indispo.
+  function resolveCommonExpiry(symbols, targetIso, opts) {
+    opts = opts || {};
+    const fetchFn = opts.fetch || (typeof fetch !== 'undefined' ? fetch : null);
+    const origin = opts.origin || '';
+    const target8 = String(targetIso || '').slice(0, 10).replace(/-/g, '');
+    const syms = [...new Set((symbols || []).map(t => symMeta(t)).filter(m => m.currency === 'USD').map(m => m.symbol))];
+    if (!fetchFn || !syms.length || !/^\d{8}$/.test(target8)) return Promise.resolve(null);
+    const url = `${origin}/api/options/contracts?symbols=${encodeURIComponent(syms.join(','))}&expiry=${target8}`;
+    return Promise.resolve(fetchFn(url))
+      .then(r => (r && r.ok ? r.json() : null))
+      .then(d => {
+        const ce = d && d.commonExpiry;
+        return (ce && /^\d{8}$/.test(ce)) ? `${ce.slice(0, 4)}-${ce.slice(4, 6)}-${ce.slice(6, 8)}` : null;
+      })
+      .catch(() => null);
   }
 
   function filename(s) { return `dx-ibkr-whatif-${(s && s.index) || 'strat'}-${exportExp8(s)}.csv`; }
@@ -212,5 +235,5 @@
     URL.revokeObjectURL(a.href);
   }
 
-  window.DXIbkr = { HEADER, buildRows, toCsv, summary, filename, download, roundStrike, symMeta, monthlyExp8, exportExp8, resolveContracts };
+  window.DXIbkr = { HEADER, buildRows, toCsv, summary, filename, download, roundStrike, symMeta, monthlyExp8, exportExp8, resolveContracts, resolveCommonExpiry };
 })();

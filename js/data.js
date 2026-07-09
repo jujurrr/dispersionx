@@ -90,8 +90,11 @@
   function _isoDay(d) { return d.toISOString().slice(0, 10); }
   function dteTo(iso) {
     if (!iso) return null;
+    const day = String(iso).slice(0, 10);   // tolère un ISO datetime (round-trip cloud)
+    const t = new Date(day + 'T12:00:00');
+    if (isNaN(t)) return null;               // date invalide → pas de NaN qui se propage
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    return Math.max(0, Math.round((new Date(iso + 'T12:00:00') - today) / 86400000));
+    return Math.max(0, Math.round((t - today) / 86400000));
   }
   function fmtExpiry(iso) {
     if (!iso) return '';

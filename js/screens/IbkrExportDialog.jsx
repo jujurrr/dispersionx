@@ -101,11 +101,15 @@ function IbkrExportDialog({ strategy, onClose }) {
                 <><strong style={{ color: 'var(--text-soft)' }}>{stats.validated}/{stats.optionSymbols} sous-jacents validés</strong> sur la chaîne d'options réelle. Les {stats.approximated} restant{stats.approximated > 1 ? 's' : ''} (composants sans options US ou chaîne indisponible) utilisent le strike standard le plus proche — si TWS en rejette un, choisis le strike listé voisin.</>
               )}
             </div>
-            {stats.expiryAdjusted > 0 && (
-              <div style={{ font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-soft)', background: 'var(--warn-soft, rgba(234,179,8,0.1))', border: '1px solid var(--warn-border, rgba(234,179,8,0.35))', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
-                <strong style={{ color: 'var(--warn)' }}>⚠ Échéance ajustée pour {stats.expiryAdjusted} sous-jacent{stats.expiryAdjusted > 1 ? 's' : ''}.</strong> L'échéance <strong>{expTxt}</strong> n'est pas cotée pour {stats.expiryAdjusted > 1 ? 'ces valeurs' : 'cette valeur'} : la date cotée la plus proche a été utilisée pour {stats.expiryAdjusted > 1 ? 'ces jambes' : 'cette jambe'}. Pour une échéance <strong>unique</strong>, cotée par toutes les actions, choisis une échéance <strong>mensuelle</strong> (3ᵉ vendredi, marquée « mensuel ✓ ») à la construction.
-              </div>
-            )}
+            {stats.expiryAdjusted && stats.usedExp8 && (() => {
+              const u = stats.usedExp8, uIso = `${u.slice(0, 4)}-${u.slice(4, 6)}-${u.slice(6, 8)}`;
+              const uTxt = window.DXExpiry ? window.DXExpiry.fmtExpiry(uIso) : uIso;
+              return (
+                <div style={{ font: 'var(--type-caption)', lineHeight: 1.5, color: 'var(--text-soft)', background: 'var(--warn-soft, rgba(234,179,8,0.1))', border: '1px solid var(--warn-border, rgba(234,179,8,0.35))', borderRadius: 'var(--radius)', padding: '9px 12px' }}>
+                  <strong style={{ color: 'var(--warn)' }}>Échéance commune : {uTxt}.</strong> La date de la stratégie ({expTxt}) n'est pas cotée par toutes les actions — <strong>toutes les jambes</strong> utilisent donc une seule échéance cotée par l'ensemble des sous-jacents. À la construction, cette date est alignée automatiquement partout dans le site.
+                </div>
+              );
+            })()}
           </div>
         )}
 

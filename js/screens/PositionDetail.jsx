@@ -243,6 +243,12 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
     : (Math.abs(sport.idxPrem || 0) + (strat.components || []).reduce((a, c) => a + Math.abs(c.premium || 0), 0));
   const pctBase = grossPrem > 0 ? grossPrem : null;
 
+  // Date d'expiration des options — affichée à côté du DTE (jours restants).
+  // Vraie `expiry` de la stratégie ; à défaut, reconstruite depuis aujourd'hui + DTE.
+  const expIso = strat.expiry ? String(strat.expiry).slice(0, 10)
+    : (dteVal != null ? new Date(Date.now() + dteVal * 86400000).toISOString().slice(0, 10) : null);
+  const expDateTxt = expIso && window.DXExpiry ? window.DXExpiry.fmtExpiry(expIso) : expIso;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
@@ -375,7 +381,8 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         <MetricCard label="P&L depuis dernier relevé" value={dxUsd(dailyPnl)} unit={dailyPnl != null ? '$' : ''}
           delta={dxPct(dailyPnl, pctBase)} deltaTone={dailyPnl == null ? 'neutral' : dailyPnl >= 0 ? 'pos' : 'neg'}
           accent={dailyPnl == null ? 'var(--info)' : dailyPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
-        <MetricCard label="DTE restant" value={dteVal != null ? String(dteVal) : '—'} unit={dteVal != null ? 'j' : ''} accent="var(--info)" />
+        <MetricCard label="DTE restant" value={dteVal != null ? String(dteVal) : '—'} unit={dteVal != null ? (expDateTxt ? `j · ${expDateTxt}` : 'j') : ''} accent="var(--info)"
+          hint={expDateTxt ? `Jours restants avant l'expiration des options, le ${expDateTxt}.` : 'Jours restants avant l\'expiration des options.'} />
         <MetricCard label="Jambes valorisées (réel)" value={coverage ? `${coverage.priced}/${coverage.total}` : (m.n_legs_priced != null ? `${m.n_legs_priced}/${m.n_legs_total}` : String(legs.length))} accent="var(--info)" />
       </div>
 

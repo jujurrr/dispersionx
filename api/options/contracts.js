@@ -32,12 +32,10 @@ function exp8ToMs(e8) {
   return Date.UTC(+s.slice(0, 4), +s.slice(4, 6) - 1, +s.slice(6, 8));
 }
 
-// À partir d'une chaîne Cboe : échéance listée la plus proche de la cible, puis
-// strike réel le plus proche du spot à cette échéance.
-export function resolveOne(chain, targetExp8) {
-  if (!chain || !Array.isArray(chain.options) || !chain.spot) return null;
-  const spot = Number(chain.spot);
-  const byExp = new Map();   // exp8 -> { expMs, strikes:Set<number> }
+// Chaîne Cboe → Map exp8 -> { expMs, strikes:Set<number> } (échéances + strikes cotés).
+export function expMapOf(chain) {
+  const byExp = new Map();
+  if (!chain || !Array.isArray(chain.options)) return byExp;
   for (const o of chain.options) {
     const p = occParts(o.option);
     if (!p) continue;
@@ -45,19 +43,55 @@ export function resolveOne(chain, targetExp8) {
     if (!e) byExp.set(p.exp8, e = { expMs: p.expMs, strikes: new Set() });
     e.strikes.add(p.strike);
   }
-  if (!byExp.size) return null;
-  // Échéance : la cible si elle est listée, sinon la plus proche par date.
-  const tMs = exp8ToMs(targetExp8);
-  let chosen = byExp.has(targetExp8) ? targetExp8 : null;
-  if (!chosen) {
-    let bestD = Infinity;
-    for (const [e8, e] of byExp) { const d = Math.abs(e.expMs - tMs); if (d < bestD) { bestD = d; chosen = e8; } }
-  }
-  // Strike ATM réel le plus proche du spot.
+  return byExp;
+}
+
+// Strike coté le plus proche du spot à une échéance donnée (ou null).
+function strikeAt(map, exp8, spot) {
+  const e = map.get(exp8);
+  if (!e) return null;
   let strike = null, kd = Infinity;
-  for (const k of byExp.get(chosen).strikes) { const d = Math.abs(k - spot); if (d < kd) { kd = d; strike = k; } }
+  for (const k of e.strikes) { const d = Math.abs(k - spot); if (d < kd) { kd = d; strike = k; } }
+  return strike;
+}
+
+// Résout un contrat pour UN symbole : échéance listée la plus proche de la cible
+// + strike ATM réel. `targetExp8` peut être une échéance imposée (commune).
+function resolveFromMap(map, spot, targetExp8) {
+  if (!map || !map.size) return null;
+  let chosen = map.has(targetExp8) ? targetExp8 : null;
+  if (!chosen) {
+    const tMs = exp8ToMs(targetExp8);
+    let bestD = Infinity;
+    for (const [e8, e] of map) { const d = Math.abs(e.expMs - tMs); if (d < bestD) { bestD = d; chosen = e8; } }
+  }
+  const strike = strikeAt(map, chosen, spot);
   if (strike == null) return null;
-  return { expiry: chosen, strike, spot: Number(spot.toFixed(2)), exactExpiry: byExp.has(targetExp8) };
+  return { expiry: chosen, strike, spot: Number(spot.toFixed(2)), exactExpiry: map.has(targetExp8) };
+}
+export function resolveOne(chain, targetExp8) {
+  if (!chain || !chain.spot) return null;
+  return resolveFromMap(expMapOf(chain), Number(chain.spot), targetExp8);
+}
+
+// Échéance cotée par TOUS les symboles (intersection des exp8), la plus proche
+// de la cible → une SEULE date valable pour toute la stratégie. null si aucune.
+export function commonExpiryOf(maps, targetExp8) {
+  const valid = (maps || []).filter(m => m && m.size);
+  if (!valid.length) return null;
+  let inter = null;
+  for (const m of valid) {
+    const keys = new Set(m.keys());
+    inter = inter == null ? keys : new Set([...inter].filter(k => keys.has(k)));
+    if (!inter.size) return null;
+  }
+  const tMs = exp8ToMs(targetExp8);
+  let best = null, bestD = Infinity;
+  for (const e8 of inter) {
+    const d = isNaN(tMs) ? 0 : Math.abs(exp8ToMs(e8) - tMs);
+    if (d < bestD) { bestD = d; best = e8; }
+  }
+  return best;
 }
 
 // Cap de temps par symbole → l'endpoint reste borné même si le CDN Cboe traîne.
@@ -73,15 +107,32 @@ export default async (req) => {
   const expiry = (q.get('expiry') || '').trim();
   if (!uniq.length) return Response.json({ error: 'no_symbols' }, { status: 400 });
 
-  const contracts = {};
+  // 1) Chaîne + parsing de chaque symbole (best-effort, borné en temps).
+  const info = {};   // sym -> { map, spot } | null
   await Promise.all(uniq.map(async sym => {
     try {
       const chain = await withTimeout(fetchCboeChain(sym, 7000), 9000);
-      contracts[sym] = resolveOne(chain, expiry) || null;
-    } catch { contracts[sym] = null; }
+      info[sym] = (chain && chain.spot) ? { map: expMapOf(chain), spot: Number(chain.spot) } : null;
+    } catch { info[sym] = null; }
   }));
 
-  return Response.json({ expiry, contracts }, {
+  // 2) Échéance COMMUNE à tous les symboles cotés, la plus proche de la cible.
+  const common = commonExpiryOf(Object.values(info).filter(Boolean).map(x => x.map), expiry);
+
+  // 3) Par symbole : strike ATM à l'échéance commune ; repli per-symbole sinon.
+  const contracts = {};
+  for (const sym of uniq) {
+    const x = info[sym];
+    if (!x || !x.map.size) { contracts[sym] = null; continue; }
+    if (common && x.map.has(common)) {
+      const strike = strikeAt(x.map, common, x.spot);
+      contracts[sym] = strike != null ? { expiry: common, strike, spot: Number(x.spot.toFixed(2)) } : null;
+    } else {
+      contracts[sym] = resolveFromMap(x.map, x.spot, expiry);
+    }
+  }
+
+  return Response.json({ expiry, commonExpiry: common || null, contracts }, {
     headers: {
       'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600',
       'Netlify-CDN-Cache-Control': 'public, s-maxage=900, stale-while-revalidate=3600',

@@ -395,17 +395,20 @@
   function strategyMetrics(s) {
     const p = s.portfolio || {};
     const built = s.builtAt ? new Date(s.builtAt) : null;
-    let daysSince = (built && !isNaN(built)) ? Math.max(0, Math.floor((Date.now() - built.getTime()) / 86400000)) : 0;
-    // DTE restant : priorité à la vraie date d'échéance (expiry, vendredi
-    // d'expiration options) ; repli : durée initiale − jours écoulés.
-    let dte;
-    const dteLeft = s.expiry && window.DXExpiry ? window.DXExpiry.dteTo(s.expiry) : null;
-    if (dteLeft != null) { dte = dteLeft; daysSince = Math.max(0, (s.duration || 30) - dteLeft); }
-    else dte = Math.max(0, (s.duration || 30) - daysSince);
+    const T0 = Math.max(1, s.duration || 30);
+    // DTE restant : compté par rapport à une échéance FIXE (la vraie date
+    // d'expiration `expiry`, sinon reconstruite depuis builtAt + durée). Le
+    // décompte est donc VIVANT — il diminue chaque jour, jamais figé à la
+    // valeur de création. dteTo tolère un ISO datetime et ne renvoie pas de NaN.
+    let expIso = s.expiry ? String(s.expiry).slice(0, 10) : null;
+    if (!expIso && built && !isNaN(built)) expIso = new Date(built.getTime() + T0 * 86400000).toISOString().slice(0, 10);
+    const dteFromExp = expIso && window.DXExpiry ? window.DXExpiry.dteTo(expIso) : null;
+    const ageDays = (built && !isNaN(built)) ? Math.max(0, Math.floor((Date.now() - built.getTime()) / 86400000)) : null;
+    const dte = (dteFromExp != null) ? dteFromExp : Math.max(0, T0 - (ageDays || 0));
+    const daysSince = (ageDays != null) ? ageDays : Math.max(0, T0 - dte);
     // Avancée du temps : pour un straddle ATM, vega ∝ √T et theta ∝ 1/√T.
     // Les grecs stockés (à la construction) sont ramenés au DTE restant pour
     // que le suivi reflète la position d'aujourd'hui, pas celle de J0.
-    const T0 = Math.max(1, s.duration || 30);
     const k  = Math.sqrt(Math.max(1, dte) / T0);
     const netVega = Math.round((p.netVega || 0) * k);
     const netTheta = Math.round((p.netTheta || 0) / k);
