@@ -20,19 +20,16 @@ function IbkrExportDialog({ strategy, onClose, onAlign }) {
   // VÉRIFICATION À L'OUVERTURE : résout l'échéance COMMUNE + les strikes réels
   // sur la vraie chaîne d'options AVANT tout téléchargement. Best-effort : en
   // cas d'échec réseau, l'heuristique prend le relais (le fichier reste produit).
+  // NB : la résolution NE déclenche AUCUN effet de bord sur le parent (pas
+  // d'alignement ici) → aucun risque de boucle de rendu quand l'écran parent
+  // se rafraîchit. L'alignement se fait sur le clic « Télécharger » (délibéré).
   React.useEffect(() => {
     if (!s || !window.DXIbkr) return;
     let cancelled = false;
-    setResolving(true); setResolved(null); setDone(false);
+    setResolving(true); setResolved(null);
     window.DXIbkr.resolveContracts(s).then(r => {
       if (cancelled) return;
       setResolved(r); setResolving(false);
-      // Propage l'échéance commune (si ≠ sélection) → TOUT le site s'aligne.
-      if (r && r.commonExpiry && r.commonExpiry !== r.selectedExp8 && onAlign && alignedRef.current !== r.commonExpiry) {
-        alignedRef.current = r.commonExpiry;
-        const ce = r.commonExpiry;
-        onAlign(`${ce.slice(0, 4)}-${ce.slice(4, 6)}-${ce.slice(6, 8)}`);
-      }
     }).catch(() => { if (!cancelled) setResolving(false); });
     return () => { cancelled = true; };
   }, [sig]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -49,10 +46,17 @@ function IbkrExportDialog({ strategy, onClose, onAlign }) {
   const expTxt = window.DXExpiry ? window.DXExpiry.fmtExpiry(expIso) : expIso;
 
   // Le fichier est produit à partir des contrats DÉJÀ vérifiés à l'ouverture.
+  // C'est ICI (clic délibéré, une seule fois via alignedRef) qu'on propage
+  // l'échéance commune au reste du site — jamais dans un effet automatique.
   function doDownload() {
     if (resolving) return;
     window.DXIbkr.download(s, resolved);
     setDone(true);
+    const ce = resolved && resolved.commonExpiry;
+    if (ce && ce !== resolved.selectedExp8 && onAlign && alignedRef.current !== ce) {
+      alignedRef.current = ce;
+      onAlign(`${ce.slice(0, 4)}-${ce.slice(4, 6)}-${ce.slice(6, 8)}`);
+    }
   }
   const sum = stats;
 

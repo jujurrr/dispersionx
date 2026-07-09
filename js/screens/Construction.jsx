@@ -257,27 +257,12 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     };
   }, [base, nIndex, sizing, weightBasis]);
 
-  // ── Alignement de l'échéance sur une date COMMUNE à tous les sous-jacents ──
-  // Résout, sur la vraie chaîne d'options, la SEULE échéance cotée par toutes
-  // les actions du panier (la plus proche de celle choisie). Aligne la stratégie
-  // — et donc TOUT le site (suivi, monitor) ET l'export IBKR — sur une date
-  // valable pour tout le monde. Non-cassant : si indisponible, l'échéance
-  // choisie reste. Idempotent (résoudre depuis la date commune la re-renvoie).
+  // Note d'alignement d'échéance : effacée dès que le panier change (nouvelle
+  // signature de composants) → repart propre. L'alignement lui-même est fait au
+  // moment de l'export (clic « Télécharger » du dialogue IBKR, via onAlign),
+  // jamais dans un effet automatique — pour éviter tout rechargement/boucle.
   const compKey = sized ? sized.comps.map(c => c.ticker).join(',') : '';
-  React.useEffect(() => { setExpiryAligned(null); }, [compKey]);   // nouveau panier → repart propre
-  React.useEffect(() => {
-    if (durationOverride || !base || !expiry || !compKey || !(window.DXIbkr && window.DXIbkr.resolveCommonExpiry)) return;
-    let cancelled = false;
-    const symbols = [base.indexEtf || base.indexSym, ...compKey.split(',')];
-    window.DXIbkr.resolveCommonExpiry(symbols, expiry).then(common => {
-      if (cancelled || !common || common === expiry) return;
-      const dte = window.DXExpiry ? window.DXExpiry.dteTo(common) : null;
-      setExpiry(common);
-      if (dte != null && dte > 0) setDuration(dte);
-      setExpiryAligned({ from: expiry, to: common });
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [base, compKey, expiry, durationOverride]);
+  React.useEffect(() => { setExpiryAligned(null); }, [compKey]);
 
   function buildStrategy() {
     if (!base || !sized) return null;
