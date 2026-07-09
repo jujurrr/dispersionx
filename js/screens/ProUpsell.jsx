@@ -15,6 +15,7 @@ const DX_PRO = {
     'Auto-chercheur d\'opportunités',
     'Marché Pro : baromètre ρ, alertes, calendrier des résultats',
     'Suivi de positions en temps réel (P&L, grecs, snapshots)',
+    'Export vers IBKR : stratégie prête à trader (Risk Navigator · What-If)',
     'Partage de listes & stratégies (lien ou e-mail)',
     'Journal / track record',
     'Rapports PDF',
@@ -40,6 +41,11 @@ const DX_PRO = {
       title: 'Marché Pro',
       desc: 'Le contexte de marché de la dispersion — pour savoir quand agir.',
       bullets: ['Baromètre de corrélation implicite', 'Alertes de corrélation', 'Calendrier des résultats'],
+    },
+    ibkr: {
+      title: 'Export vers IBKR',
+      desc: 'Exporte toute ta stratégie en un fichier prêt à importer dans le Risk Navigator de TWS — options, composants et couverture delta compris.',
+      bullets: ['CSV importable en 1 clic (portefeuille What-If)', 'Toutes les jambes + hedge actions reproduits fidèlement', 'Suis la position, puis exécute chez ton courtier'],
     },
     default: {
       title: 'DispersionX Pro',
@@ -161,6 +167,7 @@ const DX_PRO_COMPARE = [
   ['Auto-chercheur d\'opportunités', false, true],
   ['Marché Pro : baromètre ρ, alertes, résultats', false, true],
   ['Suivi de positions en temps réel', false, true],
+  ['Export vers IBKR (Risk Navigator · What-If)', false, true],
   ['Partage de listes & stratégies (lien / e-mail)', false, true],
   ['Journal / track record', false, true],
   ['Rapports PDF', false, true],
@@ -220,6 +227,17 @@ const DX_PRO_FLAGSHIPS = [
       'P&L mark-to-market (spot + IV réels Cboe)',
       'Courbe d\'évolution + Δ vs entrée / vs veille',
       'Relevé automatique quotidien',
+    ],
+  },
+  {
+    key: 'ibkr',
+    badge: 'Du clic au courtier',
+    title: 'Exportez la stratégie vers IBKR — prête à trader',
+    tagline: 'Un seul clic et toute la construction part dans un fichier importable dans le Risk Navigator de TWS : options indice, straddles composants et couverture delta en actions. Plus rien à ressaisir — vous suivez la position en What-If, puis vous exécutez chez votre courtier quand vous le décidez.',
+    points: [
+      'CSV importable en 1 clic — toutes les jambes reproduites fidèlement',
+      'Jambes de couverture delta en actions incluses',
+      'What-If : suivez virtuellement, puis transmettez l\'ordre — rien n\'est exécuté sans vous',
     ],
   },
 ];
@@ -343,9 +361,43 @@ function ProDemoJournal() {
   );
 }
 
-/* Bloc avantages Pro — 2 phares (Opportunités, Suivi) mis en avant avec démo. */
+/* Mock visuel : export IBKR (aperçu du CSV → import What-If). */
+function ProDemoIbkr() {
+  const TR = window.t || ((s) => s);
+  const lines = [
+    ['SELL', '2', 'SPY', 'call + put', 'neg'],
+    ['BUY', '3', 'AAPL', 'call + put', 'pos'],
+    ['BUY', '2', 'MSFT', 'call + put', 'pos'],
+    ['SELL', '140', 'AAPL', 'actions (hedge)', 'neg'],
+  ];
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+      <div style={{ padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>dx-ibkr-whatif.csv</span>
+        <span style={{ font: '600 10px/1 var(--font-mono)', padding: '3px 8px', borderRadius: 999, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)' }}>What-If</span>
+      </div>
+      <div style={{ padding: '4px 0' }}>
+        {lines.map((r, i) => (
+          <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '7px 16px', font: '11px/1 var(--font-mono)' }}>
+            <span style={{ width: 34, color: r[4] === 'neg' ? 'var(--neg-bright)' : 'var(--pos-bright)', fontWeight: 700 }}>{r[0]}</span>
+            <span style={{ width: 30, color: 'var(--text-muted)', textAlign: 'right' }}>{r[1]}</span>
+            <span style={{ width: 46, color: 'var(--text)' }}>{r[2]}</span>
+            <span style={{ flex: 1, color: 'var(--text-dim)', textAlign: 'right' }}>{TR(r[3])}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '11px 16px', borderTop: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)', flexWrap: 'wrap' }}>
+        <span style={{ font: '600 10px/1 var(--font-mono)', color: 'var(--text-muted)' }}>Portfolio → Import</span>
+        <span style={{ color: 'var(--accent-hover)' }}>→</span>
+        <span style={{ font: '600 11px/1 var(--font-sans)', color: 'var(--text)' }}>{TR('Risk Navigator · TWS')}</span>
+      </div>
+    </div>
+  );
+}
+
+/* Bloc avantages Pro — phares (Opportunités, Suivi, Export IBKR) mis en avant avec démo. */
 function ProBenefits({ onNav, addToast, showCta = true }) {
-  const demos = { opportunities: ProDemoOpportunities, positions: ProDemoSuivi };
+  const demos = { opportunities: ProDemoOpportunities, positions: ProDemoSuivi, ibkr: ProDemoIbkr };
   const { signedIn, busy, goPro } = useProCheckout(onNav, addToast, 'benefits');
   const TR = window.t || ((s) => s);
   return (
@@ -395,6 +447,7 @@ function ProPricing({ onNav, addToast }) {
   const faqs = [
     ['Concrètement, qu\'est-ce que l\'auto-chercheur m\'apporte ?', 'Il fait le travail d\'analyse à votre place : au lieu de tester des dizaines de paniers à la main, il explore des milliers de combinaisons et vous classe les meilleures dispersions d\'un indice en quelques secondes — sizing et stress-tests déjà calculés. Des heures gagnées à chaque idée.'],
     ['Pourquoi payer alors que l\'analyse est gratuite ?', 'Le gratuit vous donne les outils pour étudier une stratégie que vous choisissez. Pro vous donne la vitesse et le pilotage : il trouve les meilleures stratégies pour vous (auto-chercheur) et les suit en temps réel (positions). C\'est la différence entre chercher à la main et avoir un assistant.'],
+    ['Puis-je passer mes trades directement chez mon courtier ?', 'Oui. En un clic, Pro exporte toute votre stratégie — options indice, straddles composants et couverture delta en actions — dans un fichier .csv importable dans le Risk Navigator de TWS (IBKR). Il s\'ouvre en portefeuille « What-If » : vous suivez la position virtuellement (grecs, P&L), puis vous transmettez l\'ordre quand vous le décidez. Rien n\'est jamais exécuté automatiquement.'],
     ['Puis-je annuler quand je veux ?', 'Oui, en 1 clic depuis « Gérer l\'abonnement » (portail Stripe). Aucun engagement de durée.'],
     ['Comment fonctionne la garantie ?', `Vous êtes remboursé sur simple demande dans les ${DX_PRO.guaranteeDays} jours suivant le paiement.`],
     ['Mes données sont-elles en sécurité ?', 'Oui : accès cloisonné par compte (RLS), chiffrement en transit, aucune donnée revendue. Voir la politique de confidentialité.'],
@@ -439,7 +492,7 @@ function ProPricing({ onNav, addToast }) {
       <div style={{ textAlign: 'center' }}>
         <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 8px' }}>Passez à <span style={{ color: 'var(--accent-hover)' }}>DispersionX Pro</span></h1>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '0 auto', maxWidth: 560 }}>
-          Tous les outils d'analyse restent gratuits. Pro ajoute la <strong style={{ color: 'var(--text-soft)' }}>recherche automatique d'opportunités</strong>, le <strong style={{ color: 'var(--text-soft)' }}>contexte de marché</strong> et le <strong style={{ color: 'var(--text-soft)' }}>suivi en temps réel</strong>.
+          Tous les outils d'analyse restent gratuits. Pro ajoute la <strong style={{ color: 'var(--text-soft)' }}>recherche automatique d'opportunités</strong>, le <strong style={{ color: 'var(--text-soft)' }}>suivi en temps réel</strong> et l'<strong style={{ color: 'var(--text-soft)' }}>export direct vers votre courtier</strong> (IBKR).
         </p>
       </div>
 
@@ -500,4 +553,4 @@ function ProPricing({ onNav, addToast }) {
   );
 }
 
-Object.assign(window, { DX_PRO, ProUpsellCard, ProLockedPreview, ProComparison, ProPricing, ProBenefits, ProDemoOpportunities, ProDemoSuivi, ProDemoMarket, ProDemoJournal });
+Object.assign(window, { DX_PRO, ProUpsellCard, ProLockedPreview, ProComparison, ProPricing, ProBenefits, ProDemoOpportunities, ProDemoSuivi, ProDemoMarket, ProDemoJournal, ProDemoIbkr });

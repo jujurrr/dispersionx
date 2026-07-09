@@ -48,6 +48,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [savedTick, setSavedTick] = React.useState(0);
   const [importMsg, setImportMsg] = React.useState(null);
   const [shareOpen, setShareOpen] = React.useState(false);
+  const [ibkrOpen, setIbkrOpen] = React.useState(false);   // export IBKR (What-If) — Pro
   // Partage de la construction = partage de sa liste (cloud uniquement).
   const canShare = !!(window.DXCloud && window.DXCloud.enabled) && !!listId;
   const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage réservé à Pro
@@ -656,6 +657,19 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               <input type="file" accept=".json,application/json" style={{ display: 'none' }}
                 onChange={e => { const f = e.target.files && e.target.files[0]; if (f) importStrategy(f); e.target.value = ''; }} />
             </label>
+            {/* Export IBKR (Risk Navigator · What-If) — réservé Pro */}
+            {isProUser ? (
+              <button onClick={() => { save(false); setIbkrOpen(true); }} title="Générer un CSV importable dans le Risk Navigator de TWS (What-If)"
+                style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>
+                ⇪ Exporter vers IBKR (What-If)
+              </button>
+            ) : (
+              <button onClick={() => onNav && onNav('pricing')} title="Export IBKR réservé à l'offre Pro — cliquez pour la découvrir"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, font: '600 13px/1 var(--font-sans)', padding: '11px 16px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                🔒 Exporter vers IBKR
+                <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pro</span>
+              </button>
+            )}
             {canShare && (isProUser ? (
               <button onClick={() => { save(false); setShareOpen(true); }}
                 style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>
@@ -684,6 +698,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
       {shareOpen && window.ShareDialog && shareList && (
         <window.ShareDialog list={shareList} kind="construction" onClose={() => setShareOpen(false)} addToast={addToast} />
+      )}
+      {ibkrOpen && window.IbkrExportDialog && (
+        <window.IbkrExportDialog strategy={buildStrategy()} onClose={() => setIbkrOpen(false)} />
       )}
     </div>
   );

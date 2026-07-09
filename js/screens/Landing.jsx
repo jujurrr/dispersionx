@@ -293,12 +293,28 @@ function Landing() {
         <div style={{ ...eyebrow, textAlign: 'center' }}>{window.t ? window.t('Où exécuter la stratégie') : 'Où exécuter la stratégie'}</div>
         <h2 style={{ ...h2, maxWidth: 720, margin: '0 auto 18px' }}>{window.t ? window.t("La construction ici, l'exécution sous votre contrôle.") : "La construction ici, l'exécution sous votre contrôle."}</h2>
         <p style={{ ...lede, margin: '0 auto', textAlign: 'center' }}>
-          {TR("La stratégie peut être reproduite manuellement sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.")}
+          {TR("La stratégie peut être reproduite sur des plateformes d'options multi-jambes — notamment IBKR TWS ou OptionTrader. DispersionX reste agnostique : il prépare l'analyse et la construction, vous gardez la main sur l'exécution.")}
         </p>
         <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 26, flexWrap: 'wrap' }}>
           {['IBKR TWS', 'IBKR OptionTrader', 'Options multi-jambes'].map(p => (
             <Badge key={p} tone="neutral" size="md">{TR(p)}</Badge>
           ))}
+        </div>
+
+        {/* Export Pro en 1 clic — plus besoin de tout ressaisir. */}
+        <div style={{ marginTop: 40, background: 'var(--bg-card)', border: '1px solid var(--accent-border)', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', padding: '26px 28px', display: 'flex', gap: 28, flexWrap: 'wrap', alignItems: 'center', textAlign: 'left' }}>
+          <div style={{ flex: '1 1 300px', minWidth: 260 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+              <span style={{ font: '600 10px/1 var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 9px', borderRadius: 999, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)' }}>{TR('Du clic au courtier')}</span>
+              <Badge tone="accent" size="sm">Pro</Badge>
+            </span>
+            <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 10px', letterSpacing: 'var(--track-snug)' }}>{TR('Exportez toute la stratégie vers IBKR en un clic')}</h3>
+            <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '0 0 14px', lineHeight: 1.6 }}>
+              {TR("Pro génère un fichier prêt à importer dans le Risk Navigator de TWS — options indice, straddles composants et couverture delta en actions comprises. Il s'ouvre en portefeuille « What-If » : vous suivez la position virtuellement, puis vous exécutez chez votre courtier quand vous voulez. Rien n'est jamais transmis sans vous.")}
+            </p>
+            <Button variant="outline" size="md" onClick={() => window.__dxNav && window.__dxNav('pricing')}>{window.t ? window.t('Découvrir Pro') : 'Découvrir Pro'}</Button>
+          </div>
+          <div style={{ flex: '1 1 300px', minWidth: 260 }}>{window.ProDemoIbkr ? <window.ProDemoIbkr /> : null}</div>
         </div>
       </section>
     );
