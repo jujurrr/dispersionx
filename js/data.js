@@ -68,19 +68,28 @@
   window.DXProxy = { PROXY_SCALE, tradableIndex };
 
   // ── Échéances d'options réelles ──────────────────────────────────
-  // Les options actions/ETF US expirent le VENDREDI (weeklies + 3e vendredi
-  // mensuel). Pour chaque durée cible (14/30/45/60 j) on propose le vendredi
-  // le plus proche : l'échéance choisie est une vraie date, stockée dans la
-  // stratégie, et le DTE restant se calcule ensuite par rapport à elle.
+  // On propose les échéances MENSUELLES standard (3e vendredi du mois) : elles
+  // sont cotées pour TOUTE action optionnable, contrairement aux weeklies qui
+  // manquent à beaucoup de valeurs. C'est la SEULE source de vérité de
+  // l'échéance : construction, sizing, DTE, suivi (reprise) ET export IBKR
+  // s'appuient tous sur la date choisie ici → aucune divergence possible.
+  function _thirdFriday(y, mIdx) {
+    const first = new Date(y, mIdx, 1, 12, 0, 0, 0);
+    const firstFri = 1 + ((5 - first.getDay() + 7) % 7);   // 5 = vendredi
+    return new Date(y, mIdx, firstFri + 14, 12, 0, 0, 0);  // 1er vendredi + 2 semaines
+  }
   function _fridayNear(targetDays) {
-    const d = new Date(); d.setHours(12, 0, 0, 0);
-    d.setDate(d.getDate() + targetDays);
-    let delta = 5 - d.getDay();            // 5 = vendredi
-    if (delta > 3) delta -= 7;             // arrondi au vendredi le plus proche
-    d.setDate(d.getDate() + delta);
+    const base = new Date(); base.setHours(12, 0, 0, 0);
+    base.setDate(base.getDate() + targetDays);
+    const y = base.getFullYear(), m = base.getMonth();
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    while (d <= today) d.setDate(d.getDate() + 7);   // jamais dans le passé
-    return d;
+    let best = null, bestD = Infinity;   // 3e vendredi mensuel le plus proche de la cible
+    for (const c of [_thirdFriday(y, m - 1), _thirdFriday(y, m), _thirdFriday(y, m + 1)]) {
+      if (c <= today) continue;
+      const dd = Math.abs(c - base);
+      if (dd < bestD) { bestD = dd; best = c; }
+    }
+    return best || _thirdFriday(y, m + 1);
   }
   function _isoDay(d) { return d.toISOString().slice(0, 10); }
   function dteTo(iso) {

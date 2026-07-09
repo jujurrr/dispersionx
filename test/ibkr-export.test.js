@@ -32,13 +32,22 @@ test('strike ATM sur la grille STANDARD OCC (2,5 / 5 / 10)', () => {
   assert.equal(DX.roundStrike(22.4), '22.5');   // demi-strike coté
 });
 
-test('échéance snappée à la mensuelle (3ᵉ vendredi) la plus proche', () => {
-  assert.equal(DX.monthlyExp8({ expiry: '2026-08-21' }), '20260821');   // déjà un 3ᵉ vendredi
-  assert.equal(DX.monthlyExp8({ expiry: '2026-08-14' }), '20260821');   // weekly → mensuelle voisine
-  // La date renvoyée est TOUJOURS un vendredi (jour 5) — jamais une weekly arbitraire.
-  const e = DX.monthlyExp8({ duration: 30 });
+test('échéance CSV = celle de la stratégie (cohérence stricte avec le reste du site)', () => {
+  // L'échéance stockée est reprise TELLE QUELLE dans le CSV — jamais re-calculée
+  // ni re-snappée : le site (affichage, DTE, reprise) et le CSV coïncident.
+  assert.equal(DX.exportExp8({ expiry: '2026-08-21' }), '20260821');
+  assert.equal(DX.exportExp8({ expiry: '2026-09-04' }), '20260904');   // reprise à l'identique
+  const rows = DX.buildRows({ ...STRAT, expiry: '2026-09-04' });
+  rows.filter(r => r.SecType === 'OPT').forEach(r => assert.equal(r.LastTradingDayOrContractMonth, '20260904'));
+  // Repli mensuel UNIQUEMENT sans échéance stockée (durée seule) — et c'est un vendredi.
+  const e = DX.exportExp8({ duration: 30 });
   const d = new Date(`${e.slice(0, 4)}-${e.slice(4, 6)}-${e.slice(6, 8)}T00:00:00Z`);
   assert.equal(d.getUTCDay(), 5);
+});
+
+test('monthlyExp8 (repli durée) : 3ᵉ vendredi mensuel le plus proche', () => {
+  assert.equal(DX.monthlyExp8({ expiry: '2026-08-21' }), '20260821');   // déjà un 3ᵉ vendredi
+  assert.equal(DX.monthlyExp8({ expiry: '2026-08-14' }), '20260821');   // weekly → mensuelle voisine
 });
 
 test('validation chaîne réelle : strike/échéance réels priment, repli heuristique sinon', () => {

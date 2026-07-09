@@ -17,8 +17,8 @@ function IbkrExportDialog({ strategy, onClose }) {
   const hedgeLabel = s.deltaHedge === 'index' ? 'globale (actions ETF indice)'
     : s.deltaHedge === 'legs' ? 'jambe par jambe (actions des composants + ETF indice)'
     : 'aucune';
-  // Échéance réellement exportée = mensuelle standard (3ᵉ vendredi) la plus proche.
-  const exp8 = window.DXIbkr.monthlyExp8(s);
+  // Échéance réellement exportée = celle de la stratégie (identique au reste du site).
+  const exp8 = window.DXIbkr.exportExp8(s);
   const expIso = `${exp8.slice(0, 4)}-${exp8.slice(4, 6)}-${exp8.slice(6, 8)}`;
   const expTxt = window.DXExpiry ? window.DXExpiry.fmtExpiry(expIso) : expIso;
 
@@ -125,7 +125,7 @@ function IbkrExportDialog({ strategy, onClose }) {
 
         {/* Notes de précision */}
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.5 }}>
-          Strikes pris <strong>ATM</strong> et échéance <strong>mensuelle standard (3ᵉ vendredi, {expTxt})</strong> — cotée pour toute action optionnable, contrairement aux échéances hebdomadaires. Les contrats sont validés sur la vraie chaîne d'options quand elle est disponible. Le fichier est optimisé pour les sous-jacents cotés aux États-Unis (SPX→SPY, NDX→QQQ, DJI→DIA et leurs composants){sum && sum.foreign ? ' ; pour les composants européens (CAC/DAX), la devise est renseignée mais tu devras éventuellement préciser la place de cotation dans TWS' : ''}.
+          <strong>Échéance {expTxt}</strong> et <strong>strikes ATM</strong> — exactement ceux de la stratégie construite (le site modélise chaque jambe au plus proche du prix, sur une échéance mensuelle standard). Les contrats sont validés sur la vraie chaîne d'options quand elle est disponible. Le fichier est optimisé pour les sous-jacents cotés aux États-Unis (SPX→SPY, NDX→QQQ, DJI→DIA et leurs composants){sum && sum.foreign ? ' ; pour les composants européens (CAC/DAX), la devise est renseignée mais tu devras éventuellement préciser la place de cotation dans TWS' : ''}.
         </div>
       </div>
     </div>

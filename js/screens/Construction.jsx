@@ -420,7 +420,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           {/* Échéance — vraies dates d'expiration options (vendredis) */}
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Échéance{durationOverride ? ' (définie dans le Builder)' : ''}</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Dates réelles d'expiration des options (vendredis) — le DTE restant sera compté par rapport à cette date.</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Échéances mensuelles standard (3ᵉ vendredi) — cotées pour toutes les actions, identiques dans le suivi et l'export IBKR. Le DTE restant sera compté par rapport à cette date.</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {expiryOpts.map(o => {
                 const on = expiry === o.date;
@@ -428,7 +428,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
                   <button key={o.date} onClick={() => !durationOverride && pickExpiry(o)} disabled={!!durationOverride}
                     style={{ flex: 1, minWidth: 84, padding: '9px 4px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: durationOverride ? 'default' : 'pointer', textAlign: 'center' }}>
                     <div style={{ font: '700 12px/1 var(--font-mono)' }}>{window.DXExpiry ? window.DXExpiry.fmtExpiry(o.date).replace(/ \d{4}$/, '') : o.date}</div>
-                    <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{o.dte} DTE · ven.</div>
+                    <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{o.dte} DTE · mensuel</div>
                   </button>
                 );
               })}

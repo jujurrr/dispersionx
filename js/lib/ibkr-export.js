@@ -59,8 +59,22 @@
     const firstFri = 1 + ((5 - first.getUTCDay() + 7) % 7);   // 5 = vendredi
     return Date.UTC(y, mIdx, firstFri + 14);
   }
+  // Échéance EXPORTÉE = celle de la stratégie (`s.expiry`), STRICTEMENT identique
+  // à ce que le reste du site affiche/utilise (construction, DTE, reprise/suivi)
+  // → aucune divergence CSV ↔ site. Repli sur la mensuelle la plus proche
+  // UNIQUEMENT si la stratégie n'a pas d'échéance stockée (durée seule).
+  function exportExp8(s) {
+    if (s && s.expiry) {
+      const d = String(s.expiry).slice(0, 10).replace(/-/g, '');
+      if (/^\d{8}$/.test(d)) return d;
+    }
+    return monthlyExp8(s);
+  }
+
   // Échéance MENSUELLE (YYYYMMDD) la plus proche de l'échéance/durée visée par
-  // la stratégie — universellement cotée, contrairement aux weeklies.
+  // la stratégie — universellement cotée, contrairement aux weeklies. Sert de
+  // repli quand aucune `expiry` n'est stockée. NB : depuis que la construction
+  // ne propose QUE des mensuelles (js/data.js), `s.expiry` est déjà une mensuelle.
   function monthlyExp8(s) {
     let t;
     if (s && s.expiry) t = new Date(String(s.expiry).slice(0, 10) + 'T00:00:00Z').getTime();
@@ -89,7 +103,7 @@
   function buildRows(s, resolved) {
     if (!s) return [];
     const rows = [];
-    const fallbackE = (resolved && resolved.targetExp8) || monthlyExp8(s);
+    const fallbackE = (resolved && resolved.targetExp8) || exportExp8(s);
     const etf = String(s.indexEtf || s.index || '').toUpperCase();
     const opt = (action, qty, sym, strike, right, cur, E) => rows.push({ Action: action, Quantity: qty, Symbol: sym, SecType: 'OPT', LastTradingDayOrContractMonth: E, Strike: strike, Right: right, Exchange: 'SMART', Currency: cur });
     const stk = (action, qty, sym, cur) => rows.push({ Action: action, Quantity: qty, Symbol: sym, SecType: 'STK', LastTradingDayOrContractMonth: '', Strike: '', Right: '', Exchange: 'SMART', Currency: cur });
@@ -160,7 +174,7 @@
     opts = opts || {};
     const fetchFn = opts.fetch || (typeof fetch !== 'undefined' ? fetch : null);
     const origin = opts.origin || '';
-    const targetExp8 = monthlyExp8(s);
+    const targetExp8 = exportExp8(s);
     const base = { targetExp8, bySymbol: {} };
     if (!s || !fetchFn) return Promise.resolve(base);
     // Symboles US uniquement (les composants étrangers n'ont pas d'options US).
@@ -181,7 +195,7 @@
       .catch(() => base);
   }
 
-  function filename(s) { return `dx-ibkr-whatif-${(s && s.index) || 'strat'}-${monthlyExp8(s)}.csv`; }
+  function filename(s) { return `dx-ibkr-whatif-${(s && s.index) || 'strat'}-${exportExp8(s)}.csv`; }
 
   function download(s, resolved) {
     const blob = new Blob([toCsv(s, resolved)], { type: 'text/csv;charset=utf-8' });
@@ -192,5 +206,5 @@
     URL.revokeObjectURL(a.href);
   }
 
-  window.DXIbkr = { HEADER, buildRows, toCsv, summary, filename, download, roundStrike, symMeta, monthlyExp8, resolveContracts };
+  window.DXIbkr = { HEADER, buildRows, toCsv, summary, filename, download, roundStrike, symMeta, monthlyExp8, exportExp8, resolveContracts };
 })();
