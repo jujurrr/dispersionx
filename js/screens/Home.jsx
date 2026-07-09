@@ -2,26 +2,29 @@
 function Home({ onNav, lists, mode }) {
   const { MetricCard, Badge, EmptyState } = window.DispersionXDesignSystem_cb86be;
   const [indices, setIndices] = React.useState([]);
-  const [snapshots, setSnapshots] = React.useState({});
+  const [, setTick] = React.useState(0);   // re-render quand le store met un snap à jour
   const [loading, setLoading] = React.useState(true);
   const recent = lists ? lists.slice(0, 4) : [];
 
+  // Le PRIX (et ses variations) vient du STORE global — la MÊME source que la
+  // page de détail d'un indice (IndexDetail). Ainsi le prix affiché ici et au
+  // clic sur l'indice sont identiques (plus de divergence). Le store est
+  // préchargé au démarrage (preloadAll) et rafraîchi au tick global.
   React.useEffect(() => {
     let idxData = [];
-    const loadSnaps = () => idxData.forEach(idx => {
-      DXApi.getSnapshot(idx.symbol).then(snap => setSnapshots(s => ({ ...s, [idx.symbol]: snap }))).catch(() => {});
-    });
     DXApi.getIndices().then(data => {
       idxData = data || [];
-      setIndices(data);
+      setIndices(idxData);
       setLoading(false);
-      loadSnaps();
+      idxData.forEach(idx => window.DXStore && window.DXStore.loadIndex(idx.symbol));   // peuple le store (cache si déjà fait)
     }).catch(() => setLoading(false));
-    // Refresh des prix toutes les 60 s (tick global).
-    const onTick = () => loadSnaps();
+    const render = () => setTick(t => t + 1);
+    window.addEventListener('dx-index-update', render);
+    const onTick = () => idxData.forEach(idx => window.DXStore && window.DXStore.refreshQuotes(idx.symbol));
     window.addEventListener('dx-price-tick', onTick);
-    return () => window.removeEventListener('dx-price-tick', onTick);
+    return () => { window.removeEventListener('dx-index-update', render); window.removeEventListener('dx-price-tick', onTick); };
   }, []);
+  const snapOf = (symbol) => (window.DXStore && window.DXStore.getIndexData(symbol)?.snap) || null;
 
   const fmt = (v, decimals = 2) => v == null ? '—' : Number(v).toFixed(decimals);
   const pctColor = (v) => v >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
@@ -78,7 +81,7 @@ function Home({ onNav, lists, mode }) {
         <h2 style={{ font: 'var(--type-h2)', color: 'var(--text)', margin: '0 0 14px' }}>Choisir un indice</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
           {indices.map((idx, i) => {
-            const snap = snapshots[idx.symbol];
+            const snap = snapOf(idx.symbol);
             return (
               <div key={idx.symbol} onClick={() => onNav('index-detail', { symbol: idx.symbol })}
                 className="dx-glass dx-lift dx-rise" style={{ padding: 20, borderRadius: 'var(--radius-lg)', cursor: 'pointer', animationDelay: (i * 60) + 'ms' }}>
@@ -113,9 +116,9 @@ function Home({ onNav, lists, mode }) {
                 {snap ? (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                     {[
-                      { l: 'HV 30j', v: fmt(snap.hv30) + '%' },
+                      { l: '5 jours', v: snap.perf5d == null ? '—' : (snap.perf5d >= 0 ? '+' : '') + fmt(snap.perf5d, 1) + '%', up: snap.perf5d == null ? undefined : snap.perf5d >= 0 },
                       { l: 'IV est.', v: fmt(snap.iv_est) + '%' },
-                      { l: 'YTD', v: (snap.ytd >= 0 ? '+' : '') + fmt(snap.ytd) + '%', up: snap.ytd >= 0 },
+                      { l: 'YTD', v: snap.ytd == null ? '—' : (snap.ytd >= 0 ? '+' : '') + fmt(snap.ytd) + '%', up: snap.ytd == null ? undefined : snap.ytd >= 0 },
                     ].map(m => (
                       <div key={m.l} style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
                         <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 3 }}>{m.l}</div>

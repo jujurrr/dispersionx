@@ -174,5 +174,13 @@ export default async (req) => {
     snap.price_source = 'index_realtime';
   }
 
-  return Response.json({ ...snap, etf: map.etf, source: barSource });
+  // Petit cache CDN (5 s) : mutualise les appels amont (Yahoo/Finnhub) entre
+  // clients/régions au tick 15 s → prix quasi temps réel SANS saturer les APIs
+  // (sinon rate-limit → repli sur la clôture veille, bien plus périmé).
+  return Response.json({ ...snap, etf: map.etf, source: barSource }, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=5, stale-while-revalidate=20',
+      'Netlify-CDN-Cache-Control': 'public, s-maxage=5, stale-while-revalidate=20',
+    },
+  });
 };
