@@ -106,6 +106,24 @@ async function fetchIVFromMD(sym, dte, token) {
   } catch { return null; }
 }
 
+// Prochain résultat (earnings) du titre via Finnhub — pour scorer le RISQUE
+// ÉVÉNEMENT (même source que le module « Résultats » Pro, mais côté serveur donc
+// accessible à TOUS). Retour : 'YYYY-MM-DD' (prochain earnings) | { none: true }
+// (aucun dans l'horizon) | null (indisponible : pas de clé ou échec réseau).
+async function fetchNextEarnings(sym, horizonDays, token) {
+  if (!token) return null;
+  const ymd = d => new Date(d).toISOString().slice(0, 10);
+  const from = ymd(Date.now());
+  const to   = ymd(Date.now() + horizonDays * 86400000);
+  try {
+    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${token}`, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    const j = await r.json();
+    const dates = (j.earningsCalendar || []).map(e => e && e.date).filter(Boolean).filter(d => d >= from).sort();
+    return dates.length ? dates[0] : { none: true };
+  } catch { return null; }
+}
+
 export default async (req) => {
   let body = {};
   try { body = await req.json(); } catch {}
@@ -119,11 +137,13 @@ export default async (req) => {
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
-  const [stockData, idxData, ivCboe, ivIdxCboe] = await Promise.all([
+  const earnHorizon = Math.min(180, Math.max(duration + 30, 90));
+  const [stockData, idxData, ivCboe, ivIdxCboe, earnRaw] = await Promise.all([
     fetchBarsData(sym),
     fetchBarsData(idxEtf),
     cboeIvBundle(sym, duration).catch(() => null),
     cboeIvBundle(indexSym, duration).catch(() => null),
+    fetchNextEarnings(sym, earnHorizon, process.env.FINNHUB_API_KEY),
   ]);
 
   if (!stockData) return Response.json({ error: 'no_price_data', symbol: sym }, { status: 502 });
@@ -150,12 +170,36 @@ export default async (req) => {
   const score      = Math.round(Math.max(0, Math.min(100, 50 + volContrib + edgeRho + betaScore)));
   const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
 
+  // ── Risque événement (earnings) — RÉEL via Finnhub. Un résultat DANS la fenêtre
+  //    de la stratégie = risque de gap directionnel + IV crush → sous-score plus
+  //    bas. Sous-score d'affichage (n'entre pas dans le score composite). ──
+  let earningsDate = '—', daysToEarnings = null, earningsInStrategy = false, evScore = 70, evReason;
+  if (earnRaw == null) {
+    evScore = 70;
+    evReason = process.env.FINNHUB_API_KEY ? 'Date de résultats indisponible pour ce titre.' : 'Calendrier des résultats non configuré.';
+  } else if (earnRaw.none) {
+    evScore = 90; earningsDate = 'aucun avant échéance';
+    evReason = `Aucun résultat annoncé avant l'échéance (${duration} j) — risque événement faible.`;
+  } else {
+    earningsDate = earnRaw;
+    daysToEarnings = Math.max(0, Math.round((Date.parse(earnRaw + 'T12:00:00Z') - Date.now()) / 86400000));
+    earningsInStrategy = daysToEarnings <= duration;
+    if (earningsInStrategy) {
+      const frac = duration > 0 ? Math.min(1, daysToEarnings / duration) : 0;
+      evScore = Math.round(Math.max(35, Math.min(62, 38 + frac * 24)));
+      evReason = `Résultats le ${earnRaw} (dans ${daysToEarnings} j, DANS la fenêtre) — gap directionnel & IV crush possibles.`;
+    } else {
+      evScore = 88;
+      evReason = `Prochains résultats le ${earnRaw} (dans ${daysToEarnings} j, après l'échéance) — hors fenêtre.`;
+    }
+  }
+
   const subscores = {
     vol_attractive:     { score: Math.round(Math.max(0, Math.min(99, 50 + volPrem * 1.8))), reason: `IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}% (prime ${volPrem >= 0 ? '+' : ''}${volPrem.toFixed(1)} pts)` },
     dispersion_contrib: { score: Math.round(Math.max(0, Math.min(99, (1 - Math.max(0, rho)) * 120))), reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs indice (${rho < 0.5 ? 'faible = favorable' : rho < 0.7 ? 'modérée' : 'élevée = défavorable'})` },
     liquidity:          { score: Math.min(99, Math.round(50 + Math.log(Math.max(1, price)) * 5)), reason: `Prix ${price.toFixed(2)}$ — proxy liquidité` },
     execution:          { score: Math.min(99, Math.round(75 - rho * 28)), reason: `Spread estimé selon corrélation` },
-    event_risk:         { score: 72, reason: 'Risque événement non disponible (calendrier earnings non intégré)' },
+    event_risk:         { score: evScore, reason: evReason },
   };
 
   // Coût d'exécution ESTIMÉ, spécifique à chaque action (pas de vraie chaîne
@@ -165,7 +209,8 @@ export default async (req) => {
   const spreadPctEst = Math.max(0.03, Math.min(1.2,
     0.05 + (iv / 100) * 0.30 + Math.max(0, (60 - Math.min(60, price)) / 60) * 0.35));
   const costSpread   = Number((spreadPctEst * 12).toFixed(1));
-  const costEarnings = Number((0.6 + (iv / 100) * 1.2).toFixed(1));
+  // Coût earnings majoré si un résultat tombe DANS la fenêtre (IV crush / gap).
+  const costEarnings = Number(((0.6 + (iv / 100) * 1.2) * (earningsInStrategy ? 1.7 : 1)).toFixed(1));
   const compCcosts   = Number((-(costSpread + costEarnings)).toFixed(1));
 
   const g = bsAtm(price, iv / 100, T);
@@ -189,7 +234,7 @@ export default async (req) => {
     stock: {
       symbol: sym, weight: 10.0, iv, hv, beta,
       last_price: Number(price.toFixed(2)), iv_source: ivSrc,
-      earnings_in_strategy: false, days_to_earnings: 45, earnings_date: '—',
+      earnings_in_strategy: earningsInStrategy, days_to_earnings: daysToEarnings, earnings_date: earningsDate,
       iv_rank: { iv_rank: ivRank, iv_percentile: ivPct, iv_min: ivMin, iv_max: ivMax, note: ivSrc === 'cboe_delayed' ? 'IV réelle Cboe (différé 15 min) — rang estimé depuis HV historique' : ivSrc === 'marketdata' ? 'IV réelle MarketData — rang estimé depuis HV historique' : 'IV et rang estimés depuis la HV historique' },
       // Grecs du straddle ATM (Black-Scholes) — désormais nourris par l'IV réelle.
       // Strike/échéance réels de la chaîne Cboe quand disponibles.
