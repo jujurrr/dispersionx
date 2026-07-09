@@ -211,6 +211,22 @@ function App() {
     return () => clearInterval(id);
   }, []);
 
+  // Re-vérifie l'accès Pro au retour sur l'onglet (throttlé ~10 min) : si
+  // l'abonnement a expiré pendant une session restée ouverte, l'accès Pro est
+  // révoqué sans attendre un rechargement de page. refreshPro → checkPro (qui
+  // respecte current_period_end) → dx-pro-change.
+  React.useEffect(() => {
+    let last = 0;
+    const onVis = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (Date.now() - last < 600000) return;
+      last = Date.now();
+      if (window.DXCloud && window.DXCloud.refreshPro) window.DXCloud.refreshPro().catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVis);
+    return () => document.removeEventListener('visibilitychange', onVis);
+  }, []);
+
   // Navigate to a screen with the full-screen transition splash.
   function transitionTo(target, label, params) {
     setSplash(label);

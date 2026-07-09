@@ -39,11 +39,20 @@ async function checkPro() {
   if (!supa || !currentUser) return false;
   try {
     const { data, error } = await supa.from('pro_access')
-      .select('status,current_period_end,stripe_customer_id').eq('user_id', currentUser.id).maybeSingle();
+      .select('status,current_period_end,stripe_customer_id,stripe_subscription_id').eq('user_id', currentUser.id).maybeSingle();
     if (error || !data) return false;
     const status = data.status || 'active';                       // octroi manuel = actif
     if (status !== 'active' && status !== 'trialing') return false;
-    if (data.current_period_end && new Date(data.current_period_end).getTime() < Date.now()) return false;
+    const cpe = data.current_period_end ? new Date(data.current_period_end).getTime() : null;
+    const isSubscription = !!data.stripe_subscription_id;          // abonnement Stripe (mensuel/annuel)
+    if (isSubscription) {
+      // Un ABONNEMENT n'est JAMAIS « à vie » : accès uniquement pendant une
+      // période valide et NON échue. Période absente (donnée incomplète) ou
+      // dépassée → pas d'accès (le renouvellement Stripe repousse la période).
+      if (cpe == null || cpe < Date.now()) return false;
+    } else if (cpe != null && cpe < Date.now()) {
+      return false;   // octroi manuel avec fin explicite dépassée
+    }
     proSubscribed = !!data.stripe_customer_id;                    // abonnement Stripe → portail dispo
     proStatus = status; proPeriodEnd = data.current_period_end || null;
     return true;

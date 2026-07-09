@@ -68,13 +68,16 @@ export default async (req) => {
       const subId = obj.subscription;
       if (userId && subId) {
         const sub = await stripeGet(`/subscriptions/${subId}`);
+        // La fin de période est INDISPENSABLE (sinon accès « à vie » côté client) :
+        // si on ne l'obtient pas, on renvoie 5xx → Stripe réessaie le webhook.
+        if (!sub || !sub.current_period_end) throw new Error('subscription_period_unavailable');
         await sbUpsert({
           user_id: userId,
           since: new Date().toISOString(),
           stripe_customer_id: obj.customer || null,
           stripe_subscription_id: subId,
-          status: sub?.status || 'active',
-          current_period_end: iso(sub?.current_period_end),
+          status: sub.status || 'active',
+          current_period_end: iso(sub.current_period_end),
         });
       }
     } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
