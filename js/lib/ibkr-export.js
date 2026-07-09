@@ -152,8 +152,12 @@
     const rows = buildRows(s, resolved);
     const opts = rows.filter(r => r.SecType === 'OPT');
     const R = (resolved && resolved.bySymbol) || {};
+    const targetExp8 = (resolved && resolved.targetExp8) || exportExp8(s);
     const optSyms = [...new Set(opts.map(r => r.Symbol))];
     const validated = optSyms.filter(sym => R[sym] && R[sym].strike != null).length;
+    // Sous-jacents validés dont l'échéance cotée la plus proche DIFFÈRE de celle
+    // de la stratégie (la date ne « convient » pas telle quelle → ajustée).
+    const expiryAdjusted = optSyms.filter(sym => R[sym] && R[sym].expiry && String(R[sym].expiry) !== targetExp8).length;
     return {
       rows: rows.length,
       optionLegs: opts.length,
@@ -164,6 +168,8 @@
       optionSymbols: optSyms.length,
       validated,                                  // symboles validés sur la vraie chaîne
       approximated: optSyms.length - validated,   // symboles laissés au strike standard
+      targetExp8,                                 // échéance visée = celle de la stratégie
+      expiryAdjusted,                             // symboles dont l'échéance a dû être ajustée
     };
   }
 

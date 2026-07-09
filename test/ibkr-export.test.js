@@ -71,6 +71,17 @@ test('validation chaîne réelle : strike/échéance réels priment, repli heuri
   assert.equal(sum.optionSymbols, 4);   // SPY, AAPL, MSFT, SAP
   assert.equal(sum.validated, 2);       // SPY + AAPL
   assert.equal(sum.approximated, 2);
+  assert.equal(sum.expiryAdjusted, 0);  // SPY + AAPL cotent bien la date cible
+});
+
+test('échéance ajustée signalée quand un sous-jacent ne cote pas la date cible', () => {
+  const resolved = { targetExp8: '20260918', bySymbol: {
+    SPY:  { expiry: '20260918', strike: 597.5, spot: 598.4 },
+    AAPL: { expiry: '20260821', strike: 190, spot: 192.3 },   // date cotée la plus proche ≠ cible
+  } };
+  const rows = DX.buildRows(STRAT, resolved);
+  rows.filter(r => r.Symbol === 'AAPL' && r.SecType === 'OPT').forEach(r => assert.equal(r.LastTradingDayOrContractMonth, '20260821'));
+  assert.equal(DX.summary(STRAT, resolved).expiryAdjusted, 1);   // AAPL ajusté
 });
 
 test('suffixe → devise + symbole IBKR de base', () => {

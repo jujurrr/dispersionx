@@ -68,29 +68,25 @@
   window.DXProxy = { PROXY_SCALE, tradableIndex };
 
   // ── Échéances d'options réelles ──────────────────────────────────
-  // On propose les échéances MENSUELLES standard (3e vendredi du mois) : elles
-  // sont cotées pour TOUTE action optionnable, contrairement aux weeklies qui
-  // manquent à beaucoup de valeurs. C'est la SEULE source de vérité de
-  // l'échéance : construction, sizing, DTE, suivi (reprise) ET export IBKR
-  // s'appuient tous sur la date choisie ici → aucune divergence possible.
-  function _thirdFriday(y, mIdx) {
-    const first = new Date(y, mIdx, 1, 12, 0, 0, 0);
-    const firstFri = 1 + ((5 - first.getDay() + 7) % 7);   // 5 = vendredi
-    return new Date(y, mIdx, firstFri + 14, 12, 0, 0, 0);  // 1er vendredi + 2 semaines
-  }
+  // On propose le VENDREDI le plus proche de chaque durée cible (14/30/45/60 j)
+  // → l'utilisateur garde ses horizons habituels (dont ~30 j). L'échéance
+  // choisie est stockée dans la stratégie et sert de SEULE source de vérité :
+  // construction, sizing, DTE, suivi (reprise) ET export IBKR s'appuient tous
+  // dessus → aucune divergence. `monthly` (3e vendredi) = échéance MENSUELLE
+  // standard, cotée pour TOUTES les actions ; les weeklies manquent à certaines
+  // valeurs peu liquides — l'export le vérifie sur la vraie chaîne d'options.
   function _fridayNear(targetDays) {
-    const base = new Date(); base.setHours(12, 0, 0, 0);
-    base.setDate(base.getDate() + targetDays);
-    const y = base.getFullYear(), m = base.getMonth();
+    const d = new Date(); d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + targetDays);
+    let delta = 5 - d.getDay();            // 5 = vendredi
+    if (delta > 3) delta -= 7;             // arrondi au vendredi le plus proche
+    d.setDate(d.getDate() + delta);
     const today = new Date(); today.setHours(0, 0, 0, 0);
-    let best = null, bestD = Infinity;   // 3e vendredi mensuel le plus proche de la cible
-    for (const c of [_thirdFriday(y, m - 1), _thirdFriday(y, m), _thirdFriday(y, m + 1)]) {
-      if (c <= today) continue;
-      const dd = Math.abs(c - base);
-      if (dd < bestD) { bestD = dd; best = c; }
-    }
-    return best || _thirdFriday(y, m + 1);
+    while (d <= today) d.setDate(d.getDate() + 7);   // jamais dans le passé
+    return d;
   }
+  // 3e vendredi du mois (échéance mensuelle standard) = jour 15 à 21 ET vendredi.
+  function _isThirdFriday(d) { return d.getDay() === 5 && d.getDate() >= 15 && d.getDate() <= 21; }
   function _isoDay(d) { return d.toISOString().slice(0, 10); }
   function dteTo(iso) {
     if (!iso) return null;
@@ -109,7 +105,7 @@
       const iso = _isoDay(d);
       if (seen[iso]) return null;
       seen[iso] = true;
-      return { date: iso, dte: dteTo(iso), target: t };
+      return { date: iso, dte: dteTo(iso), target: t, monthly: _isThirdFriday(d) };
     }).filter(Boolean);
   }
   window.DXExpiry = { expiriesFor, dteTo, fmtExpiry };
