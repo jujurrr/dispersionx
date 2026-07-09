@@ -3,8 +3,9 @@
    Contact et identité du responsable = placeholders à compléter avant
    lancement public (marqués « à compléter »). */
 function Privacy({ onNav }) {
-  const UPDATED = '7 juillet 2026';
-  const CONTACT = 'privacy@dispersionx.app'; // ← à compléter : adresse de contact réelle
+  const L = window.DXLegal || {};
+  const UPDATED = L.updated || '9 juillet 2026';
+  const CONTACT = L.email || 'contact@dispersionx.app'; // source unique : js/legal-info.js
 
   const H = ({ children }) => (
     <h2 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '28px 0 10px', letterSpacing: 'var(--track-snug)' }}>{children}</h2>
@@ -37,9 +38,11 @@ function Privacy({ onNav }) {
 
       <H>1. Responsable du traitement</H>
       <P>
-        Le responsable du traitement est l'éditeur de DispersionX. Pour toute question relative à vos données ou à
-        l'exercice de vos droits : <a href={`mailto:${CONTACT}`} style={{ color: 'var(--accent-hover)' }}>{CONTACT}</a>.
-        <em style={{ color: 'var(--text-muted)' }}> (Identité légale et coordonnées complètes à compléter avant lancement public.)</em>
+        Le responsable du traitement est <span style={strong}>{L.editeurNom || "l'éditeur de DispersionX"}</span>
+        {L.editeurStatut ? ` (${L.editeurStatut})` : ''}. Coordonnées complètes dans les
+        {onNav ? <a onClick={() => onNav('legal')} style={{ color: 'var(--accent-hover)', cursor: 'pointer', marginLeft: 4 }}>Mentions légales</a> : ' Mentions légales'}.
+        Pour toute question relative à vos données ou à l'exercice de vos droits :
+        <a href={`mailto:${CONTACT}`} style={{ color: 'var(--accent-hover)', marginLeft: 4 }}>{CONTACT}</a>.
       </P>
 
       <H>2. Données que nous traitons</H>
@@ -75,6 +78,7 @@ function Privacy({ onNav }) {
         <Li><span style={strong}>Stripe</span> — traitement des paiements de l'abonnement Pro (nous ne voyons ni ne stockons vos données bancaires).</Li>
         <Li><span style={strong}>Sources de données de marché</span> — Cboe (cotations différées 15 min), Yahoo Finance, Finnhub. Les requêtes partent de <em>nos serveurs</em>, pas de votre navigateur ; nous ne leur transmettons aucune donnée personnelle.</Li>
         <Li><span style={strong}>Resend</span> — envoi d'e-mails d'alerte, uniquement si vous activez une alerte.</Li>
+        <Li><span style={strong}>Vercel Web Analytics</span> — mesure d'audience <em>sans cookie</em> et sans identifiant personnel (pages vues, événements agrégés), servie depuis notre propre domaine. Aucune donnée n'est revendue ni recoupée entre sites.</Li>
       </ul>
 
       <H>5. Cookies et stockage local</H>
@@ -84,6 +88,11 @@ function Privacy({ onNav }) {
         préférences (thème, mode d'affichage) et, en mode invité, vos listes et stratégies. L'authentification
         Supabase conserve un jeton de session pour vous garder connecté. Ces éléments sont strictement nécessaires
         au fonctionnement et ne servent pas au pistage.
+      </P>
+      <P>
+        Notre <span style={strong}>mesure d'audience</span> (Vercel Web Analytics) fonctionne <span style={strong}>sans
+        cookie</span> et sans identifiant : elle relève de la mesure d'audience exemptée de consentement au sens des
+        recommandations de la CNIL. Vous pouvez néanmoins la désactiver depuis vos <span style={strong}>Préférences</span>.
       </P>
 
       <H>6. Durée de conservation</H>

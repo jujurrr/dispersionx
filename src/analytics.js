@@ -7,6 +7,24 @@
 (function () {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
+  // Opt-out utilisateur (RGPD/CNIL) — même pour une mesure d'audience exemptée, on
+  // laisse le choix de refuser. Piloté depuis les Préférences via window.DXAnalytics.
+  var OPTOUT_KEY = 'dx-analytics-optout';
+  function optedOut() { try { return localStorage.getItem(OPTOUT_KEY) === '1'; } catch (e) { return false; } }
+  window.DXAnalytics = {
+    isOptedOut: optedOut,
+    setOptOut: function (v) {
+      try { if (v) localStorage.setItem(OPTOUT_KEY, '1'); else localStorage.removeItem(OPTOUT_KEY); } catch (e) {}
+    },
+  };
+
+  if (optedOut()) {
+    // Mesure d'audience refusée → aucun collecteur chargé, événements neutralisés.
+    window.va = window.va || function () {};
+    window.DXTrack = function () {};
+    return;
+  }
+
   // File d'attente (le vrai script la vide au chargement) — définie ici, dans le
   // bundle (origine « self »), donc pas de <script> inline à autoriser en CSP.
   window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
@@ -20,6 +38,7 @@
   // Helper d'événements « custom » pour le tunnel (upsell → tarifs → checkout).
   // No-op sûr si l'analytics est désactivé.
   window.DXTrack = function (name, props) {
+    if (optedOut()) return;
     try { window.va('event', { name: name, data: props || {} }); } catch (e) { /* silencieux */ }
   };
 })();

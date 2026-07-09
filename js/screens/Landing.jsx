@@ -360,7 +360,10 @@ function Landing() {
             <window.Logo size={24} wordmark={false} />
             <span style={{ font: '700 13px/1 var(--font-sans)', color: 'var(--text-soft)' }}>DispersionX</span>
           </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+            <a onClick={() => window.__dxNav && window.__dxNav('legal')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('Mentions légales') : 'Mentions légales'}</a>
+            <a onClick={() => window.__dxNav && window.__dxNav('terms')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('CGU') : 'CGU'}</a>
+            <a onClick={() => window.__dxNav && window.__dxNav('sales')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('CGV') : 'CGV'}</a>
             <a onClick={() => window.__dxNav && window.__dxNav('privacy')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('Confidentialité') : 'Confidentialité'}</a>
             <span>{window.t ? window.t("Outil d'analyse — ne constitue pas un conseil en investissement.") : "Outil d'analyse — ne constitue pas un conseil en investissement."}</span>
           </span>

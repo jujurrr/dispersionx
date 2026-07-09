@@ -48,6 +48,7 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const [newPw, setNewPw] = React.useState('');
   const [savingPw, setSavingPw] = React.useState(false);
   const [busyPro, setBusyPro] = React.useState(false);
+  const [noStats, setNoStats] = React.useState(() => !!(window.DXAnalytics && window.DXAnalytics.isOptedOut && window.DXAnalytics.isOptedOut()));
 
   React.useEffect(() => { setName(user ? user.name : ''); }, [user && user.name]);
 
@@ -73,7 +74,7 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const isPro = !!(C && C.pro);
   const subscribed = !!(C && C.proSubscribed);
   const periodEnd = C && C.proPeriodEnd;
-  const canceling = C && C.proStatus === 'canceled';
+  const canceling = C && (C.proStatus === 'canceling' || C.proStatus === 'canceled');
   const periodTxt = periodEnd ? new Date(periodEnd).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
 
   async function saveName() {
@@ -207,6 +208,24 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
       <PrefSection title={t('Apparence')} desc={t('Thème clair ou sombre.')} right={window.ThemeToggle ? <window.ThemeToggle /> : null}>
         <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
           {t("Le thème est mémorisé sur cet appareil. Le mode d'affichage (Débutant / Avancé) se règle en haut à droite de l'app.")}
+        </div>
+      </PrefSection>
+
+      {/* ── Confidentialité / mesure d'audience ── */}
+      <PrefSection title={t('Confidentialité')} desc={t("Mesure d'audience anonyme, sans cookie. Vous pouvez la refuser.")}>
+        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+          <input type="checkbox" checked={!noStats}
+            onChange={e => { const on = e.target.checked; setNoStats(!on); if (window.DXAnalytics) window.DXAnalytics.setOptOut(!on); addToast && addToast(on ? t("Mesure d'audience activée.") : t("Mesure d'audience désactivée (effet complet au prochain chargement)."), 'ok'); }}
+            style={{ marginTop: 2, width: 15, height: 15, accentColor: 'var(--accent)', flexShrink: 0, cursor: 'pointer' }} />
+          <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', lineHeight: 1.5 }}>
+            {t("Autoriser la mesure d'audience anonyme (Vercel Web Analytics, sans cookie ni donnée personnelle).")}
+          </span>
+        </label>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+          <a onClick={() => onNav('privacy')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{t('Confidentialité')}</a>
+          <a onClick={() => onNav('legal')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{t('Mentions légales')}</a>
+          <a onClick={() => onNav('terms')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{t('CGU')}</a>
+          <a onClick={() => onNav('sales')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{t('CGV')}</a>
         </div>
       </PrefSection>
 

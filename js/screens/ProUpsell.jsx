@@ -132,6 +132,11 @@ function ProUpsellCard({ context = 'default', onNav, addToast }) {
       <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', maxWidth: 380 }}>
         Garantie <strong style={{ color: 'var(--text-soft)' }}>{DX_PRO.guaranteeDays} jours satisfait ou remboursé</strong> · paiement sécurisé Stripe · résiliable en 1 clic
       </div>
+      {onNav && (
+        <div style={{ font: '11px/1.5 var(--font-sans)', color: 'var(--text-dim)', maxWidth: 380 }}>
+          En souscrivant, vous acceptez les <a onClick={() => onNav('sales')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>CGV</a> (abonnement mensuel à accès immédiat, reconductible, résiliable à tout moment).
+        </div>
+      )}
     </div>
   );
 }
@@ -535,6 +540,10 @@ function ProPricing({ onNav, addToast }) {
         <span>↩︎ {DX_PRO.guaranteeDays} jours satisfait ou remboursé</span>
         <span>✕ Résiliable en 1 clic</span>
         <span onClick={() => onNav('privacy')} style={{ cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>Vos données protégées</span>
+        <span onClick={() => onNav('sales')} style={{ cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>CGV</span>
+      </div>
+      <div style={{ textAlign: 'center', font: '11px/1.5 var(--font-sans)', color: 'var(--text-dim)', maxWidth: 620, margin: '0 auto' }}>
+        En souscrivant, vous acceptez les <span onClick={() => onNav('sales')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>Conditions Générales de Vente</span>. Abonnement mensuel à accès immédiat, reconduit tacitement et résiliable à tout moment.
       </div>
 
       {/* FAQ */}

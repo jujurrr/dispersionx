@@ -439,8 +439,11 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
             <span>{window.t ? window.t('Données différées 15 min — analyse pédagogique, pas un conseil en investissement.') : 'Données différées 15 min — analyse pédagogique, pas un conseil en investissement.'}</span>
           </div>
           {/* Liens légal + offre */}
-          <div style={{ display: 'flex', gap: 12, font: '10px/1.4 var(--font-sans)' }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', font: '10px/1.4 var(--font-sans)' }}>
             {!pro && <a onClick={() => onNav && onNav('pricing')} style={{ color: 'var(--accent-hover)', cursor: 'pointer', borderBottom: '1px dotted var(--accent-border)' }}>{window.t ? window.t('Passer Pro') : 'Passer Pro'}</a>}
+            <a onClick={() => onNav && onNav('legal')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('Mentions légales') : 'Mentions légales'}</a>
+            <a onClick={() => onNav && onNav('terms')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('CGU') : 'CGU'}</a>
+            <a onClick={() => onNav && onNav('sales')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('CGV') : 'CGV'}</a>
             <a onClick={() => onNav && onNav('privacy')} style={{ color: 'var(--text-muted)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{window.t ? window.t('Confidentialité') : 'Confidentialité'}</a>
           </div>
         </div>

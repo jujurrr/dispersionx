@@ -46,6 +46,7 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
   const [busy, setBusy] = React.useState(false);
   const [recovering, setRecovering] = React.useState(false);   // saisie d'un nouveau mot de passe
   const [newPw, setNewPw] = React.useState('');
+  const [accept, setAccept] = React.useState(false);           // acceptation CGU + confidentialité (inscription)
 
   // Retour du lien « mot de passe oublié » → Supabase établit une session de
   // récupération et émet dx-password-recovery : on propose le nouveau mot de passe.
@@ -97,6 +98,7 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
     if (mode === 'signup') {
       if (!name.trim()) return setError('Indiquez votre nom.');
       if (pw !== pw2) return setError('Les mots de passe ne correspondent pas.');
+      if (!accept) return setError("Vous devez accepter les CGU et la politique de confidentialité pour créer un compte.");
     }
     setBusy(true);
     const C = window.DXCloud;
@@ -233,6 +235,19 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
             <label style={labelStyle}>Confirmer le mot de passe</label>
             <PwField style={inputStyle} value={pw2} onChange={e => setPw2(e.target.value)} placeholder="••••••••" autoComplete="new-password" />
           </div>
+        )}
+
+        {mode === 'signup' && (
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+            <input type="checkbox" checked={accept} onChange={e => setAccept(e.target.checked)}
+              style={{ marginTop: 2, width: 15, height: 15, accentColor: 'var(--accent)', flexShrink: 0, cursor: 'pointer' }} />
+            <span>
+              J'ai lu et j'accepte les{' '}
+              <a onClick={() => onNav('terms')} style={{ color: 'var(--accent-hover)', cursor: 'pointer', fontWeight: 600 }}>CGU</a>
+              {' '}et la{' '}
+              <a onClick={() => onNav('privacy')} style={{ color: 'var(--accent-hover)', cursor: 'pointer', fontWeight: 600 }}>politique de confidentialité</a>.
+            </span>
+          </label>
         )}
 
         {mode === 'login' && (
