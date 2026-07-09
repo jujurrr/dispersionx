@@ -103,7 +103,11 @@ function userFromSession(session) {
   const u = session?.user;
   if (!u) return null;
   const m = u.user_metadata || {};
-  return { id: u.id, email: u.email, name: m.name || m.full_name || (u.email ? u.email.split('@')[0] : 'Utilisateur') };
+  return {
+    id: u.id, email: u.email,
+    name: m.name || m.full_name || (u.email ? u.email.split('@')[0] : 'Utilisateur'),
+    emailVerified: !!(u.email_confirmed_at || u.confirmed_at),
+  };
 }
 
 // ── Authentification ────────────────────────────────────────────────────────
@@ -143,6 +147,35 @@ const auth = {
     currentUser = userFromSession({ user: data.user });
     window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
     return currentUser;
+  },
+  // Change l'adresse e-mail. Supabase envoie un lien de confirmation au nouvel
+  // e-mail (et, selon la config, à l'ancien) : le changement n'est effectif
+  // qu'après clic sur ce lien.
+  async updateEmail(email) {
+    const { error } = await supa.auth.updateUser({ email }, { emailRedirectTo: window.location.origin });
+    if (error) throw error;
+  },
+  // Renvoie l'e-mail de confirmation (adresse encore non vérifiée).
+  async resendConfirmation(email) {
+    const { error } = await supa.auth.resend({ type: 'signup', email });
+    if (error) throw error;
+  },
+  // Suppression définitive du compte (RGPD art. 17). Annule l'abonnement Stripe
+  // éventuel puis supprime l'utilisateur Auth côté serveur (service role) →
+  // cascade sur toutes les données (FK on delete cascade). Déconnecte + purge local.
+  async deleteAccount() {
+    const { data } = await supa.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('not_signed_in');
+    const r = await fetch('/api/account/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: '{}',
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'suppression_impossible');
+    try { await supa.auth.signOut(); } catch {}   // déclenche la purge des caches locaux
+    return true;
   },
   async signOut() { if (supa) await supa.auth.signOut(); },
 };

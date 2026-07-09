@@ -49,8 +49,12 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const [savingPw, setSavingPw] = React.useState(false);
   const [busyPro, setBusyPro] = React.useState(false);
   const [noStats, setNoStats] = React.useState(() => !!(window.DXAnalytics && window.DXAnalytics.isOptedOut && window.DXAnalytics.isOptedOut()));
+  const [email, setEmail] = React.useState(user ? user.email : '');
+  const [savingEmail, setSavingEmail] = React.useState(false);
+  const [busyDelete, setBusyDelete] = React.useState(false);
+  const [confirmDel, setConfirmDel] = React.useState(false);
 
-  React.useEffect(() => { setName(user ? user.name : ''); }, [user && user.name]);
+  React.useEffect(() => { setName(user ? user.name : ''); setEmail(user ? user.email : ''); }, [user && user.name, user && user.email]);
 
   const input = {
     width: '100%', background: 'var(--bg-base)', border: '1px solid var(--border)',
@@ -96,6 +100,32 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
     catch (e) { addToast && addToast('Échec : ' + (e && e.message ? e.message : ''), 'error'); }
     finally { setSavingPw(false); }
   }
+  async function saveEmail() {
+    const em = email.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { addToast && addToast('Adresse e-mail invalide.', 'error'); return; }
+    if (em.toLowerCase() === (user.email || '').toLowerCase()) return;
+    setSavingEmail(true);
+    try {
+      await C.auth.updateEmail(em);
+      addToast && addToast("E-mail de confirmation envoyé à la nouvelle adresse. Le changement sera effectif après avoir cliqué le lien.", 'ok');
+    } catch (e) { addToast && addToast("Changement d'e-mail impossible : " + (e && e.message ? e.message : ''), 'error'); }
+    finally { setSavingEmail(false); }
+  }
+  async function resendConf() {
+    try { await C.auth.resendConfirmation(user.email); addToast && addToast('E-mail de confirmation renvoyé.', 'ok'); }
+    catch (e) { addToast && addToast('Envoi impossible : ' + (e && e.message ? e.message : ''), 'error'); }
+  }
+  async function doDelete() {
+    setBusyDelete(true);
+    try {
+      await C.auth.deleteAccount();
+      addToast && addToast('Compte supprimé définitivement.', 'ok');
+      onAuth && onAuth(null); onNav('landing');
+    } catch (e) {
+      addToast && addToast('Suppression impossible : ' + (e && e.message ? e.message : ''), 'error');
+      setBusyDelete(false); setConfirmDel(false);
+    }
+  }
   async function goPro() {
     setBusyPro(true);
     try { await C.startProCheckout(); }
@@ -136,7 +166,29 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
           </Button>
         </div>
         <label style={{ ...label, marginTop: 16 }}>{t('E-mail')}</label>
-        <input style={{ ...input, color: 'var(--text-muted)', cursor: 'not-allowed' }} value={user.email} readOnly disabled />
+        {configured ? (
+          <>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <input style={{ ...input, flex: 1, minWidth: 200 }} type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="vous@exemple.com" autoComplete="email" />
+              <Button variant="outline" size="md" onClick={saveEmail} disabled={savingEmail || !email.trim() || email.trim().toLowerCase() === (user.email || '').toLowerCase()}>
+                {savingEmail ? t('Envoi…') : t("Changer l'e-mail")}
+              </Button>
+            </div>
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+              {user.emailVerified
+                ? <Badge tone="pos" size="sm">{t('E-mail vérifié')}</Badge>
+                : (<>
+                    <Badge tone="warn" size="sm">{t('Non vérifié')}</Badge>
+                    <a onClick={resendConf} style={{ font: 'var(--type-caption)', color: 'var(--accent-hover)', cursor: 'pointer' }}>{t('Renvoyer le lien')}</a>
+                  </>)}
+            </div>
+            <div style={{ marginTop: 6, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+              {t("Tout changement d'e-mail doit être confirmé via le lien envoyé à la nouvelle adresse.")}
+            </div>
+          </>
+        ) : (
+          <input style={{ ...input, color: 'var(--text-muted)', cursor: 'not-allowed' }} value={user.email} readOnly disabled />
+        )}
       </PrefSection>
 
       {/* ── Sécurité ── */}
@@ -236,6 +288,36 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
           onAuth && onAuth(null); onNav('landing');
         }}>{t('Se déconnecter')}</Button>
       </PrefSection>
+
+      {/* ── Zone de danger : suppression définitive du compte (RGPD art. 17) ── */}
+      {configured && (
+        <PrefSection
+          title={t('Supprimer mon compte')}
+          desc={t('Suppression définitive et immédiate de votre compte et de toutes vos données.')}
+          right={<Badge tone="neg" size="sm">{t('Irréversible')}</Badge>}
+        >
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
+            {t('Vos listes, stratégies, positions et réglages seront effacés. Un abonnement Stripe actif est automatiquement annulé. Cette action ne peut pas être annulée.')}
+          </div>
+          <Button variant="danger" size="md" onClick={() => setConfirmDel(true)} disabled={busyDelete}>
+            {t('Supprimer définitivement mon compte')}
+          </Button>
+        </PrefSection>
+      )}
+
+      {window.ConfirmDialog && (
+        <window.ConfirmDialog
+          open={confirmDel}
+          title={t('Supprimer votre compte ?')}
+          message={t('Cette action est définitive : toutes vos données seront effacées et tout abonnement en cours annulé. Elle ne peut pas être annulée.')}
+          confirmLabel={t('Supprimer définitivement')}
+          cancelLabel={t('Annuler')}
+          tone="danger"
+          onConfirm={doDelete}
+          onCancel={() => { if (!busyDelete) setConfirmDel(false); }}
+          busy={busyDelete}
+        />
+      )}
     </div>
   );
 }
