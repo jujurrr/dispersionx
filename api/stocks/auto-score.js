@@ -107,40 +107,35 @@ async function fetchIVFromMD(sym, dte, token) {
   } catch { return null; }
 }
 
-// ── Risque événement : earnings via Finnhub. UN SEUL appel GLOBAL (calendrier
-//    complet sur 120 j) mutualisé — mémoire isolate (10 min) + cache Supabase
-//    (12 h) — au lieu d'un appel PAR ACTION (qui saturait Finnhub → 429 →
-//    « indisponible » partout). Puis lookup {SYMBOLE: 'YYYY-MM-DD'} par ticker. ──
-const EARN_HORIZON_DAYS = 120;
-const EARN_TTL_MS = 12 * 3600 * 1000;
-let _earnCache = { map: null, at: 0 };   // survit entre invocations sur un isolate chaud
+// ── Risque événement : prochain earnings du titre via Finnhub, requête PAR
+//    SYMBOLE (fiable — l'appel global est incomplet), mais MUTUALISÉE par un
+//    cache mémoire isolate + Supabase (12 h) pour ne PAS refaire l'appel à
+//    chaque score → évite le rate-limit Finnhub. Horizon plafonné à 60 j. ──
+const EARN_HORIZON = 60;                 // fenêtre de détection (jours)
+const EARN_TTL_MS  = 12 * 3600 * 1000;   // les dates d'earnings bougent lentement
+const _earnMem = new Map();              // sym -> { val, at } (survit sur isolate chaud)
 
-async function fetchGlobalEarnings(token) {
+async function fetchNextEarningsRaw(sym, token) {
   const ymd = d => new Date(d).toISOString().slice(0, 10);
-  const from = ymd(Date.now()), to = ymd(Date.now() + EARN_HORIZON_DAYS * 86400000);
+  const from = ymd(Date.now()), to = ymd(Date.now() + EARN_HORIZON * 86400000);
   try {
-    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?from=${from}&to=${to}&token=${token}`, { signal: AbortSignal.timeout(8000) });
+    const r = await fetch(`https://finnhub.io/api/v1/calendar/earnings?symbol=${encodeURIComponent(sym)}&from=${from}&to=${to}&token=${token}`, { signal: AbortSignal.timeout(6000) });
     if (!r.ok) return null;
-    const arr = (await r.json())?.earningsCalendar;
-    if (!Array.isArray(arr) || !arr.length) return null;
-    const map = {};
-    for (const e of arr) {
-      if (!e || !e.symbol || !e.date || e.date < from) continue;
-      const s = String(e.symbol).toUpperCase();
-      if (!map[s] || e.date < map[s]) map[s] = e.date;   // le PROCHAIN (plus tôt)
-    }
-    return Object.keys(map).length ? map : null;
+    const dates = ((await r.json())?.earningsCalendar || []).map(e => e && e.date).filter(d => d && d >= from).sort();
+    return dates.length ? { date: dates[0] } : { none: true };
   } catch { return null; }
 }
 
-async function getEarningsMap(token) {
+// Retour : { date:'YYYY-MM-DD' } | { none:true } | null (indisponible).
+async function getNextEarnings(sym, token) {
   if (!token) return null;
-  if (_earnCache.map && Date.now() - _earnCache.at < 10 * 60 * 1000) return _earnCache.map;
-  const cached = await kvCacheGet('__EARNINGS__', EARN_TTL_MS);
-  if (cached && typeof cached === 'object') { _earnCache = { map: cached, at: Date.now() }; return cached; }
-  const map = await fetchGlobalEarnings(token);
-  if (map) { _earnCache = { map, at: Date.now() }; kvCacheSet('__EARNINGS__', map).catch(() => {}); }
-  return map;
+  const mem = _earnMem.get(sym);
+  if (mem && Date.now() - mem.at < EARN_TTL_MS) return mem.val;
+  const cached = await kvCacheGet('EARN:' + sym, EARN_TTL_MS);
+  if (cached && (cached.date || cached.none)) { _earnMem.set(sym, { val: cached, at: Date.now() }); return cached; }
+  const val = await fetchNextEarningsRaw(sym, token);
+  if (val) { _earnMem.set(sym, { val, at: Date.now() }); kvCacheSet('EARN:' + sym, val).catch(() => {}); }
+  return val;   // null = échec ponctuel → non caché, retenté au prochain score
 }
 
 export default async (req) => {
@@ -156,12 +151,12 @@ export default async (req) => {
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
 
-  const [stockData, idxData, ivCboe, ivIdxCboe, earnMap] = await Promise.all([
+  const [stockData, idxData, ivCboe, ivIdxCboe, earnRes] = await Promise.all([
     fetchBarsData(sym),
     fetchBarsData(idxEtf),
     cboeIvBundle(sym, duration).catch(() => null),
     cboeIvBundle(indexSym, duration).catch(() => null),
-    getEarningsMap(process.env.FINNHUB_API_KEY),
+    getNextEarnings(sym, process.env.FINNHUB_API_KEY),
   ]);
 
   if (!stockData) return Response.json({ error: 'no_price_data', symbol: sym }, { status: 502 });
@@ -192,26 +187,26 @@ export default async (req) => {
   //    de la stratégie = risque de gap directionnel + IV crush → sous-score plus
   //    bas. Sous-score d'affichage (n'entre pas dans le score composite). ──
   let earningsDate = '—', daysToEarnings = null, earningsInStrategy = false, evScore = 72, evReason;
-  const nextEarn = earnMap ? earnMap[sym] : undefined;
-  if (earnMap == null) {
-    // Calendrier global momentanément indisponible (Finnhub down / pas de clé).
+  if (earnRes == null) {
+    // Momentanément indisponible (Finnhub throttlé / pas de clé) — score neutre.
     evScore = 72;
     evReason = process.env.FINNHUB_API_KEY ? 'Calendrier des résultats momentanément indisponible.' : 'Calendrier des résultats non configuré.';
-  } else if (!nextEarn) {
-    // Aucun résultat détecté dans l'horizon (~120 j) — risque événement faible.
+  } else if (earnRes.none) {
+    // Aucun résultat dans les 60 prochains jours — risque événement faible.
     evScore = 85; earningsDate = 'aucun proche';
-    evReason = `Aucun résultat détecté dans les ~${EARN_HORIZON_DAYS} prochains jours — risque événement faible.`;
+    evReason = `Aucun résultat dans les ${EARN_HORIZON} prochains jours — risque événement faible.`;
   } else {
-    earningsDate = nextEarn;
-    daysToEarnings = Math.max(0, Math.round((Date.parse(nextEarn + 'T12:00:00Z') - Date.now()) / 86400000));
+    const d = earnRes.date;
+    earningsDate = d;
+    daysToEarnings = Math.max(0, Math.round((Date.parse(d + 'T12:00:00Z') - Date.now()) / 86400000));
     earningsInStrategy = daysToEarnings <= duration;
     if (earningsInStrategy) {
       const frac = duration > 0 ? Math.min(1, daysToEarnings / duration) : 0;
       evScore = Math.round(Math.max(35, Math.min(62, 38 + frac * 24)));
-      evReason = `Résultats le ${nextEarn} (dans ${daysToEarnings} j, DANS la fenêtre) — gap directionnel & IV crush possibles.`;
+      evReason = `Résultats le ${d} (dans ${daysToEarnings} j, DANS la fenêtre) — gap directionnel & IV crush possibles.`;
     } else {
       evScore = 88;
-      evReason = `Prochains résultats le ${nextEarn} (dans ${daysToEarnings} j, après l'échéance) — hors fenêtre.`;
+      evReason = `Prochains résultats le ${d} (dans ${daysToEarnings} j, après l'échéance) — hors fenêtre.`;
     }
   }
 
