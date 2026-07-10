@@ -182,7 +182,10 @@
   }
   async function createList(name, index_symbol, description = '') {
     const c = _cloud();
-    if (c) { try { const r = await c.lists.create(name, index_symbol, description); _poke(); return r; } catch (e) { console.warn('cloud createList', e); } }
+    // Connecté : l'écriture va au cloud et une erreur REMONTE à l'UI. Pas de repli
+    // local silencieux — sinon la liste partirait dans le store invité (dx-lists)
+    // et « réapparaîtrait » hors compte. Le repli DXMock ne sert qu'en mode invité.
+    if (c) { const r = await c.lists.create(name, index_symbol, description); _poke(); return r; }
     return window.DXMock.createList(name, index_symbol, description);
   }
   async function getList(id) {
@@ -192,12 +195,14 @@
   }
   async function updateList(id, name, description) {
     const c = _cloud();
-    if (c) { try { const r = await c.lists.update(id, name, description); _poke(); return r; } catch (e) { console.warn('cloud updateList', e); } }
+    // Connecté : l'erreur remonte (pas de faux succès local silencieux).
+    if (c) { const r = await c.lists.update(id, name, description); _poke(); return r; }
     return { id, name, description };
   }
   async function deleteList(id) {
     const c = _cloud();
-    if (c) { try { const r = await c.lists.remove(id); _poke(); return r; } catch (e) { console.warn('cloud deleteList', e); } }
+    // Connecté : l'erreur remonte (ne jamais « supprimer » en local une liste cloud).
+    if (c) { const r = await c.lists.remove(id); _poke(); return r; }
     return window.DXMock.deleteList(id);
   }
   // Affecte une liste à un groupe (chaîne libre) ou null (aucun groupe).
@@ -222,12 +227,14 @@
   }
   async function addListItem(id, ticker, score_data, notes = '') {
     const c = _cloud();
-    if (c) { try { const r = await c.lists.addItem(id, ticker, score_data); _poke(); return r; } catch (e) { console.warn('cloud addListItem', e); } }
+    // Connecté : l'erreur remonte (l'ajout ne doit pas atterrir dans le store invité).
+    if (c) { const r = await c.lists.addItem(id, ticker, score_data); _poke(); return r; }
     return window.DXMock.addListItem(id, ticker, score_data);
   }
   async function removeListItem(id, ticker) {
     const c = _cloud();
-    if (c) { try { const r = await c.lists.removeItem(id, ticker); _poke(); return r; } catch (e) { console.warn('cloud removeListItem', e); } }
+    // Connecté : l'erreur remonte (pas de mutation locale silencieuse).
+    if (c) { const r = await c.lists.removeItem(id, ticker); _poke(); return r; }
     return window.DXMock.removeListItem(id, ticker);
   }
   async function getListAnalysis(id) {

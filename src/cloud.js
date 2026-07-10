@@ -715,22 +715,34 @@ function purgeLocalStrategies() {
 async function syncStrategies() {
   try {
     if (!currentUser) return;
-    const ownLists = await lists.getAll().catch(() => []);
+    // La lecture des listes DOIT réussir avant toute auto-réparation. Si elle
+    // échoue (réseau, RLS…), ownLists reste null → on NE SUPPRIME RIEN : sinon
+    // toutes mes stratégies passeraient pour « orphelines » (ownIds vide) et
+    // seraient effacées du cloud (perte de données irréversible).
+    let ownLists = null;
+    try { ownLists = await lists.getAll(); }
+    catch (e) { console.warn('[cloud] sync stratégies : lecture des listes échouée — auto-réparation ignorée', e?.message); }
     const ownIds = new Set((ownLists || []).map(l => String(l.id)));
     let cloud = await strategies.getAll();               // [{ listId, data, owner }] — miennes + partagées
 
     // (1) Auto-réparation : mes stratégies dont la liste ne m'appartient PLUS
     //     (contamination d'un autre compte, ou liste supprimée) → à retirer.
-    const orphans = cloud.filter(s => s.owner === currentUser.id && !ownIds.has(s.listId));
-    for (const s of orphans) { try { await strategies.remove(s.listId); } catch {} }
-    if (orphans.length) cloud = cloud.filter(s => !(s.owner === currentUser.id && !ownIds.has(s.listId)));
+    //     UNIQUEMENT si la lecture des listes a réussi (ownLists non null) — jamais
+    //     sur une lecture vide issue d'un échec, au risque de tout effacer.
+    if (ownLists) {
+      const orphans = cloud.filter(s => s.owner === currentUser.id && !ownIds.has(s.listId));
+      for (const s of orphans) { try { await strategies.remove(s.listId); } catch {} }
+      if (orphans.length) cloud = cloud.filter(s => !(s.owner === currentUser.id && !ownIds.has(s.listId)));
+    }
 
     // (2) Migration guest→compte (1×) : uniquement les stratégies locales dont
     //     la liste M'APPARTIENT (une stratégie construite hors-ligne pour une de
     //     mes listes). Jamais les résidus d'un autre compte.
     const have = new Set(cloud.map(s => s.listId));
     const flag = 'dx-strat-migrated-' + currentUser.id;
-    if (!localStorage.getItem(flag)) {
+    // ownLists requis : sans lecture fiable des listes, on ne migre pas ET on ne
+    // pose pas le drapeau (une prochaine synchro réussie fera la migration).
+    if (ownLists && !localStorage.getItem(flag)) {
       const keys = [];
       for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('dx-strategy-') === 0) keys.push(k); }
       for (const k of keys) {
