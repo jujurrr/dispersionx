@@ -832,6 +832,76 @@ Effet : un compte gratuit qui reçoit un lien ou un partage e-mail **ne peut ni 
 rejoindre ni voir la liste** ; l'émetteur reçoit une erreur claire s'il partage à
 un e-mail non-Pro. Retirer le Pro d'un compte lui coupe l'accès aux listes reçues.
 
+## 19. Enforcement serveur de la double authentification — RLS `aal2` (optionnel)
+
+Rend la **MFA (TOTP)** vraiment contraignante côté serveur : un utilisateur qui a
+**activé la 2FA** ne peut lire/écrire ses données **que** si sa session est de niveau
+**AAL2** (mot de passe **+** code validé). Sans ce SQL, la 2FA n'est qu'un contrôle
+côté client (le défi est demandé, mais une session AAL1 conserve techniquement l'accès).
+
+Prérequis : MFA activée dans le projet (Authentication → MFA → TOTP). **Non-cassant** :
+un compte **sans** facteur vérifié garde exactement l'accès actuel (AAL1 accepté).
+
+> Le client est déjà prêt : `onSignedIn()` **diffère** la synchro tant qu'un défi AAL2
+> est en attente (évite de purger le cache local à AAL1), et `auth.mfa.verify` relance
+> la synchro une fois AAL2 atteint. Tu peux donc appliquer ce SQL sans risque.
+
+Politique **restrictive** (ajoutée aux politiques existantes, en ET logique) sur chaque
+table de données personnelles. Copier-coller dans le SQL Editor → Run :
+
+```sql
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'lists','list_items','strategies','positions','list_shares',
+    'share_links','audit_log','pro_access','alerts','trades','notifications'
+  ] loop
+    execute format('drop policy if exists "mfa_aal2" on public.%I;', t);
+    execute format($f$
+      create policy "mfa_aal2" on public.%I
+        as restrictive to authenticated
+        using (
+          (select auth.jwt()->>'aal') = 'aal2'
+          or not exists (
+            select 1 from auth.mfa_factors f
+            where f.user_id = (select auth.uid()) and f.status = 'verified'
+          )
+        )
+        with check (
+          (select auth.jwt()->>'aal') = 'aal2'
+          or not exists (
+            select 1 from auth.mfa_factors f
+            where f.user_id = (select auth.uid()) and f.status = 'verified'
+          )
+        );
+    $f$, t);
+  end loop;
+end $$;
+```
+
+Lecture de la règle : « AAL2 **ou** l'utilisateur n'a aucun facteur vérifié ». Donc
+seuls les comptes ayant activé la 2FA sont contraints à l'AAL2.
+
+**Tester** : active la 2FA sur un compte de test → déconnecte-toi → reconnecte-toi. Entre
+le mot de passe puis, à l'écran « Vérification en deux étapes », **avant** de saisir le
+code, tes données ne sont pas accessibles ; après le code (AAL2), tout revient normalement.
+
+**Retour arrière** (désactiver l'enforcement) :
+
+```sql
+do $$
+declare t text;
+begin
+  foreach t in array array[
+    'lists','list_items','strategies','positions','list_shares',
+    'share_links','audit_log','pro_access','alerts','trades','notifications'
+  ] loop
+    execute format('drop policy if exists "mfa_aal2" on public.%I;', t);
+  end loop;
+end $$;
+```
+
 ## Ce qui se passe ensuite
 - À ta première connexion, si tu avais des listes en local, elles sont
   **automatiquement copiées** vers ton compte (une seule fois).

@@ -191,6 +191,7 @@ const auth = {
       const s = await supa.auth.getSession();                 // reflète la session AAL2
       currentUser = userFromSession(s.data?.session);
       window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
+      try { await onSignedIn(); } catch {}                    // synchro différée maintenant que l'on est AAL2
       return v.data;
     },
     async unenroll(factorId) { const { error } = await supa.auth.mfa.unenroll({ factorId }); if (error) throw error; },
@@ -751,6 +752,11 @@ async function syncStrategies() {
 }
 
 async function onSignedIn() {
+  // Double authentification en attente (session AAL1, défi AAL2 requis) : NE PAS
+  // synchroniser maintenant. Avec l'enforcement MFA côté serveur (RLS aal2), les
+  // lectures cloud sont refusées à AAL1 → syncStrategies purgerait le cache local à
+  // tort. On diffère jusqu'à la validation du code (auth.mfa.verify relance onSignedIn).
+  try { if (await auth.mfa.pendingChallenge()) return; } catch {}
   // Changement de compte à chaud : si le cache local appartenait à un AUTRE
   // compte, purger ses positions locales (repli hors-ligne/invité). Les
   // positions d'un même compte sont préservées (pas de re-sync cloud). Les
