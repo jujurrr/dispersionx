@@ -593,6 +593,33 @@ const notifications = {
   },
 };
 
+// Portabilité RGPD (art. 20) : rassemble TOUTES les données de l'utilisateur
+// (RLS → uniquement les siennes ; on exclut les stratégies partagées par autrui)
+// en un objet JSON exportable/téléchargeable.
+async function exportAccount() {
+  if (!supa || !currentUser) throw new Error('not_signed_in');
+  const safe = (p) => p.catch(() => []);
+  const [ls, st, pos, tr, al] = await Promise.all([
+    safe(lists.getAll()),
+    safe(strategies.getAll()),
+    safe(positions.list()),
+    safe(trades.list()),
+    safe(alerts.list()),
+  ]);
+  return {
+    export_format: 'dispersionx-account-export',
+    version: 1,
+    exported_at: new Date().toISOString(),
+    account: { id: currentUser.id, email: currentUser.email, name: currentUser.name, email_verified: !!currentUser.emailVerified },
+    subscription: { pro: proAccess, status: proStatus, current_period_end: proPeriodEnd, subscribed: proSubscribed },
+    lists: ls,
+    strategies: (st || []).filter(s => !s.owner || s.owner === currentUser.id),   // les miennes uniquement
+    positions: pos,
+    trades: tr,
+    alerts: al,
+  };
+}
+
 // ── API publique exposée au reste de l'app (js/api.js, Auth.jsx, app.jsx) ────
 window.DXCloud = {
   configured: !!supa,
@@ -607,6 +634,7 @@ window.DXCloud = {
   startProCheckout: (cycle) => proApi.startCheckout(cycle),
   refreshPro: () => proApi.refresh(),
   openProPortal: () => proApi.openPortal(),
+  exportAccount: () => exportAccount(),
   lists: supa ? lists : null,
   strategies: supa ? strategies : null,
   positions: supa ? positions : null,

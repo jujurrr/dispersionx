@@ -53,6 +53,7 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const [savingEmail, setSavingEmail] = React.useState(false);
   const [busyDelete, setBusyDelete] = React.useState(false);
   const [confirmDel, setConfirmDel] = React.useState(false);
+  const [busyExport, setBusyExport] = React.useState(false);
 
   React.useEffect(() => { setName(user ? user.name : ''); setEmail(user ? user.email : ''); }, [user && user.name, user && user.email]);
 
@@ -115,6 +116,21 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   async function resendConf() {
     try { await C.auth.resendConfirmation(user.email); addToast && addToast('E-mail de confirmation renvoyé.', 'ok'); }
     catch (e) { addToast && addToast('Envoi impossible : ' + (e && e.message ? e.message : ''), 'error'); }
+  }
+  async function exportData() {
+    setBusyExport(true);
+    try {
+      const data = await C.exportAccount();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dispersionx-donnees-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      addToast && addToast('Vos données ont été exportées (fichier JSON).', 'ok');
+    } catch (e) { addToast && addToast('Export impossible : ' + (e && e.message ? e.message : ''), 'error'); }
+    finally { setBusyExport(false); }
   }
   async function doDelete() {
     setBusyDelete(true);
@@ -277,7 +293,18 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
             {t("Autoriser la mesure d'audience anonyme (Vercel Web Analytics, sans cookie ni donnée personnelle).")}
           </span>
         </label>
-        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 14, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+        {configured && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-subtle)' }}>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 6 }}>{t('Mes données')}</div>
+            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginBottom: 10, lineHeight: 1.5 }}>
+              {t('Téléchargez une copie de toutes vos données (listes, stratégies, positions, journal, alertes) au format JSON — droit à la portabilité (art. 20 RGPD).')}
+            </div>
+            <Button variant="outline" size="md" onClick={exportData} disabled={busyExport}>
+              {busyExport ? t('Préparation…') : t('Télécharger mes données')}
+            </Button>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 16, font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
           <a onClick={() => onNav('privacy')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{t('Confidentialité')}</a>
           <a onClick={() => onNav('legal')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{t('Mentions légales')}</a>
           <a onClick={() => onNav('terms')} style={{ color: 'var(--text-soft)', cursor: 'pointer', borderBottom: '1px dotted var(--border-strong)' }}>{t('CGU')}</a>

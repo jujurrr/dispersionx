@@ -112,8 +112,8 @@ function Privacy({ onNav }) {
       <H>8. Vos droits</H>
       <P>Conformément au RGPD, vous disposez des droits d'accès, de rectification, d'effacement, de limitation, d'opposition et de portabilité :</P>
       <ul style={{ margin: '0 0 6px', paddingLeft: 20 }}>
-        <Li><span style={strong}>Directement dans l'app</span> : modifier/supprimer vos listes, stratégies et positions ; exporter vos listes (bouton d'export) ; gérer votre abonnement via le portail Stripe.</Li>
-        <Li><span style={strong}>Par e-mail</span> : demander l'accès, la portabilité ou la suppression complète de votre compte à <a href={`mailto:${CONTACT}`} style={{ color: 'var(--accent-hover)' }}>{CONTACT}</a>.</Li>
+        <Li><span style={strong}>Directement dans l'app</span> : modifier/supprimer vos listes, stratégies et positions ; <span style={strong}>télécharger toutes vos données</span> en JSON (Préférences → Confidentialité → « Télécharger mes données », portabilité art. 20) ; <span style={strong}>supprimer votre compte</span> (Préférences → Supprimer mon compte, art. 17) ; gérer votre abonnement via le portail Stripe.</Li>
+        <Li><span style={strong}>Par e-mail</span> : vous pouvez aussi exercer ces droits (accès, portabilité, effacement) en écrivant à <a href={`mailto:${CONTACT}`} style={{ color: 'var(--accent-hover)' }}>{CONTACT}</a>.</Li>
         <Li>Vous pouvez introduire une réclamation auprès de l'autorité de contrôle compétente (en France, la CNIL).</Li>
       </ul>
 
