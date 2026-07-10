@@ -185,7 +185,7 @@ function CorrelationBarometer({ index, compact, onNav }) {
         {cur && <span style={{ marginLeft: 'auto', font: '700 12px/1 var(--font-mono)', color: toneVar }}>{cur.percentile}<sup>e</sup> pct</span>}
       </div>
 
-      {loading && <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Calcul de la corrélation implicite sur ~2 ans…</div>}
+      {loading && (window.DXLoader ? <window.DXLoader title="Corrélation implicite sur ~2 ans…" pad={20} size={22} /> : <div style={{ padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Calcul de la corrélation implicite sur ~2 ans…</div>)}
       {error && !loading && <div style={{ padding: '18px 20px', font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Baromètre indisponible pour cet indice ({error}).</div>}
 
       {cur && !loading && (

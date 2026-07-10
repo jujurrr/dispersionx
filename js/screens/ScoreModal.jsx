@@ -67,7 +67,9 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
         </div>
 
         {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du score de dispersion…</div>
+          window.DXLoader ? (
+            <window.DXLoader title="Calcul du score" pad={40} steps={['Volatilité implicite et historique…', 'Corrélation, beta et liquidité…', 'Risque événement (earnings)…']} />
+          ) : <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul du score de dispersion…</div>
         ) : !data ? (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--neg)', font: 'var(--type-body)' }}>Erreur de chargement. Réessayez.</div>
         ) : (() => {

@@ -500,7 +500,9 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
       )}
 
       {loading ? (
-        <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul des volatilités…</div>
+        window.DXLoader ? (
+          <window.DXLoader title="Calcul des volatilités" steps={['IV réelle du Cboe (différé)…', 'HV sur les clôtures récentes…', 'Classement IV / HV et rang de vol…']} />
+        ) : <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Calcul des volatilités…</div>
       ) : rows.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Aucune donnée disponible pour cette liste.</div>
       ) : (

@@ -191,7 +191,7 @@ function Journal({ onNav, addToast, pro, lists, prefill }) {
 
           {/* Liste des trades */}
           {items === null ? (
-            <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Chargement…</div>
+            window.DXLoader ? <window.DXLoader title="Chargement du journal…" pad={24} size={22} /> : <div style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Chargement…</div>
           ) : all.length === 0 ? (
             <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)', background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)' }}>
               Aucun trade pour l'instant. Enregistrez votre première dispersion, ou utilisez « Journaliser » depuis une opportunité.

@@ -520,7 +520,7 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                 {bt[i] && bt[i].open && (
                   <div style={{ padding: '4px 20px 18px' }}>
                     {bt[i].loading && (
-                      <div style={{ padding: '18px 0', textAlign: 'center', font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Calcul sur l'historique…</div>
+                      window.DXLoader ? <window.DXLoader title="Backtest sur l’historique…" pad={16} size={22} /> : <div style={{ padding: '18px 0', textAlign: 'center', font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Calcul sur l'historique…</div>
                     )}
                     {bt[i].error && (
                       <div style={{ font: 'var(--type-body-sm)', color: 'var(--warn)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '10px 14px' }}>{bt[i].error}</div>

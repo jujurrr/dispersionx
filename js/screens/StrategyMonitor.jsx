@@ -36,7 +36,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
     setSel(0); reload();
   }
 
-  if (strats == null) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
+  if (strats == null) return window.DXLoader
+    ? <window.DXLoader title="Chargement des stratégies" steps={['Récupération de vos constructions…', 'Grecs recalculés au DTE restant…']} />
+    : <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
 
   const rows = strats.map(s => ({ s, m: DXApi.strategyMetrics(s) }));
 

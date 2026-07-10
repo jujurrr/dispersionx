@@ -149,7 +149,7 @@ function EarningsPanel({ lists }) {
               </span>
             </div>
 
-            {loading && <div style={{ padding: '10px 0', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Chargement du calendrier…</div>}
+            {loading && (window.DXLoader ? <window.DXLoader title="Chargement du calendrier…" pad={12} size={20} /> : <div style={{ padding: '10px 0', textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Chargement du calendrier…</div>)}
             {unavailable && !loading && <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>Calendrier des résultats indisponible pour l'instant.</div>}
             {!loading && !unavailable && list.length === 0 && <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Aucun résultat annoncé pour vos actions sur les {DAYS} prochains jours.</div>}
             {!loading && list.length > 0 && (

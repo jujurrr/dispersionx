@@ -258,7 +258,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
             <button onClick={refreshAudit} style={{ font: 'var(--type-caption)', background: 'none', border: 'none', color: 'var(--accent-hover)', cursor: 'pointer' }}>↻ Rafraîchir</button>
           </div>
           {auditRows == null ? (
-            <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Chargement…</div>
+            window.DXLoader ? <window.DXLoader title="Chargement de l’activité…" pad={16} size={20} /> : <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body-sm)' }}>Chargement…</div>
           ) : auditRows.length === 0 ? (
             <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-body-sm)' }}>Aucune activité enregistrée pour l'instant.</div>
           ) : (
