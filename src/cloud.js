@@ -177,6 +177,37 @@ const auth = {
     try { await supa.auth.signOut(); } catch {}   // déclenche la purge des caches locaux
     return true;
   },
+  // ── Double authentification (TOTP) — opt-in ; nécessite l'activation de la MFA
+  //    dans le projet Supabase (Authentication → MFA → TOTP). Additif : sans
+  //    facteur vérifié, la connexion est INCHANGÉE (aucune régression). ──
+  mfa: {
+    async list() { const { data, error } = await supa.auth.mfa.listFactors(); if (error) throw error; return data; },
+    async enroll() { const { data, error } = await supa.auth.mfa.enroll({ factorType: 'totp' }); if (error) throw error; return data; },
+    async verify(factorId, code) {
+      const ch = await supa.auth.mfa.challenge({ factorId });
+      if (ch.error) throw ch.error;
+      const v = await supa.auth.mfa.verify({ factorId, challengeId: ch.data.id, code: String(code).replace(/\s+/g, '') });
+      if (v.error) throw v.error;
+      const s = await supa.auth.getSession();                 // reflète la session AAL2
+      currentUser = userFromSession(s.data?.session);
+      window.dispatchEvent(new CustomEvent('dx-auth-change', { detail: currentUser }));
+      return v.data;
+    },
+    async unenroll(factorId) { const { error } = await supa.auth.mfa.unenroll({ factorId }); if (error) throw error; },
+    // À la connexion : renvoie { factorId } si un défi AAL2 est requis, sinon null.
+    // FAIL-OPEN : toute erreur → null (on ne bloque jamais la connexion sur un bug MFA).
+    async pendingChallenge() {
+      try {
+        const { data } = await supa.auth.mfa.getAuthenticatorAssuranceLevel();
+        if (data && data.currentLevel === 'aal1' && data.nextLevel === 'aal2') {
+          const f = await supa.auth.mfa.listFactors();
+          const totp = (f.data?.totp || []).find(x => x.status === 'verified');
+          return totp ? { factorId: totp.id } : null;
+        }
+      } catch { /* fail-open */ }
+      return null;
+    },
+  },
   async signOut() { if (supa) await supa.auth.signOut(); },
 };
 

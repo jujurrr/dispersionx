@@ -223,6 +223,7 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
           <div style={{ marginTop: 8, font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
             {t(window.DXPasswordHint || 'Au moins 8 caractères, dont une majuscule, une minuscule, un chiffre et un caractère spécial.')}
           </div>
+          {window.MfaSection && <window.MfaSection addToast={addToast} />}
         </PrefSection>
       )}
 

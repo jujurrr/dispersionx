@@ -77,6 +77,7 @@ import '../js/screens/Terms.jsx';          // window.Terms (CGU)
 import '../js/screens/Sales.jsx';          // window.Sales (CGV)
 import '../js/screens/Landing.jsx';
 import '../js/screens/Auth.jsx';
+import '../js/screens/MfaSection.jsx';     // window.MfaSection (double authentification TOTP)
 import '../js/screens/Preferences.jsx';   // window.Preferences (compte / abonnement)
 import '../js/screens/NotificationsPage.jsx';   // window.NotificationsPage (page dédiée notifs + activité)
 

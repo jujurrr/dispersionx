@@ -47,6 +47,8 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
   const [recovering, setRecovering] = React.useState(false);   // saisie d'un nouveau mot de passe
   const [newPw, setNewPw] = React.useState('');
   const [accept, setAccept] = React.useState(false);           // acceptation CGU + confidentialité (inscription)
+  const [mfaFactor, setMfaFactor] = React.useState(null);      // défi 2FA en cours à la connexion
+  const [mfaCode, setMfaCode] = React.useState('');
 
   // Retour du lien « mot de passe oublié » → Supabase établit une session de
   // récupération et émet dx-password-recovery : on propose le nouveau mot de passe.
@@ -112,6 +114,12 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
         const u = mode === 'signup'
           ? await C.auth.signUpPassword(email, pw, name.trim())
           : await C.auth.signInPassword(email, pw);
+        // Double authentification : si un facteur TOTP vérifié existe, exiger le code
+        // avant d'entrer (la session est en AAL1 tant que le défi n'est pas validé).
+        if (mode === 'login' && C.auth.mfa) {
+          const pend = await C.auth.mfa.pendingChallenge().catch(() => null);
+          if (pend) { setMfaFactor(pend.factorId); setMfaCode(''); setBusy(false); return; }
+        }
         onAuth && onAuth(u);   // l'app se met aussi à jour via 'dx-auth-change'
         onNav('home');
       } catch (err) {
@@ -130,6 +138,23 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
         onNav('home');
       }, 400);
     }
+  }
+
+  // Double authentification : valider le code TOTP après le mot de passe.
+  async function submitMfa(e) {
+    e.preventDefault();
+    setError('');
+    if (mfaCode.length < 6) return setError('Entrez le code à 6 chiffres.');
+    setBusy(true);
+    try {
+      await window.DXCloud.auth.mfa.verify(mfaFactor, mfaCode);
+      onAuth && onAuth(window.DXCloud.user);
+      onNav('home');
+    } catch (err) { setError('Code invalide ou expiré.'); setBusy(false); }
+  }
+  async function cancelMfa() {
+    setMfaFactor(null); setMfaCode(''); setError('');
+    try { await window.DXCloud.auth.signOut(); } catch {}   // pas de session AAL1 qui traîne
   }
 
   async function google() {
@@ -188,6 +213,26 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
           {error && (<div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>{error}</div>)}
           <Button variant="primary" size="lg" full type="submit" disabled={busy}>{busy ? '…' : 'Enregistrer le mot de passe'}</Button>
         </form>
+      </div>
+    );
+  }
+
+  // ════════════ Vue « code 2FA » (défi après le mot de passe) — priorité sur la vue profil ════════════
+  if (mfaFactor) {
+    return shell(
+      <div style={{ width: '100%', maxWidth: 420, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 32, boxShadow: 'var(--shadow-lg)' }}>
+        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Vérification en deux étapes</h1>
+        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '0 0 24px' }}>Entrez le code à 6 chiffres de votre application d'authentification.</p>
+        <form onSubmit={submitMfa} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <input value={mfaCode} onChange={e => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            inputMode="numeric" autoComplete="one-time-code" placeholder="000000" autoFocus
+            style={{ ...inputStyle, font: '600 20px/1 var(--font-mono)', letterSpacing: '0.4em', textAlign: 'center' }} />
+          {error && (<div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>{error}</div>)}
+          <Button variant="primary" size="lg" full type="submit" disabled={busy || mfaCode.length < 6}>{busy ? 'Vérification…' : 'Vérifier'}</Button>
+        </form>
+        <div style={{ textAlign: 'center', marginTop: 18 }}>
+          <a onClick={cancelMfa} style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', cursor: 'pointer' }}>Annuler</a>
+        </div>
       </div>
     );
   }
