@@ -729,9 +729,12 @@ async function syncStrategies() {
 
     // (1) Auto-réparation : mes stratégies dont la liste ne m'appartient PLUS
     //     (contamination d'un autre compte, ou liste supprimée) → à retirer.
-    //     UNIQUEMENT si la lecture des listes a réussi (ownLists non null) — jamais
-    //     sur une lecture vide issue d'un échec, au risque de tout effacer.
-    if (ownLists) {
+    //     UNIQUEMENT si la lecture des listes a réussi ET renvoyé ≥1 liste. Une
+    //     liste VIDE peut venir d'un blocage silencieux (RLS aal2 qui renvoie []
+    //     SANS erreur, pas un throw) → on ne supprime rien, au risque de tout
+    //     effacer. Un compte sans aucune liste ne perd donc pas ses stratégies
+    //     (elles restent, simplement pas auto-nettoyées — bénin).
+    if (ownLists && ownLists.length) {
       const orphans = cloud.filter(s => s.owner === currentUser.id && !ownIds.has(s.listId));
       for (const s of orphans) { try { await strategies.remove(s.listId); } catch {} }
       if (orphans.length) cloud = cloud.filter(s => !(s.owner === currentUser.id && !ownIds.has(s.listId)));
@@ -742,9 +745,9 @@ async function syncStrategies() {
     //     mes listes). Jamais les résidus d'un autre compte.
     const have = new Set(cloud.map(s => s.listId));
     const flag = 'dx-strat-migrated-' + currentUser.id;
-    // ownLists requis : sans lecture fiable des listes, on ne migre pas ET on ne
-    // pose pas le drapeau (une prochaine synchro réussie fera la migration).
-    if (ownLists && !localStorage.getItem(flag)) {
+    // ownLists fiable requis (≥1 liste, cf. ci-dessus) : sans ça on ne migre pas
+    // ET on ne pose pas le drapeau (une prochaine synchro réussie fera la migration).
+    if (ownLists && ownLists.length && !localStorage.getItem(flag)) {
       const keys = [];
       for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.indexOf('dx-strategy-') === 0) keys.push(k); }
       for (const k of keys) {
