@@ -287,7 +287,7 @@ function PnLLine({ points, w = 540, h = 180, markIdx }) {
       {grid.map((g, i) => (
         <g key={i}>
           <line x1={padL} y1={ys(g)} x2={w - padR} y2={ys(g)} stroke="var(--border-subtle)" />
-          <text x={padL - 6} y={ys(g) + 3} fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-dim)" textAnchor="end">{fmtMoney(g).replace(' $', '')}</text>
+          <text x={padL - 6} y={ys(g) + 3} fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-dim)" textAnchor="end">{fmtMoney(g).replace(/\s[$€]$/, '')}</text>
         </g>
       ))}
       <line x1={padL} y1={zeroY} x2={w - padR} y2={zeroY} stroke="var(--border-strong)" strokeDasharray="3 3" />

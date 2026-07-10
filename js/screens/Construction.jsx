@@ -20,11 +20,14 @@ const _constrCache = {};
 const CONSTR_TTL = 15 * 60 * 1000;
 
 function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, indexOverride, durationOverride, onSaved, addToast }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const CONTRACT  = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
   const fmtMoney  = (window.DXRisk && window.DXRisk.fmtMoney) || (n => Math.round(n).toLocaleString('fr-FR') + ' $');
-  const fmtNot    = v => (Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + ' M$' : Math.round(v / 1000) + ' k$');
-  const fmtS      = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n));
+  const fmtNot    = v => { const c = window.DXMoney ? window.DXMoney.convert(v) : v; const y = window.DXMoney ? window.DXMoney.symbol() : '$'; return Math.abs(c) >= 1e6 ? (c / 1e6).toFixed(2) + ' M' + y : Math.round(c / 1000) + ' k' + y; };
+  const fmtS      = n => { const v = window.DXMoney ? window.DXMoney.convert(n) : n; return (v >= 0 ? '+' : '−') + Math.abs(Math.round(v)); };
+  const dxSym     = () => window.DXMoney ? window.DXMoney.symbol() : '$';
+  const dxN       = n => Math.round(window.DXMoney ? window.DXMoney.convert(n) : n);   // magnitude convertie
   const fmtQty    = q => { const a = Math.abs(q); return a >= 0.01 ? a.toFixed(2) : a.toFixed(3); };
 
   const listId  = listIdParam || moduleCtx?.listId || null;
@@ -480,7 +483,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', marginLeft: 4 }}>contrat{nIndex > 1 ? 's' : ''} <span style={{ color: 'var(--text-dim)' }}>(saisie directe possible · max 999)</span></div>
             </div>
             <div style={{ marginTop: 12, padding: '8px 10px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-              Vega short : <strong style={{ color: 'var(--neg-bright)' }}>−{Math.round(sized.idxVega)} $/1%</strong> · Theta : <strong style={{ color: 'var(--pos-bright)' }}>+{Math.round(sized.idxThetaGain)} $/j</strong> · Notionnel {fmtNot(sized.idxNotional)}
+              Vega short : <strong style={{ color: 'var(--neg-bright)' }}>−{dxN(sized.idxVega)} {dxSym()}/1%</strong> · Theta : <strong style={{ color: 'var(--pos-bright)' }}>+{dxN(sized.idxThetaGain)} {dxSym()}/j</strong> · Notionnel {fmtNot(sized.idxNotional)}
             </div>
           </div>
 
@@ -582,21 +585,21 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               </div>
               <span style={{ font: '11px/1 var(--font-mono)', color: c.weightEst ? 'var(--text-dim)' : 'var(--text-soft)', textAlign: 'right' }} title={c.weightEst ? 'Poids estimé (hors base connue) — plus petite taille connue du panier' : (sized.weightSource === 'cap' ? 'Poids réel par capitalisation' : 'Poids réel dans l\'indice')}>{(c.weightEst ? '~' : '') + c.weightUsed.toFixed(1) + '%'}</span>
               <span style={{ font: '700 13px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{c.nContracts}</span>
-              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>+{Math.round(c.g.vega)} $</span>
-              <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{Math.round(c.vega)} $/1%</span>
+              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>+{dxN(c.g.vega)} {dxSym()}</span>
+              <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{dxN(c.vega)} {dxSym()}/1%</span>
             </div>
           ))}
           {/* Totaux */}
           <div style={{ padding: '11px 16px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-              <span>Vega composants (long)</span><span style={{ color: 'var(--pos-bright)', fontWeight: 700 }}>+{Math.round(sized.compVega)} $/1%</span>
+              <span>Vega composants (long)</span><span style={{ color: 'var(--pos-bright)', fontWeight: 700 }}>+{dxN(sized.compVega)} {dxSym()}/1%</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-              <span>Vega indice (short · {nIndex} lot{nIndex > 1 ? 's' : ''})</span><span style={{ color: 'var(--neg-bright)', fontWeight: 700 }}>−{Math.round(sized.idxVega)} $/1%</span>
+              <span>Vega indice (short · {nIndex} lot{nIndex > 1 ? 's' : ''})</span><span style={{ color: 'var(--neg-bright)', fontWeight: 700 }}>−{dxN(sized.idxVega)} {dxSym()}/1%</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', font: '700 12px/1 var(--font-mono)', marginTop: 3, paddingTop: 7, borderTop: '1px solid var(--border-subtle)' }}>
               <span style={{ color: 'var(--text-soft)' }}>Vega net</span>
-              <span style={{ color: Math.abs(sized.netVega) < 60 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(sized.netVega)} $/1% {Math.abs(sized.netVega) < 60 ? '· neutre ✓' : ''}</span>
+              <span style={{ color: Math.abs(sized.netVega) < 60 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(sized.netVega)} {dxSym()}/1% {Math.abs(sized.netVega) < 60 ? '· neutre ✓' : ''}</span>
             </div>
           </div>
         </div>
@@ -635,7 +638,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
             <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 3 }}>Exposition directionnelle nette ($ de P&L pour +1 % du sous-jacent). Les straddles ATM sont quasi delta-neutres, mais un résidu subsiste (vol des composants ≠ vol indice) — on peut l'annuler.</div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ font: '800 22px/1 var(--font-mono)', color: Math.abs(deltaHedge !== 'none' ? 0 : sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta)} $/1%</div>
+            <div style={{ font: '800 22px/1 var(--font-mono)', color: Math.abs(deltaHedge !== 'none' ? 0 : sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta)} {dxSym()}/1%</div>
             <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>delta net {deltaHedge === 'index' ? '· couvert (ETF indice)' : deltaHedge === 'legs' ? '· couvert (par jambe)' : 'global'}</div>
           </div>
         </div>
@@ -653,7 +656,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           ].map(d => (
             <div key={d.l} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
               <div style={{ font: '9px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 5 }}>{d.l}</div>
-              <div style={{ font: '700 13px/1 var(--font-mono)', color: d.c }}>{fmtS(d.v)} $/1%</div>
+              <div style={{ font: '700 13px/1 var(--font-mono)', color: d.c }}>{fmtS(d.v)} {dxSym()}/1%</div>
             </div>
           ))}
         </div>
@@ -682,7 +685,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
             {Math.abs(sized.hedgeUnits * CONTRACT) < 0.5 ? (
               <>Le delta net est déjà quasi nul — aucune couverture à trader.</>
             ) : (
-              <>Ordre de couverture : <strong style={{ color: 'var(--text)' }}>{sized.hedgeUnits >= 0 ? 'acheter' : 'vendre'} {Math.round(Math.abs(sized.hedgeUnits) * CONTRACT)} action(s) {base.indexEtf}</strong> (≈ {fmtNot(sized.indexHedgeNotional)} de notionnel, soit {fmtQty(sized.hedgeUnits)} lot(s) de {CONTRACT}) pour annuler le delta net de {fmtS(sized.netDelta)} $/1% → <strong style={{ color: 'var(--pos-bright)' }}>delta net final ≈ 0</strong>. La couverture est intégrée à la stratégie enregistrée et reprise par le Risk Lab.</>
+              <>Ordre de couverture : <strong style={{ color: 'var(--text)' }}>{sized.hedgeUnits >= 0 ? 'acheter' : 'vendre'} {Math.round(Math.abs(sized.hedgeUnits) * CONTRACT)} action(s) {base.indexEtf}</strong> (≈ {fmtNot(sized.indexHedgeNotional)} de notionnel, soit {fmtQty(sized.hedgeUnits)} lot(s) de {CONTRACT}) pour annuler le delta net de {fmtS(sized.netDelta)} {dxSym()}/1% → <strong style={{ color: 'var(--pos-bright)' }}>delta net final ≈ 0</strong>. La couverture est intégrée à la stratégie enregistrée et reprise par le Risk Lab.</>
             )}
           </div>
         )}
