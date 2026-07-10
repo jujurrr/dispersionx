@@ -154,6 +154,10 @@ let _builderDraft = null;
 
 /* ─── Strategy Builder: 8-step wizard ──────────────────────────── */
 function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, pro }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
+  const dxA   = (n, o) => window.DXMoney ? window.DXMoney.value(n, o) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
+  const dxMag = n => window.DXMoney ? window.DXMoney.value(Math.abs(n), { sign: false }) : Math.abs(Math.round(n)).toLocaleString('fr-FR');
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
   const d0 = listId ? null : _builderDraft;   // brouillon à restaurer (hors entrée ciblée)
@@ -651,18 +655,18 @@ function TradeBrief({ data, onNav, pro }) {
       index: {
         t:      (strategy.indexEtf && strategy.indexEtf !== strategy.index ? strategy.indexEtf + ' (' + strategy.index + ')' : strategy.index) || 'SPX',
         strike: 'ATM',
-        prime:  '−' + Math.round(Math.abs(port.idxPrem || 0)).toLocaleString('fr-FR') + ' $',
-        vega:   '−' + Math.round(Math.abs(port.idxVega || 0)) + ' $/1%',
-        theta:  '+' + Math.round(port.idxTheta || 0) + ' $/j',
+        prime:  '−' + dxMag(port.idxPrem || 0) + ' ' + dxSym(),
+        vega:   '−' + dxMag(port.idxVega || 0) + ' ' + dxSym() + '/1%',
+        theta:  '+' + dxMag(port.idxTheta || 0) + ' ' + dxSym() + '/j',
         qty:    strategy.nIndex,
         action: 'Vendre straddle',
         exp:    strategy.expiry && window.DXExpiry ? `exp. ${window.DXExpiry.fmtExpiry(strategy.expiry)} (${strategy.duration} DTE)` : strategy.duration + ' DTE',
       },
       basket: strategy.components.map(c => ({
         t:     c.ticker,
-        prime: '+' + Math.round(c.premium || 0).toLocaleString('fr-FR') + ' $',
-        vega:  '+' + Math.round(c.vega || 0) + ' $/1%',
-        theta: Math.round(c.theta || 0) + ' $/j',
+        prime: '+' + dxMag(c.premium || 0) + ' ' + dxSym(),
+        vega:  '+' + dxMag(c.vega || 0) + ' ' + dxSym() + '/1%',
+        theta: dxA(c.theta || 0, { sign: false }) + ' ' + dxSym() + '/j',
         qty:   c.nContracts,
       })),
     };
@@ -714,7 +718,7 @@ function TradeBrief({ data, onNav, pro }) {
         <div style={{ padding: '10px 14px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: '3px solid var(--pos)', borderRadius: 'var(--radius)', display: 'flex', gap: 10, alignItems: 'center' }}>
           <span style={{ color: 'var(--pos-bright)', font: '700 13px/1 var(--font-mono)' }}>✓</span>
           <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{Math.round(strategy.portfolio?.netVega || 0)} $/1%</strong>{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? <> · Δ couvert <strong style={{ color: 'var(--pos-bright)' }}>({strategy.deltaHedge === 'index' ? 'par l\'indice' : 'par sous-jacent'})</strong></> : ''}
+            Stratégie calculée — {strategy.nIndex} contrat(s) {strategy.index} · {(strategy.components || []).length} composants · sizing {strategy.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'poids égaux'} · Vega net <strong style={{ color: 'var(--pos-bright)' }}>{dxA(strategy.portfolio?.netVega || 0, { sign: false })} {dxSym()}/1%</strong>{strategy.deltaHedge && strategy.deltaHedge !== 'none' ? <> · Δ couvert <strong style={{ color: 'var(--pos-bright)' }}>({strategy.deltaHedge === 'index' ? 'par l\'indice' : 'par sous-jacent'})</strong></> : ''}
           </span>
         </div>
       )}
@@ -753,17 +757,17 @@ function TradeBrief({ data, onNav, pro }) {
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16, marginTop: 14 }}>
               <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Équilibrage vega</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                <span style={{ font: 'var(--type-data-sm)', color: 'var(--neg-bright)', width: 130 }}>Indice −{Math.round(idxV)}</span>
+                <span style={{ font: 'var(--type-data-sm)', color: 'var(--neg-bright)', width: 130 }}>Indice −{dxMag(idxV)}</span>
                 <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--bg-elevated)', position: 'relative', overflow: 'hidden' }}>
                   <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: idxPct + '%', background: 'var(--neg)' }} />
                   <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: compPct + '%', background: 'var(--pos)' }} />
                   <div style={{ position: 'absolute', left: '50%', top: -2, bottom: -2, width: 2, background: 'var(--text)' }} />
                 </div>
-                <span style={{ font: 'var(--type-data-sm)', color: 'var(--pos-bright)', width: 140, textAlign: 'right' }}>Composants +{Math.round(compV)}</span>
+                <span style={{ font: 'var(--type-data-sm)', color: 'var(--pos-bright)', width: 140, textAlign: 'right' }}>Composants +{dxMag(compV)}</span>
               </div>
               <div style={{ textAlign: 'center', marginTop: 10 }}>
                 <span style={{ font: '700 11px/1 var(--font-mono)', padding: '3px 8px', borderRadius: 'var(--radius)', background: 'var(--pos-soft)', border: '1px solid var(--pos)', color: 'var(--pos-bright)' }}>
-                  Vega net {netV >= 0 ? '+' : ''}{netV} $/1% · {Math.abs(netV) < 30 ? 'quasi-neutre' : Math.abs(netV) < 80 ? 'légèrement déséquilibré' : 'déséquilibré'}
+                  Vega net {dxA(netV)} {dxSym()}/1% · {Math.abs(netV) < 30 ? 'quasi-neutre' : Math.abs(netV) < 80 ? 'légèrement déséquilibré' : 'déséquilibré'}
                 </span>
               </div>
             </div>
@@ -808,9 +812,9 @@ function TradeBrief({ data, onNav, pro }) {
           const dur  = strategy?.duration || D.duration || 30;
           return (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-              <MetricCard label="Vega net" value={(netV >= 0 ? '+' : '') + netV} unit="$/1%" accent="var(--pos)" hint={strategy ? 'Position réelle' : 'Estimé'} />
-              <MetricCard label="Theta /jour" value={(netT >= 0 ? '+' : '') + netT} unit="$" accent="var(--warn)" hint={strategy ? 'Position réelle' : 'Estimé'} />
-              <MetricCard label="Prime nette" value={(netP >= 0 ? '+' : '') + netP.toLocaleString('fr-FR')} unit="$" accent="var(--accent)" />
+              <MetricCard label="Vega net" value={dxA(netV)} unit={dxSym() + '/1%'} accent="var(--pos)" hint={strategy ? 'Position réelle' : 'Estimé'} />
+              <MetricCard label="Theta /jour" value={dxA(netT)} unit={dxSym()} accent="var(--warn)" hint={strategy ? 'Position réelle' : 'Estimé'} />
+              <MetricCard label="Prime nette" value={dxA(netP)} unit={dxSym()} accent="var(--accent)" />
               <MetricCard label="Composants" value={String(nW)} accent="var(--info)" hint={strategy?.sizingMethod === 'vega_neutral' ? 'Lots calculés (vega-neutre)' : '1 lot chacun'} />
               <MetricCard label="Contrats indice" value={String(strategy?.nIndex || 1)} accent="var(--info)" hint={'Short straddle ' + (strategy?.index || 'SPX')} />
               <MetricCard label="Durée" value={String(dur)} unit="DTE" accent="var(--info)" />
