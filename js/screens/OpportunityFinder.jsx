@@ -207,6 +207,7 @@ function oppCost(m, totalContracts, R) {
 }
 
 function OpportunityFinder({ onNav, lists, addToast, pro }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const INDICES = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
   const DURATIONS = [{ v: 15, l: '15 jours' }, { v: 30, l: '30 jours' }, { v: 45, l: '45 jours' }, { v: 60, l: '60 jours' }];
@@ -286,7 +287,8 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
     }
   }
 
-  const fmtS = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR');
+  const fmtS = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   const fmtP = n => (n >= 0 ? '+' : '−') + Math.abs(n).toFixed(1);
 
   // ── Écran verrouillé (non Pro) : aperçu flouté + carte d'upsell partagée ──
@@ -483,25 +485,25 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                 <div style={{ padding: '12px 20px 16px', display: 'flex', flexDirection: 'column', gap: 10, borderTop: '1px solid var(--border-subtle)' }}>
                   <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'baseline', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
                     <span>Construction vega-neutre : <strong style={{ color: 'var(--text-soft)' }}>{o.risk.totalContracts}</strong> contrats long · 1 indice short</span>
-                    <span>Vega net <strong style={{ color: Math.abs(o.risk.netVega) < 60 ? 'var(--pos-bright)' : 'var(--warn)' }}>{fmtS(o.risk.netVega)} $/1%</strong></span>
-                    <span>Theta <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.netTheta)} $/j</strong></span>
-                    <span>Prime <strong style={{ color: o.risk.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(o.risk.netPremium)} $</strong></span>
+                    <span>Vega net <strong style={{ color: Math.abs(o.risk.netVega) < 60 ? 'var(--pos-bright)' : 'var(--warn)' }}>{fmtS(o.risk.netVega)} {dxSym()}/1%</strong></span>
+                    <span>Theta <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.netTheta)} {dxSym()}/j</strong></span>
+                    <span>Prime <strong style={{ color: o.risk.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(o.risk.netPremium)} {dxSym()}</strong></span>
                     {o.risk.edgeRisk != null && (
                       <span>Edge/risque <strong style={{ color: o.risk.edgeRisk >= 1 ? 'var(--pos-bright)' : 'var(--warn)' }}>{o.risk.edgeRisk.toFixed(2)}×</strong></span>
                     )}
                   </div>
                   {o.risk.cost && (
                     <div title="Estimations : bid/ask ~2,5% de la prime brute, commissions ~0,65 $/jambe, marge short indice ~15% du notionnel." style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'baseline', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-                      <span>Débours net <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.cost.netDebit)} $</strong></span>
-                      <span>Coût d'exécution est. <strong style={{ color: 'var(--warn)' }}>{fmtS(o.risk.cost.execCost)} $</strong></span>
-                      <span>Capital estimé <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.cost.capitalEst)} $</strong></span>
+                      <span>Débours net <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.cost.netDebit)} {dxSym()}</strong></span>
+                      <span>Coût d'exécution est. <strong style={{ color: 'var(--warn)' }}>{fmtS(o.risk.cost.execCost)} {dxSym()}</strong></span>
+                      <span>Capital estimé <strong style={{ color: 'var(--text-soft)' }}>{fmtS(o.risk.cost.capitalEst)} {dxSym()}</strong></span>
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     {o.risk.scen.map(s => (
                       <div key={s.name} style={{ flex: '1 1 150px', minWidth: 130, padding: '8px 12px', borderRadius: 'var(--radius)', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderLeft: `3px solid var(--${s.tone})` }}>
                         <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{s.name}</div>
-                        <div style={{ font: 'var(--type-data-sm)', color: s.pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginTop: 2 }}>{fmtS(s.pnl)} $</div>
+                        <div style={{ font: 'var(--type-data-sm)', color: s.pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginTop: 2 }}>{fmtS(s.pnl)} {dxSym()}</div>
                       </div>
                     ))}
                   </div>

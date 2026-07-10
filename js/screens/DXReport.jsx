@@ -4,7 +4,12 @@
 
 function dxEsc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function dxRow(k, v, cls) { return `<div class="row"><span class="k">${k}</span><span class="v ${cls || ''}">${v}</span></div>`; }
-function dxMoney(n) { return (Number(n) >= 0 ? '+' : '−') + Math.abs(Math.round(Number(n))).toLocaleString('fr-FR') + ' $'; }
+function dxMoney(n) {
+  const M = (typeof window !== 'undefined') ? window.DXMoney : null;   // devise d'affichage (au moment de la génération du rapport)
+  const v = M ? M.convert(Number(n)) : Number(n);
+  const sym = M ? M.symbol() : '$';
+  return (Number(n) >= 0 ? '+' : '−') + Math.abs(Math.round(v)).toLocaleString('fr-FR') + ' ' + sym;
+}
 
 function dxReportShell(title, body) {
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${dxEsc(title)}</title>
