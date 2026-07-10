@@ -5,6 +5,8 @@
    scores affichés ici sont EXACTEMENT ceux du ScoreModal (même cache
    mémoïsé DXApi.autoScore). */
 function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, scoreCache }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   const { Badge, ScoreBadge } = window.DispersionXDesignSystem_cb86be;
   const [search, setSearch] = React.useState('');
   const [sort, setSort] = React.useState({ key: null, dir: 0 }); // dir: 0=none, 1=asc, -1=desc
