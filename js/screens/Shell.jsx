@@ -650,6 +650,7 @@ function Topbar({ crumbs, crumbHome = 'home', mode, onMode, activeList, onNav, u
         })()}
         {!isMobile && <SectionToggle to="landing" />}
         <NotifBell onNav={onNav} />
+        <CurrencySwitcher />
         <ThemeToggle />
         <div onClick={() => onNav && onNav(user ? 'preferences' : 'login')} title={user ? `${user.name} — ${window.t ? window.t('Préférences') : 'Préférences'}` : (window.t ? window.t('Connexion') : 'Connexion')}
           style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',

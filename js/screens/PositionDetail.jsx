@@ -296,7 +296,6 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          {window.CurrencySwitcher ? <window.CurrencySwitcher /> : null}
           {isOpen && data.strategy && (
             <button onClick={() => refreshLive()} disabled={liveLoading} title="Recalculer au marché réel (Cboe, différé 15 min)"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: `1px solid ${liveOn ? 'var(--pos)' : 'var(--border)'}`, background: liveOn ? 'var(--pos-soft)' : 'transparent', color: liveOn ? 'var(--pos-bright)' : 'var(--text-soft)', cursor: liveLoading ? 'default' : 'pointer' }}>

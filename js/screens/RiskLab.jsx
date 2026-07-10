@@ -14,9 +14,12 @@ const CONTRACT = 100;    // 1 contrat = 100 actions
 
 function fmtMoney(n) {
   if (n == null || isNaN(n)) return '—';
-  const a = Math.abs(Math.round(n));
+  const M = (typeof window !== 'undefined') ? window.DXMoney : null;   // devise d'affichage
+  const v = M ? M.convert(n) : n;
+  const sym = M ? M.symbol() : '$';
+  const a = Math.abs(Math.round(v));
   const s = a >= 10000 ? (a / 1000).toFixed(1) + 'k' : a.toLocaleString('fr-FR');
-  return (n >= 0 ? '+' : '−') + s + ' $';
+  return (n >= 0 ? '+' : '−') + s + ' ' + sym;
 }
 
 /* ── CDF normale (approximation Abramowitz-Stegun) ───────────────── */
@@ -449,6 +452,7 @@ const _riskCache = {};
 const RISK_TTL = 15 * 60 * 1000;
 
 function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, pro }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [model,    setModel]    = React.useState(null);
   const [loading,  setLoading]  = React.useState(true);
@@ -720,14 +724,15 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   const maxVega  = Math.max(...model.perTicker.map(t => Math.abs(t.greeks.vega * t.nContracts)), 1);
   const maxTheta = Math.max(...model.perTicker.map(t => Math.abs(t.greeks.theta * t.nContracts)), 1);
 
-  const fmtS = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n));
+  const fmtS = n => { const v = window.DXMoney ? window.DXMoney.convert(n) : n; return (v >= 0 ? '+' : '−') + Math.abs(Math.round(v)); };
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
 
   // ── Base de calcul (taille réelle de la position) ──
   // 1 contrat = CONTRACT (×100) fois le niveau du sous-jacent en notionnel.
   const idxNotional   = model.indexPrice * CONTRACT * model.nIndex;
   const compNotional  = model.perTicker.reduce((s, t) => s + t.price * CONTRACT * t.nContracts, 0);
   const totalCompLots = model.perTicker.reduce((s, t) => s + t.nContracts, 0);
-  const fmtNotional   = v => (v >= 1e6 ? (v / 1e6).toFixed(2) + ' M$' : Math.round(v / 1000) + ' k$');
+  const fmtNotional   = v => { const c = window.DXMoney ? window.DXMoney.convert(v) : v; const y = window.DXMoney ? window.DXMoney.symbol() : '$'; return c >= 1e6 ? (c / 1e6).toFixed(2) + ' M' + y : Math.round(c / 1000) + ' k' + y; };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
@@ -844,7 +849,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
               {hedgeN >= 1 ? (
                 <><strong style={{ color: 'var(--text)' }}>Taille du hedge à exécuter :</strong>{' '}
                   {model.netDelta >= 0 ? 'vendre' : 'acheter'} <strong style={{ color: 'var(--accent-hover)' }}>~{hedgeN} part{hedgeN > 1 ? 's' : ''} de {hedgeEtf}</strong>{' '}
-                  pour neutraliser le delta net ({fmtS(model.netDelta)} $/1%). <span style={{ color: 'var(--text-dim)' }}>Delta en dollars → {hedgeN} part(s), pas {Math.abs(Math.round(model.netDelta))}.</span></>
+                  pour neutraliser le delta net ({fmtS(model.netDelta)} {dxSym()}/1%). <span style={{ color: 'var(--text-dim)' }}>Delta en dollars → {hedgeN} part(s), pas {Math.abs(Math.round(model.netDelta))}.</span></>
               ) : (
                 <><strong style={{ color: 'var(--text)' }}>Taille du hedge :</strong> delta net déjà négligeable (&lt; 1 part de {hedgeEtf}) — couverture superflue.</>
               )}
@@ -865,15 +870,15 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
           )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
-          <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 $ ✓' : fmtS(model.netDelta) + ' $/1%'} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}
+          <MetricCard label="Δ net" value={deltaHedge !== 'none' ? '0 ' + dxSym() + ' ✓' : fmtS(model.netDelta) + ' ' + dxSym() + '/1%'} accent={deltaHedge !== 'none' || Math.abs(model.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}
             hint={'Sensibilité au sens du marché ($ pour +1% de l\'indice). Proche de 0 = neutre directionnellement. ' + (deltaHedge === 'index' ? 'Ici : couvert par l\'ETF indice.' : deltaHedge === 'legs' ? 'Ici : couvert par les jambes.' : (Math.abs(model.netDelta) < 50 ? 'Ici : résidu faible.' : 'Ici : résidu directionnel à surveiller.'))} />
-          <MetricCard label="Vega net"  value={fmtS(model.netVega) + ' $/1%'} accent={Math.abs(model.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'}
+          <MetricCard label="Vega net"  value={fmtS(model.netVega) + ' ' + dxSym() + '/1%'} accent={Math.abs(model.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'}
             hint="Sensibilité à la volatilité ($ pour +1 pt d'IV). Le cœur d'une dispersion : idéalement proche de 0 (on parie sur l'écart de corrélation, pas sur le niveau de vol)." />
-          <MetricCard label="Θ /jour"   value={fmtS(model.netTheta) + ' $'} accent="var(--warn)"
+          <MetricCard label="Θ /jour"   value={fmtS(model.netTheta) + ' ' + dxSym()} accent="var(--warn)"
             hint="Valeur temps perdue (négatif) ou gagnée chaque jour. Un débit de dispersion « brûle » du theta : si la dispersion attendue ne se réalise pas, le portage coûte." />
-          <MetricCard label="Vega idx"  value={fmtS(model.idxVega) + ' $/1%'} accent="var(--neg)"
+          <MetricCard label="Vega idx"  value={fmtS(model.idxVega) + ' ' + dxSym() + '/1%'} accent="var(--neg)"
             hint="Vega de la jambe indice (short straddle). Négatif car on est vendeur de volatilité sur l'indice." />
-          <MetricCard label="Vega comp" value={fmtS(model.compVega) + ' $/1%'} accent="var(--pos)"
+          <MetricCard label="Vega comp" value={fmtS(model.compVega) + ' ' + dxSym() + '/1%'} accent="var(--pos)"
             hint="Vega du panier de composants (long straddles). Positif car on est acheteur de volatilité sur les actions." />
           <MetricCard label="Prime nette" value={fmtMoney(model.netPremium)} accent="var(--accent)"
             hint={'Prime encaissée sur l\'indice moins prime payée sur les composants. ' + (model.netPremium >= 0 ? 'Ici : crédit net.' : 'Ici : débit net (coût d\'entrée de la dispersion).')} />
@@ -893,7 +898,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
         </div>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           <div style={{ display: 'grid', gridTemplateColumns: '150px 64px 104px 56px 92px 88px 44px 80px', gap: 0, padding: '10px 16px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)' }}>
-            {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega $/1%', 'Theta/j', 'Lots', 'Prime'].map(h => (
+            {['Action', 'Prix', 'IV / HV', 'Beta', 'Vega ' + dxSym() + '/1%', 'Theta/j', 'Lots', 'Prime'].map(h => (
               <div key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>{h}</div>
             ))}
           </div>
@@ -911,7 +916,7 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
                   </div>
                   <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{t.ticker}</span>
                 </div>
-                <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{Math.round(t.price)} $</span>
+                <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{Math.round(window.DXMoney ? window.DXMoney.convert(t.price) : t.price)} {dxSym()}</span>
                 <div>
                   <div style={{ font: '600 11px/1 var(--font-mono)', color: ivPos ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
                     {t.iv.toFixed(1)}% <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>/ {t.hv.toFixed(1)}%</span>
@@ -923,15 +928,15 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
                   <GreekBar value={t.beta} max={2.5} pos={t.beta <= 1.4} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--accent)' }}>{fmtS(vega)} $</span>
+                  <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--accent)' }}>{fmtS(vega)} {dxSym()}</span>
                   <GreekBar value={vega} max={maxVega} pos={vega > 0} />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                  <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(theta)} $</span>
+                  <span style={{ font: '600 11px/1 var(--font-mono)', color: theta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(theta)} {dxSym()}</span>
                   <GreekBar value={theta} max={maxTheta} pos={theta > 0} />
                 </div>
                 <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--accent)' }}>{t.nContracts}</span>
-                <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{fmtMoney(prem).replace(' $', '')}</span>
+                <span style={{ font: '700 11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{fmtMoney(prem).replace(/\s[$€]$/, '')}</span>
               </div>
             );
           })}
