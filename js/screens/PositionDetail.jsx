@@ -425,7 +425,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         return (
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
             <div style={{ padding: '10px 16px 10px 20px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-              <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L ($)</span>
+              <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Évolution du P&L ({dxSym()})</span>
               <div style={{ display: 'flex', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 2 }}>
                 {UNITS.map(([u, lbl]) => {
                   const dis = counts[u] < 2;
@@ -441,7 +441,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
             <div style={{ padding: '16px 16px 12px' }}>
               {enough && window.DXChart ? (
                 <window.DXChart
-                  data={raw} xKey="t"
+                  data={window.DXMoney && window.DXMoney.effective() === 'EUR' ? raw.map(p => ({ ...p, v: window.DXMoney.convert(p.v) })) : raw} xKey="t"
                   lines={[{ key: 'v', color: col, fill: true }]}
                   baseline={0} height={200} padFrac={0.22} yAxisWidth={62} ticksY={4}
                   yFmt={v => Math.round(v).toLocaleString('fr-FR')} xFmt={fmtX} zoom panY
@@ -460,10 +460,10 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
       {/* Grecs nets — delta (dérive), vega, theta, gamma — actuels vs entrée */}
       {hasGreeks && (() => {
         const rows = [
-          { label: 'Delta', hint: '$ / +1 %', e: deltaInfo ? deltaInfo.entry : null, c: deltaInfo ? deltaInfo.current : null, tag: deltaInfo && deltaInfo.hedged ? 'couvert' : null },
-          { label: 'Vega', hint: '$ / +1 pt IV', e: gEntry.vega, c: gCur.vega },
-          { label: 'Theta', hint: '$ / jour', e: gEntry.theta, c: gCur.theta },
-          { label: 'Gamma', hint: '$ · convexité', e: gEntry.gamma, c: gCur.gamma },
+          { label: 'Delta', hint: dxSym() + ' / +1 %', e: deltaInfo ? deltaInfo.entry : null, c: deltaInfo ? deltaInfo.current : null, tag: deltaInfo && deltaInfo.hedged ? 'couvert' : null },
+          { label: 'Vega', hint: dxSym() + ' / +1 pt IV', e: gEntry.vega, c: gCur.vega },
+          { label: 'Theta', hint: dxSym() + ' / jour', e: gEntry.theta, c: gCur.theta },
+          { label: 'Gamma', hint: dxSym() + ' · convexité', e: gEntry.gamma, c: gCur.gamma },
         ];
         return (
           <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
@@ -487,9 +487,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                         {label} <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· {hint}</span>
                         {tag && <span style={{ font: 'var(--type-caption)', color: 'var(--pos-bright)', marginLeft: 6 }}>· {tag}</span>}
                       </td>
-                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{e != null ? dxUsd(e, { sign: false }) : '—'}</td>
-                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c != null ? dxUsd(c, { sign: false }) : '—'}</td>
-                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: chg == null ? 'var(--text-dim)' : chg >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{chg != null ? dxUsd(chg) : '—'}</td>
+                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{e != null ? dxCur(e, { sign: false }) : '—'}</td>
+                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{c != null ? dxCur(c, { sign: false }) : '—'}</td>
+                      <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: chg == null ? 'var(--text-dim)' : chg >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{chg != null ? dxCur(chg) : '—'}</td>
                     </tr>
                   );
                 })}
@@ -516,7 +516,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
               <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>
                 Rééquilibrage delta <span style={{ textTransform: 'none', color: 'var(--text-dim)' }}>· {rebalance.mode === 'legs' ? 'par composant' : 'par indice'}</span>
               </span>
-              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Delta net {dxUsd(rebalance.net_delta)} $/+1 %</span>
+              <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Delta net {dxCur(rebalance.net_delta)} {dxSym()}/+1 %</span>
             </div>
             {rows.length === 0 || rows.every(r => Math.abs(r.shares || 0) < 1) ? (
               <div style={{ padding: '14px 20px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>Position déjà ~delta-neutre — aucun ajustement significatif.</div>
@@ -572,7 +572,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)' }}>
-                {['Jambe', 'Sens', 'Qté', 'Prime entrée', 'Prime actuelle', 'IV (Δ)', 'P&L ($ · %)'].map((h, i) => (
+                {['Jambe', 'Sens', 'Qté', 'Prime entrée', 'Prime actuelle', 'IV (Δ)', 'P&L (' + dxSym() + ' · %)'].map((h, i) => (
                   <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -591,14 +591,14 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                       <span style={{ color: l.side === 'short' ? 'var(--neg-bright)' : 'var(--pos-bright)', font: '600 11px/1 var(--font-sans)', textTransform: 'uppercase' }}>{l.side}</span>
                     </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{l.qty ?? '—'}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{l.entry_prem != null ? Math.round(l.entry_prem).toLocaleString('fr-FR') : '—'}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{l.current_prem != null ? Math.round(l.current_prem).toLocaleString('fr-FR') : '—'}</td>
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{l.entry_prem != null ? dxCur(l.entry_prem, { sign: false }) : '—'}</td>
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{l.current_prem != null ? dxCur(l.current_prem, { sign: false }) : '—'}</td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>
                       {l.current_iv != null ? l.current_iv + '%' : '—'}
                       {l.iv_change != null && <span style={{ color: l.iv_change >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginLeft: 6, fontSize: 10 }}>{l.iv_change > 0 ? '+' : ''}{l.iv_change}</span>}
                     </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: l.pnl == null ? 'var(--text-muted)' : lpnlPos ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>
-                      {l.pnl != null ? dxUsd(l.pnl) + ' $' : '—'}
+                      {l.pnl != null ? dxCur(l.pnl) + ' ' + dxSym() : '—'}
                       {l.pnl != null && dxPct(l.pnl, l.entry_prem) && (
                         <div style={{ font: 'var(--type-caption)', fontWeight: 500, color: lpnlPos ? 'var(--pos-bright)' : 'var(--neg-bright)', opacity: 0.85 }}>{dxPct(l.pnl, l.entry_prem)}</div>
                       )}
@@ -611,7 +611,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                   <td style={{ padding: '11px 16px', color: 'var(--text)' }}>Couverture Δ <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· actions / future</span></td>
                   <td style={{ padding: '11px 16px', textAlign: 'right' }}><span style={{ color: 'var(--text-muted)', font: '600 11px/1 var(--font-sans)', textTransform: 'uppercase' }}>hedge</span></td>
                   <td colSpan={4} style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>P&L des actions/future de couverture du delta</td>
-                  <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>{dxUsd(hedgePnl)} $</td>
+                  <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>{dxCur(hedgePnl)} {dxSym()}</td>
                 </tr>
               )}
             </tbody>
@@ -678,10 +678,10 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                   <tr key={i} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
                     <td style={{ padding: '10px 16px', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{dxLocalDateTime(s.taken_at)}{s.dte != null ? ` · ${s.dte} DTE` : ''}</td>
                     <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.total_pnl == null ? 'var(--text-muted)' : s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
-                      {s.total_pnl != null ? dxUsd(s.total_pnl) + ' $' : (s.netVega != null ? 'vega ' + s.netVega + ' $' : '—')}
+                      {s.total_pnl != null ? dxCur(s.total_pnl) + ' ' + dxSym() : (s.netVega != null ? 'vega ' + dxCur(s.netVega, { sign: false }) + ' ' + dxSym() : '—')}
                       {s.total_pnl != null && dxPct(s.total_pnl, pctBase) && <div style={{ font: 'var(--type-caption)', color: s.total_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', opacity: 0.85 }}>{dxPct(s.total_pnl, pctBase)}</div>}
                     </td>
-                    <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? dxUsd(s.daily_pnl) + ' $' : (s.netTheta != null ? 'theta ' + s.netTheta + ' $/j' : '—')}</td>
+                    <td style={{ padding: '10px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: s.daily_pnl == null ? 'var(--text-muted)' : s.daily_pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{s.daily_pnl != null ? dxCur(s.daily_pnl) + ' ' + dxSym() : (s.netTheta != null ? 'theta ' + dxCur(s.netTheta, { sign: false }) + ' ' + dxSym() + '/j' : '—')}</td>
                   </tr>
                 ))}
               </tbody>
