@@ -842,12 +842,45 @@ côté client (le défi est demandé, mais une session AAL1 conserve techniqueme
 Prérequis : MFA activée dans le projet (Authentication → MFA → TOTP). **Non-cassant** :
 un compte **sans** facteur vérifié garde exactement l'accès actuel (AAL1 accepté).
 
-> Le client est déjà prêt : `onSignedIn()` **diffère** la synchro tant qu'un défi AAL2
-> est en attente (évite de purger le cache local à AAL1), et `auth.mfa.verify` relance
-> la synchro une fois AAL2 atteint. Tu peux donc appliquer ce SQL sans risque.
+> ⚠️ **Ne PAS lire `auth.mfa_factors` directement dans la policy.** Dans les projets
+> Supabase récents, le rôle `authenticated` n'a **pas** le droit de lire cette table :
+> l'expression de policy lève alors une erreur de permission pour **tous** les comptes
+> (2FA comme non-2FA) → toutes les lectures cloud échouent et l'app tombe sur son repli
+> invité (données qui *semblent* effacées / réinitialisées). L'ancien pattern « direct »
+> de la doc Supabase est daté et casse sur les projets verrouillés. On passe donc par une
+> fonction `security definer` (ci-dessous).
+>
+> Côté client, la **porte MFA globale** (`MfaGate` dans `js/app.jsx`, via l'événement
+> `dx-mfa-required` émis par `src/cloud.js`) demande le code sur TOUS les modes d'entrée
+> (mot de passe, OAuth, rechargement) → la session atteint bien AAL2.
 
-Politique **restrictive** (ajoutée aux politiques existantes, en ET logique) sur chaque
-table de données personnelles. Copier-coller dans le SQL Editor → Run :
+**Étape A — fonction `security definer`.** Elle s'exécute avec les droits de son
+propriétaire (`postgres`, qui *peut* lire `auth.mfa_factors`) et répond juste « ce
+compte a-t-il un facteur vérifié ? ». SQL Editor → Run :
+
+```sql
+create or replace function public.dx_user_has_mfa()
+returns boolean
+language sql
+security definer
+set search_path = ''
+stable
+as $$
+  select exists (
+    select 1 from auth.mfa_factors
+    where user_id = (select auth.uid()) and status = 'verified'
+  );
+$$;
+
+revoke all on function public.dx_user_has_mfa() from public;
+grant execute on function public.dx_user_has_mfa() to authenticated;
+```
+
+Vérifie qu'elle s'exécute **sans erreur** (doit renvoyer `true`/`false`) :
+`select public.dx_user_has_mfa();`
+
+**Étape B — policy restrictive** (ajoutée en ET logique) sur chaque table de données
+personnelles, appelant la fonction au lieu de lire la table :
 
 ```sql
 do $$
@@ -863,17 +896,11 @@ begin
         as restrictive to authenticated
         using (
           (select auth.jwt()->>'aal') = 'aal2'
-          or not exists (
-            select 1 from auth.mfa_factors f
-            where f.user_id = (select auth.uid()) and f.status = 'verified'
-          )
+          or not (select public.dx_user_has_mfa())
         )
         with check (
           (select auth.jwt()->>'aal') = 'aal2'
-          or not exists (
-            select 1 from auth.mfa_factors f
-            where f.user_id = (select auth.uid()) and f.status = 'verified'
-          )
+          or not (select public.dx_user_has_mfa())
         );
     $f$, t);
   end loop;
@@ -881,13 +908,14 @@ end $$;
 ```
 
 Lecture de la règle : « AAL2 **ou** l'utilisateur n'a aucun facteur vérifié ». Donc
-seuls les comptes ayant activé la 2FA sont contraints à l'AAL2.
+seuls les comptes ayant activé la 2FA sont contraints à l'AAL2 ; les autres inchangés.
 
-**Tester** : active la 2FA sur un compte de test → déconnecte-toi → reconnecte-toi. Entre
-le mot de passe puis, à l'écran « Vérification en deux étapes », **avant** de saisir le
-code, tes données ne sont pas accessibles ; après le code (AAL2), tout revient normalement.
+**Tester (dans l'ordre)** : (1) compte **sans** 2FA → doit charger ses données
+normalement, sans écran de code ; (2) compte **avec** 2FA → « Vérification en deux
+étapes » → après le code (AAL2), tout revient ; (3) créer une liste puis se déconnecter
+→ elle ne doit PAS réapparaître en invité ; (4) rechargement → OK.
 
-**Retour arrière** (désactiver l'enforcement) :
+**Retour arrière** (désactive l'enforcement — règle **et** fonction) :
 
 ```sql
 do $$
@@ -900,6 +928,7 @@ begin
     execute format('drop policy if exists "mfa_aal2" on public.%I;', t);
   end loop;
 end $$;
+drop function if exists public.dx_user_has_mfa();
 ```
 
 ## Ce qui se passe ensuite
