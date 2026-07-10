@@ -30,6 +30,7 @@ let proAccess = false;      // accès au module « Opportunités Pro » (table p
 let proSubscribed = false;  // Pro issu d'un abonnement Stripe (a un customer) → portail dispo
 let proStatus = null;       // statut d'abonnement ('active', 'canceled', …) si connu
 let proPeriodEnd = null;    // fin de période en cours (ISO) si abonnement
+let pendingMfa = null;      // { factorId } si un défi 2FA (AAL2) est en attente, sinon null
 
 // Vérifie l'accès Pro de l'utilisateur courant (RLS : il ne lit que sa ligne).
 // Un abonnement Stripe écrit status + current_period_end (via webhook, service
@@ -657,6 +658,7 @@ window.DXCloud = {
   configured: !!supa,
   get enabled() { return !!(supa && currentUser); },
   get user() { return currentUser; },
+  get pendingMfa() { return pendingMfa; },   // { factorId } si un défi 2FA reste à valider
   auth: supa ? auth : null,
   get pro() { return proAccess; },
   get proSubscribed() { return proSubscribed; },
@@ -767,8 +769,18 @@ async function onSignedIn() {
   // Double authentification en attente (session AAL1, défi AAL2 requis) : NE PAS
   // synchroniser maintenant. Avec l'enforcement MFA côté serveur (RLS aal2), les
   // lectures cloud sont refusées à AAL1 → syncStrategies purgerait le cache local à
-  // tort. On diffère jusqu'à la validation du code (auth.mfa.verify relance onSignedIn).
-  try { if (await auth.mfa.pendingChallenge()) return; } catch {}
+  // tort. On diffère ET on DEMANDE le code à l'UI via un événement GLOBAL — ce qui
+  // couvre TOUS les modes d'entrée (mot de passe, OAuth Google/Discord, rechargement),
+  // pas seulement le formulaire de connexion. auth.mfa.verify relance onSignedIn.
+  try {
+    const pend = await auth.mfa.pendingChallenge();
+    if (pend) {
+      pendingMfa = pend;
+      window.dispatchEvent(new CustomEvent('dx-mfa-required', { detail: pend }));
+      return;
+    }
+  } catch {}
+  pendingMfa = null;
   // Changement de compte à chaud : si le cache local appartenait à un AUTRE
   // compte, purger ses positions locales (repli hors-ligne/invité). Les
   // positions d'un même compte sont préservées (pas de re-sync cloud). Les
@@ -818,6 +830,7 @@ if (supa) {
     else if (!currentUser) {
       // Déconnexion : purger les caches locaux (stratégies + positions) → aucune
       // fuite vers la session suivante (invité ou autre compte). Rafraîchir l'UI.
+      pendingMfa = null;
       purgeLocalStrategies();
       try { localStorage.removeItem('dx-positions'); } catch {}
       try { localStorage.removeItem('dx-lists'); } catch {}

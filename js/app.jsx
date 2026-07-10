@@ -51,6 +51,19 @@ function App() {
     window.addEventListener('dx-pro-change', onPro);
     return () => window.removeEventListener('dx-pro-change', onPro);
   }, []);
+  // Défi 2FA (AAL2) en attente : factorId ou null. Init depuis DXCloud.pendingMfa
+  // pour couvrir la course : cloud.js peut émettre dx-mfa-required AVANT le montage
+  // de React (notamment au rechargement d'une session restée en AAL1).
+  const [mfaChallenge, setMfaChallenge] = React.useState(
+    () => (window.DXCloud && window.DXCloud.pendingMfa && window.DXCloud.pendingMfa.factorId) || null
+  );
+  React.useEffect(() => {
+    const onReq = (e) => setMfaChallenge((e.detail && e.detail.factorId) || null);
+    const onAuthNull = (e) => { if (!e.detail) setMfaChallenge(null); };   // déconnexion → ferme la porte
+    window.addEventListener('dx-mfa-required', onReq);
+    window.addEventListener('dx-auth-change', onAuthNull);
+    return () => { window.removeEventListener('dx-mfa-required', onReq); window.removeEventListener('dx-auth-change', onAuthNull); };
+  }, []);
   // Referme le tiroir mobile à chaque navigation.
   React.useEffect(() => { setDrawerOpen(false); }, [screen, params]);
 
@@ -375,6 +388,9 @@ function App() {
   }
 
   const splashEl = splash ? <SectionSplash label={splash} /> : null;
+  // Porte MFA globale : superposée à N'IMPORTE QUEL écran tant qu'un défi 2FA est
+  // en attente (bloque l'accès aux données à AAL1 — voir src/cloud.js).
+  const mfaEl = mfaChallenge ? <MfaGate factorId={mfaChallenge} onDone={() => setMfaChallenge(null)} addToast={addToast} /> : null;
 
   // Login / profile — standalone full-screen page (no app shell)
   if (screen === 'login') {
@@ -383,6 +399,7 @@ function App() {
         <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
           {window.Auth ? <window.Auth onNav={onNav} user={user} onAuth={handleAuth} loginReturn={loginReturnRef.current} /> : null}
         </div>
+        {mfaEl}
         {splashEl}
       </React.Fragment>
     );
@@ -395,6 +412,7 @@ function App() {
         <div style={{ height: '100vh', overflowY: 'auto', background: 'var(--bg-base)' }}>
           {landingEl}
         </div>
+        {mfaEl}
         {splashEl}
       </React.Fragment>
     );
@@ -459,6 +477,7 @@ function App() {
         </div>
       );
     })()}
+    {mfaEl}
     {splashEl}
     </React.Fragment>
   );
@@ -482,6 +501,53 @@ function SectionSplash({ label }) {
       }}>{label}</div>
       <div style={{ width: 160, height: 3, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
         <div style={{ height: '100%', background: 'var(--accent)', transformOrigin: 'left', animation: 'dxSplashBar 1000ms ease both' }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── Porte MFA globale : défi 2FA (AAL2) quel que soit le mode de connexion ───
+   Déclenchée par l'événement dx-mfa-required (émis par src/cloud.js dès qu'une
+   session AAL1 possède un facteur TOTP vérifié). Superposée à tout l'écran tant
+   que le code n'est pas validé — couvre mot de passe, OAuth (Google/Discord) ET
+   rechargement de page (là où l'ancien flux, limité au formulaire de connexion,
+   laissait la session bloquée en AAL1 → données masquées par la RLS §19). */
+function MfaGate({ factorId, onDone, addToast }) {
+  const DS = window.DispersionXDesignSystem_cb86be;
+  const Button = DS.Button;
+  const [code, setCode] = React.useState('');
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState('');
+  async function verify(e) {
+    e.preventDefault();
+    if (code.length < 6) { setErr('Entrez le code à 6 chiffres.'); return; }
+    setBusy(true); setErr('');
+    try {
+      await window.DXCloud.auth.mfa.verify(factorId, code);
+      onDone();   // AAL2 atteint → cloud.js relance la synchro via onSignedIn
+    } catch { setErr('Code invalide ou expiré.'); setBusy(false); }
+  }
+  async function logout() {
+    try { await window.DXCloud.auth.signOut(); } catch {}   // pas de session AAL1 qui traîne
+    addToast && addToast('Déconnecté.', 'info');
+    onDone();
+  }
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 10002, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+      background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)' }}>
+      <div style={{ width: '100%', maxWidth: 420, background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 32, boxShadow: 'var(--shadow-lg)' }}>
+        <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Vérification en deux étapes</h1>
+        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '0 0 24px' }}>Entrez le code à 6 chiffres de votre application d'authentification pour accéder à vos données.</p>
+        <form onSubmit={verify} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+            inputMode="numeric" autoComplete="one-time-code" placeholder="000000" autoFocus
+            style={{ width: '100%', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '11px 14px', color: 'var(--text)', font: '600 20px/1 var(--font-mono)', letterSpacing: '0.4em', textAlign: 'center', outline: 'none' }} />
+          {err && (<div style={{ font: 'var(--type-body-sm)', color: 'var(--neg-bright)', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', padding: '9px 12px' }}>{err}</div>)}
+          <Button variant="primary" size="lg" full type="submit" disabled={busy || code.length < 6}>{busy ? 'Vérification…' : 'Vérifier'}</Button>
+        </form>
+        <div style={{ textAlign: 'center', marginTop: 18 }}>
+          <a onClick={logout} style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', cursor: 'pointer' }}>Se déconnecter</a>
+        </div>
       </div>
     </div>
   );
