@@ -1,6 +1,8 @@
 /* ─── List Detail: basket analysis + sortable items + score modal ─ */
 // Journal d'audit : phrases/temps partagés via window.DXActivity (ActivityFeed.jsx).
 function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // export réservé à Pro (comme le partage)
   const [list, setList]       = React.useState(null);
@@ -378,7 +380,7 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
 
                     {/* Prix live */}
                     <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text)' }}>
-                      {q?.price != null ? '$' + parseFloat(q.price).toFixed(2) : <span style={{ color: 'var(--text-dim)' }}>···</span>}
+                      {q?.price != null ? dxSym() + (window.DXMoney ? window.DXMoney.convert(parseFloat(q.price)) : parseFloat(q.price)).toFixed(2) : <span style={{ color: 'var(--text-dim)' }}>···</span>}
                     </td>
 
                     {/* Variation journalière */}

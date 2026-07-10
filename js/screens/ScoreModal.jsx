@@ -1,5 +1,7 @@
 /* ─── Score Modal: full auto-score detail ─────────────────────── */
 function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAddedToList, addToast, mode, onScoreLoaded }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   const { ScoreBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -172,7 +174,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                       { l: 'Gamma', v: stock.greeks.gamma?.toFixed(4) },
                       { l: 'Vega', v: stock.greeks.vega?.toFixed(1) },
                       { l: 'Theta', v: stock.greeks.theta?.toFixed(1) },
-                      { l: 'Strike', v: '$' + stock.greeks.strike },
+                      { l: 'Strike', v: dxSym() + (window.DXMoney ? Math.round(window.DXMoney.convert(stock.greeks.strike) * 100) / 100 : stock.greeks.strike) },
                       { l: 'Expiry', v: stock.greeks.expiry },
                     ].map(g => (
                       <div key={g.l}>

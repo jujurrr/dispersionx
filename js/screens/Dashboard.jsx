@@ -1,5 +1,6 @@
 /* ─── Dashboard: what deserves my attention today? ─────────────── */
 function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, ScoreBadge, RiskBadge, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [mktData, setMktData] = React.useState(null);
   const [oppPrime, setOppPrime] = React.useState({});  // prime ρ par indice (fond)
@@ -100,7 +101,8 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   if (prime != null && prime < 0) alerts.push({ t: 'SPX · prime de corrélation négative', tone: 'var(--neg)' });
   if (!alerts.length) alerts.push({ t: builtStrats.length ? 'Aucune alerte sur vos stratégies' : 'Aucune stratégie suivie pour l\'instant', tone: 'var(--pos)' });
 
-  const fmtS = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR');
+  const fmtS = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   const ctx = moduleCtx || {};
 
   return (
@@ -192,7 +194,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   {r.m.alert && <Badge tone={r.m.status === 'risque' ? 'neg' : 'warn'} pulse>{r.m.status}</Badge>}
-                  <div style={{ font: 'var(--type-data-lg)', color: r.m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(r.m.netPremium)} $</div>
+                  <div style={{ font: 'var(--type-data-lg)', color: r.m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(r.m.netPremium)} {dxSym()}</div>
                 </div>
               </div>
             )) : (

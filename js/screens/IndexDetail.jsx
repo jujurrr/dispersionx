@@ -262,7 +262,7 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
                   </td>
                   {/* Price */}
                   <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: q ? 'var(--text)' : 'var(--text-dim)' }}>
-                    {q ? '$' + Number(q.price).toLocaleString() : '···'}
+                    {q ? dxSym() + (window.DXMoney ? window.DXMoney.convert(Number(q.price)) : Number(q.price)).toLocaleString() : '···'}
                   </td>
                   {/* Day */}
                   <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-data-sm)', color: q ? pctColor(parseFloat(q.day)) : 'var(--text-dim)' }}>
