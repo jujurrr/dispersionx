@@ -22,6 +22,11 @@ import './cloud.js';
 //     Doit exister avant les écrans (ils appellent window.t au rendu).
 import '../js/i18n.js';
 
+// 1d) Devise d'affichage (USD ⇆ EUR) → window.DXMoney, window.useCurrency.
+//     Conversion PURE et non-cassante : défaut USD (rendu identique à l'existant),
+//     fail-safe USD si le taux /api/fx est indisponible. Affichage seulement.
+import '../js/lib/currency.js';
+
 // 2) Styles du design system.
 import '../project/styles.css';
 

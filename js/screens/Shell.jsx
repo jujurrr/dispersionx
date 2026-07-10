@@ -1197,4 +1197,33 @@ function ModuleCtxBar({ ctx, lists, onCtx, onClear }) {
   );
 }
 
-Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, LangSwitcher, LangSegmented, NotifBell, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });
+// Sélecteur de devise d'affichage (USD ⇆ EUR). Non-cassant : agit via
+// window.DXMoney, qui émet `dx-currency-change` → l'app se re-rend (useCurrency).
+// N'affiche RIEN si la lib devise n'est pas chargée (repli USD partout).
+function CurrencySwitcher() {
+  const M = typeof window !== 'undefined' ? window.DXMoney : null;
+  const st = (typeof window !== 'undefined' && window.useCurrency) ? window.useCurrency() : (M ? M.getState() : null);
+  const [hover, setHover] = React.useState(false);
+  if (!M || !st) return null;
+  const wantsEur = st.currency === 'EUR';
+  const noRate = wantsEur && st.effective !== 'EUR';   // EUR demandé mais taux indisponible
+  const title = 'Afficher les montants en ' + (wantsEur ? 'dollars' : 'euros')
+    + (noRate ? ' — taux indisponible, affichage en $' : '');
+  return (
+    <button onClick={() => M.setCurrency(wantsEur ? 'USD' : 'EUR')}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      title={title} aria-label={title}
+      style={{
+        height: 30, minWidth: 34, padding: '0 10px', borderRadius: 'var(--radius)', cursor: 'pointer',
+        background: hover ? 'var(--bg-hover)' : 'var(--bg-elevated)', border: '1px solid var(--border)',
+        color: hover ? 'var(--accent-hover)' : 'var(--text-soft)', font: '700 12px/1 var(--font-mono)',
+        display: 'flex', alignItems: 'center', gap: 4, transition: 'all var(--dur-fast) var(--ease)',
+      }}>
+      <span style={{ opacity: st.symbol === '$' ? 1 : 0.4 }}>$</span>
+      <span style={{ opacity: 0.35 }}>/</span>
+      <span style={{ opacity: st.symbol === '€' ? 1 : 0.4 }}>€</span>
+    </button>
+  );
+}
+
+Object.assign(window, { Icon, ICONS, Logo, ThemeToggle, LangSwitcher, CurrencySwitcher, LangSegmented, NotifBell, SectionToggle, Sidebar, Topbar, Toast, useToasts, ModuleCtxPicker, ModuleCtxBar });

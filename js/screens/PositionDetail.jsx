@@ -6,6 +6,11 @@ function dxUsd(n, { sign = true } = {}) {
   const s = r < 0 ? '−' : (sign ? '+' : '');
   return s + Math.abs(r).toLocaleString('fr-FR');
 }
+// Montant dans la DEVISE d'affichage choisie (USD/EUR) — délègue à DXMoney ;
+// repli USD strictement identique à dxUsd si la lib n'est pas chargée. dxSym =
+// symbole courant ($ ou €). Utilisés là où l'affichage doit suivre la devise.
+function dxCur(n, opts) { return window.DXMoney ? window.DXMoney.value(n, opts) : dxUsd(n, opts); }
+function dxSym() { return window.DXMoney ? window.DXMoney.symbol() : '$'; }
 // Évolution en % d'un P&L rapporté à une base (prime engagée). null si incalculable.
 function dxPct(n, base, { sign = true, dp = 1 } = {}) {
   if (n == null || !isFinite(n) || !(Math.abs(base) > 0)) return null;
@@ -44,6 +49,7 @@ function pnlSeries(snaps, unit) {
 }
 
 function PositionDetail({ positionId, onNav, addToast, mode }) {
+  const cur = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise (même pattern que useLang)
   const { MetricCard, WarningPanel, Badge } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -290,6 +296,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {window.CurrencySwitcher ? <window.CurrencySwitcher /> : null}
           {isOpen && data.strategy && (
             <button onClick={() => refreshLive()} disabled={liveLoading} title="Recalculer au marché réel (Cboe, différé 15 min)"
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: `1px solid ${liveOn ? 'var(--pos)' : 'var(--border)'}`, background: liveOn ? 'var(--pos-soft)' : 'transparent', color: liveOn ? 'var(--pos-bright)' : 'var(--text-soft)', cursor: liveLoading ? 'default' : 'pointer' }}>
@@ -374,11 +381,11 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
 
       {/* P&L summary — P&L réel (vs entrée) + variation depuis le dernier relevé */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        <MetricCard label="P&L total (vs entrée)" value={dxUsd(totalPnl)} unit={totalPnl != null ? '$' : ''}
+        <MetricCard label="P&L total (vs entrée)" value={dxCur(totalPnl)} unit={totalPnl != null ? dxSym() : ''}
           delta={dxPct(totalPnl, pctBase)} deltaTone={totalPnl == null ? 'neutral' : totalPnl >= 0 ? 'pos' : 'neg'}
           hint="Évolution en % de la prime brute engagée à l'entrée (somme des primes de straddle)."
           accent={totalPnl == null ? 'var(--info)' : totalPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
-        <MetricCard label="P&L depuis dernier relevé" value={dxUsd(dailyPnl)} unit={dailyPnl != null ? '$' : ''}
+        <MetricCard label="P&L depuis dernier relevé" value={dxCur(dailyPnl)} unit={dailyPnl != null ? dxSym() : ''}
           delta={dxPct(dailyPnl, pctBase)} deltaTone={dailyPnl == null ? 'neutral' : dailyPnl >= 0 ? 'pos' : 'neg'}
           accent={dailyPnl == null ? 'var(--info)' : dailyPnl >= 0 ? 'var(--pos)' : 'var(--neg)'} />
         <MetricCard label="DTE restant" value={dteVal != null ? String(dteVal) : '—'} unit={dteVal != null ? (expDateTxt ? `j · ${expDateTxt}` : 'j') : ''} accent="var(--info)"
@@ -389,9 +396,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
       {/* Décomposition P&L : straddles + couverture Δ (actions/future) */}
       {(straddlePnl != null && hedgePnl != null && Math.abs(hedgePnl) >= 1) && (
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', font: 'var(--type-body-sm)', color: 'var(--text-muted)', padding: '4px 2px' }}>
-          <span>Straddles : <strong style={{ color: straddlePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(straddlePnl)} $</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(straddlePnl, pctBase)})</span>}</span>
-          <span>· Couverture Δ (actions) : <strong style={{ color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxUsd(hedgePnl)} $</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(hedgePnl, pctBase)})</span>}</span>
-          <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxUsd(totalPnl)} $</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(totalPnl, pctBase)})</span>}</span>
+          <span>Straddles : <strong style={{ color: straddlePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(straddlePnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(straddlePnl, pctBase)})</span>}</span>
+          <span>· Couverture Δ (actions) : <strong style={{ color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(hedgePnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(hedgePnl, pctBase)})</span>}</span>
+          <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxCur(totalPnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(totalPnl, pctBase)})</span>}</span>
         </div>
       )}
 
