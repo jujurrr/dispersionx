@@ -116,6 +116,7 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
 }
 
 function PositionCard({ pos, onNav, lists }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const isOpen = pos.status === 'open' || pos.status === 'sain' || pos.status === 'surveiller';
   // P&L affiché : reprise serveur si dispo, sinon dernier P&L mark-to-market connu
   // (snapshots). null = aucun P&L de marché encore relevé.
@@ -158,7 +159,7 @@ function PositionCard({ pos, onNav, lists }) {
         <div style={{ font: 'var(--type-data)', color: pnl == null ? 'var(--text-muted)' : pnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
           {pnl == null ? (pos.dte != null ? pos.dte + ' DTE restant' : '—') : (
             <>
-              {(pnl >= 0 ? '+' : '') + pnl.toLocaleString('fr-FR') + ' $'}
+              {window.DXMoney ? window.DXMoney.format(pnl) : ((pnl >= 0 ? '+' : '') + pnl.toLocaleString('fr-FR') + ' $')}
               {pct != null && <span style={{ font: 'var(--type-caption)', fontWeight: 600, marginLeft: 6 }}>{(pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1) + '%'}</span>}
             </>
           )}

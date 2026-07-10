@@ -3,6 +3,7 @@
    stockées en localStorage (dx-strategy-<listId>). Affiche leur composition,
    grecs nets, prime, DTE restant et état dérivé. Aucune exécution auto. */
 function StrategyMonitor({ mode, lists, onNav, addToast }) {
+  const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, Badge, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [strats, setStrats] = React.useState(null);
   const [sel, setSel] = React.useState(0);
@@ -22,7 +23,8 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
     return () => window.removeEventListener('dx-strategies-changed', onChg);
   }, [reload]);
 
-  const fmtS  = n => (n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR');
+  const fmtS  = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
+  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   // Seuils partagés avec le Risk Lab / la Construction (mêmes couleurs partout)
   const VEGA_NEUTRAL = (window.DXRisk && window.DXRisk.VEGA_NEUTRAL) || 60;
   const VEGA_ALERT   = (window.DXRisk && window.DXRisk.VEGA_ALERT) || 250;
@@ -90,9 +92,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <MetricCard label="Stratégies suivies" value={String(rows.length)} accent="var(--accent)"
           hint="Nombre de constructions (dispersions) que vous suivez ici." />
-        <MetricCard label="Prime nette cumulée" value={fmtS(totalPrem) + ' $'} accent="var(--info)"
+        <MetricCard label="Prime nette cumulée" value={fmtS(totalPrem) + ' ' + dxSym()} accent="var(--info)"
           hint={'Somme des primes d\'entrée de toutes vos stratégies. ' + (totalPrem >= 0 ? 'Ici : crédit net (encaissé à l\'ouverture).' : 'Ici : débit net (payé pour être long dispersion).')} />
-        <MetricCard label="Vega net cumulé" value={fmtS(totalVega) + ' $/1%'} accent={Math.abs(totalVega) < VEGA_NEUTRAL ? 'var(--pos)' : 'var(--warn)'}
+        <MetricCard label="Vega net cumulé" value={fmtS(totalVega) + ' ' + dxSym() + '/1%'} accent={Math.abs(totalVega) < VEGA_NEUTRAL ? 'var(--pos)' : 'var(--warn)'}
           hint="Sensibilité totale à la volatilité, en $ pour +1 point d'IV. Proche de 0 = position équilibrée en vol ; élevé = exposée à un mouvement de volatilité." />
         <MetricCard label="Alertes actives" value={String(nAlerts)} accent={nAlerts ? 'var(--warn)' : 'var(--pos)'}
           hint="Nombre de stratégies avec un signal à surveiller : theta critique, vega déséquilibré ou échéance proche." />
@@ -121,7 +123,7 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
                   </td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{m.nComp}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.dte < 12 ? 'var(--neg-bright)' : 'var(--text-soft)' }}>{m.dte}j</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data)', color: m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netPremium)} $</td>
+                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data)', color: m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netPremium)} {dxSym()}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netVega) > VEGA_ALERT ? 'var(--warn)' : 'var(--text-soft)' }}>{fmtS(m.netVega)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.netTheta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netTheta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netDelta) < 50 ? 'var(--text-soft)' : 'var(--warn)' }}>{fmtS(m.netDelta)}</td>
@@ -158,13 +160,13 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                <MetricCard label="Prime nette" value={fmtS(cur.m.netPremium) + ' $'} accent="var(--accent)"
+                <MetricCard label="Prime nette" value={fmtS(cur.m.netPremium) + ' ' + dxSym()} accent="var(--accent)"
                   hint={'Prime d\'entrée de cette stratégie. ' + (cur.m.netPremium >= 0 ? 'Crédit reçu à l\'ouverture.' : 'Débit payé pour être long dispersion.')} />
-                <MetricCard label="Vega net" value={fmtS(cur.m.netVega) + ' $/1%'} accent={Math.abs(cur.m.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'}
+                <MetricCard label="Vega net" value={fmtS(cur.m.netVega) + ' ' + dxSym() + '/1%'} accent={Math.abs(cur.m.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'}
                   hint="Sensibilité à la volatilité ($ pour +1 pt d'IV). Proche de 0 = équilibré ; élevé = exposé à un mouvement de vol." />
-                <MetricCard label="Theta /jour" value={fmtS(cur.m.netTheta) + ' $'} accent="var(--warn)"
+                <MetricCard label="Theta /jour" value={fmtS(cur.m.netTheta) + ' ' + dxSym()} accent="var(--warn)"
                   hint="Valeur temps perdue (négatif) ou gagnée chaque jour. Un débit de dispersion « brûle » du theta si le marché reste calme." />
-                <MetricCard label="Delta net" value={fmtS(cur.m.netDelta) + ' $/1%'} accent={Math.abs(cur.m.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}
+                <MetricCard label="Delta net" value={fmtS(cur.m.netDelta) + ' ' + dxSym() + '/1%'} accent={Math.abs(cur.m.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}
                   hint={'Sensibilité au sens du marché. Proche de 0 = neutre directionnellement. ' + (cur.s.deltaHedge && cur.s.deltaHedge !== 'none' ? 'Ici : couvert.' : 'Ici : résidu non couvert.')} />
                 <MetricCard label="DTE restant" value={String(cur.m.dte)} unit="j" accent={cur.m.dte < 12 ? 'var(--neg)' : 'var(--info)'}
                   hint="Jours avant l'échéance des options. Sous ~7-12 jours, le theta s'accélère → le portage devient risqué." />
