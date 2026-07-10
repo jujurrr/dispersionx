@@ -6,13 +6,13 @@
    ⚠️ Tant qu'un champ commence par « {{ », le site n'est PAS prêt à être ouvert. */
 window.DXLegal = {
   // ── Éditeur (entrepreneur individuel / micro-entreprise) ──
-  editeurNom:           '{Jules ROSENZWEIG}',                     // ← à compléter : nom de l'entrepreneur
+  editeurNom:           'Jules ROSENZWEIG',                     // nom de l'entrepreneur (la mention « EI » est portée par editeurStatut)
   editeurStatut:        'Entrepreneur individuel (micro-entreprise)',
   adresse:              '{{}}',       // ← à compléter (n°, rue, CP, ville)
   siret:                '{{N° SIRET (14 chiffres)}}',         // ← à compléter
   email:                'contact@dispersionx.app',            // ← à compléter : adresse RÉELLE et relevée
   telephone:            '{{TÉLÉPHONE}}',                      // ← optionnel mais recommandé
-  directeurPublication: '{Jules ROSENZWEIG}',                     // ← à compléter (souvent = l'éditeur)
+  directeurPublication: 'Jules ROSENZWEIG',                     // = l'éditeur
   tvaMention:           'TVA non applicable, art. 293 B du CGI',  // franchise en base — ne pas facturer de TVA
 
   // ── Hébergement ──
@@ -30,8 +30,8 @@ window.DXLegal = {
   garantieJours: 14,
 
   // ── Droit applicable / juridiction ──
-  villeTribunal: '{Lyon}',           // ← à compléter (ressort de votre domicile)
+  villeTribunal: 'Lyon',           // ressort du domicile de l'éditeur
 
   // ── Dernière mise à jour des documents ──
-  updated: '9 juillet 2026',
+  updated: '10 juillet 2026',
 };
