@@ -6,6 +6,8 @@
 // faible = dispersion plus payante. Sans FINNHUB_API_KEY → unavailable:true.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+
 const FINNHUB = 'https://finnhub.io/api/v1';
 const ymd = d => new Date(d).toISOString().slice(0, 10);
 
@@ -30,6 +32,7 @@ async function oneSymbol(sym, from, to, token) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   let body = {};
   try { body = await req.json(); } catch {}
   const tickers = [...new Set((body.tickers || []).map(s => String(s).toUpperCase()))].slice(0, 40);

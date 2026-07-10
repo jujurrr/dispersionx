@@ -6,6 +6,8 @@
 // estimation HV×1.12 marquée comme telle), beta, ρ vs indice.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+
 import { cboeIvBundle, fetchClosesSmart, ivViaApi } from '../_lib/cboe.js';
 import { proxyEtf } from '../_lib/proxy-scale.js';
 
@@ -70,6 +72,7 @@ async function fetchIVMarketData(ticker, mdTok) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   let body = {};
   try { body = await req.json(); } catch {}
 

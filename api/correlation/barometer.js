@@ -7,6 +7,8 @@
 // Prix historiques uniquement (Yahoo) — approximation assumée, pas d'options.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+
 import { proxyEtf } from '../_lib/proxy-scale.js';
 
 async function fetchSeries(symbol) {
@@ -48,6 +50,7 @@ function rhoImpl(sigIdx, avgHv) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   let body = {};
   try { body = await req.json(); } catch {}
   const tickers = (body.tickers || []).map(s => String(s).toUpperCase()).slice(0, 25);

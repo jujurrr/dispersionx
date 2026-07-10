@@ -12,6 +12,9 @@
 // (throttling Cboe) → null : le client retombe alors sur le strike standard.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+import { cleanSymbols } from '../_lib/symbols.js';
+
 import { fetchCboeChain } from '../_lib/cboe.js';
 
 // OCC : « …AAPL260821C00195000 » → 260821 (YYMMDD) + C/P + strike×1000 (8 chiffres).
@@ -114,10 +117,9 @@ function withTimeout(promise, ms) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   const q = new URL(req.url).searchParams;
-  const symbols = (q.get('symbols') || '')
-    .split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-  const uniq = [...new Set(symbols)].slice(0, 30);
+  const uniq = cleanSymbols((q.get('symbols') || '').split(','), 30);   // normalise + valide + déduplique + plafonne
   const expiry = (q.get('expiry') || '').trim();
   if (!uniq.length) return Response.json({ error: 'no_symbols' }, { status: 400 });
 

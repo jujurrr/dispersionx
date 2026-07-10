@@ -3,6 +3,9 @@
 // (15 min de délai, gratuit, sans clé). Repli : MarketData.app si token.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+import { cleanSymbol } from '../_lib/symbols.js';
+
 import { fetchCboeChain, atmGreeks, cboeSymbol } from '../_lib/cboe.js';
 
 const MD_BASE = 'https://api.marketdata.app/v1/options/chain';
@@ -60,8 +63,9 @@ async function fetchMarketData(symbol, dte, token) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   const q = new URL(req.url).searchParams;
-  const symbol = (q.get('symbol') || '').toUpperCase();
+  const symbol = cleanSymbol(q.get('symbol'));   // valide le format (anti-injection URL)
   const dte = parseInt(q.get('dte') || '30', 10);
   if (!symbol) return Response.json({ error: 'no_symbol' }, { status: 400 });
 

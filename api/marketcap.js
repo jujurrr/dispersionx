@@ -3,6 +3,8 @@
 // Source : Finnhub /stock/profile2 → fallback Yahoo Finance quote v7.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from './_lib/ratelimit.js';
+
 const FINNHUB_BASE = 'https://finnhub.io/api/v1';
 
 async function finnhubMcap(sym, token) {
@@ -29,6 +31,7 @@ async function yahooMcap(sym) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   let symbols = [];
   try {
     const body = await req.json();

@@ -3,6 +3,8 @@
 // Calcule la matrice de corrélation réalisée depuis Yahoo Finance + ρ implicite via VIX
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+
 import { proxyEtf } from '../_lib/proxy-scale.js';
 
 async function fetchCloses(symbol, days) {
@@ -60,6 +62,7 @@ function computeRhoImpl(sigmaIdxImpl, avgHvComp) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   let body = {};
   try { body = await req.json(); } catch {}
 

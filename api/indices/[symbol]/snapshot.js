@@ -4,6 +4,9 @@
 // repli HV×1.1 marqué `iv_source: estimated` si le Cboe est injoignable.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../../_lib/ratelimit.js';
+import { cleanSymbol } from '../../_lib/symbols.js';
+
 import { ivViaApi } from '../../_lib/cboe.js';
 import { PROXY_SCALE as PROXY } from '../../_lib/proxy-scale.js';
 
@@ -121,8 +124,9 @@ function computeSnapshot(bars, scale) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   const parts  = new URL(req.url).pathname.split('/');
-  const symbol = (parts[3] || '').toUpperCase();
+  const symbol = cleanSymbol(parts[3]) || '';
   const map    = PROXY[symbol];
   if (!map) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
 

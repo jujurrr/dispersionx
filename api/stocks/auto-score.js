@@ -4,6 +4,8 @@
 // clôtures Cboe (repli Yahoo) pour HV/ρ/beta, repli MarketData si token.
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+
 // cboeIvBundle appelé DIRECTEMENT (en mémoire) : il lit d'abord le cache Supabase
 // partagé (fiable inter-région) et évite le saut HTTP interne vers /api/iv qui
 // échouait dans certaines régions (→ 502 → estimation 128).
@@ -139,6 +141,7 @@ async function getNextEarnings(sym, token) {
 }
 
 export default async (req) => {
+  if (!allow(req, { limit: 200, windowMs: 10000 })) return tooMany();   // scoring par action → limite haute
   let body = {};
   try { body = await req.json(); } catch {}
 

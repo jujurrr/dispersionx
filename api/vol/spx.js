@@ -4,6 +4,8 @@
 //           + historique Cboe du _SPX pour la HV (repli Yahoo SPY).
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../_lib/ratelimit.js';
+
 import { cboeIvBundle, fetchClosesSmart } from '../_lib/cboe.js';
 
 function hvFromCloses(closes, window) {
@@ -15,7 +17,8 @@ function hvFromCloses(closes, window) {
   return Number((Math.sqrt(v * 252) * 100).toFixed(1));
 }
 
-export default async () => {
+export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   const [bundle, closes] = await Promise.all([
     cboeIvBundle('SPX', 30),
     fetchClosesSmart('SPX', 300),   // _SPX chez le Cboe : vraies clôtures de l'indice

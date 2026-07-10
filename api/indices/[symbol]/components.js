@@ -2,6 +2,9 @@
 // Listes statiques complètes + logos via Parqet CDN
 export const config = { runtime: 'edge' };
 
+import { allow, tooMany } from '../../_lib/ratelimit.js';
+import { cleanSymbol } from '../../_lib/symbols.js';
+
 const MAX = 600;
 
 // Logo Parqet CDN — strip exchange suffix (.PA, .DE, etc.)
@@ -374,8 +377,9 @@ const DAX = [
 export const INDEX_DATA = { SPX, NDX, DJI, CAC, DAX };
 
 export default async (req) => {
+  if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
   const parts  = new URL(req.url).pathname.split('/');
-  const symbol = (parts[3] || '').toUpperCase();
+  const symbol = cleanSymbol(parts[3]) || '';
   const data   = INDEX_DATA[symbol];
   if (!data) return Response.json({ error: 'unknown_symbol' }, { status: 404 });
 
