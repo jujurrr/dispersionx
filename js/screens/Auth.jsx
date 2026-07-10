@@ -73,7 +73,8 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
   async function submitNewPassword(e) {
     e.preventDefault();
     setError(''); setNotice('');
-    if (newPw.length < 6) return setError('Le mot de passe doit faire au moins 6 caractères.');
+    const pe = window.DXPasswordError ? window.DXPasswordError(newPw) : (newPw.length < 8 ? 'Le mot de passe doit faire au moins 8 caractères.' : null);
+    if (pe) return setError(pe);
     setBusy(true);
     try {
       await window.DXCloud.auth.updatePassword(newPw);
@@ -94,12 +95,14 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
     e.preventDefault();
     setError('');
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return setError('Adresse e-mail invalide.');
-    if (pw.length < 6) return setError('Le mot de passe doit faire au moins 6 caractères.');
     if (mode === 'signup') {
       if (!name.trim()) return setError('Indiquez votre nom.');
-      if (pw.length < 8) return setError('Le mot de passe doit faire au moins 8 caractères.');
+      const pe = window.DXPasswordError ? window.DXPasswordError(pw) : (pw.length < 8 ? 'Le mot de passe doit faire au moins 8 caractères.' : null);
+      if (pe) return setError(pe);
       if (pw !== pw2) return setError('Les mots de passe ne correspondent pas.');
       if (!accept) return setError("Vous devez accepter les CGU et la politique de confidentialité pour créer un compte.");
+    } else {
+      if (!pw) return setError('Entrez votre mot de passe.');   // connexion : on ne verrouille pas les comptes existants
     }
     setBusy(true);
     const C = window.DXCloud;
@@ -230,6 +233,11 @@ function Auth({ onNav, user, onAuth, loginReturn }) {
         <div>
           <label style={labelStyle}>Mot de passe</label>
           <PwField style={inputStyle} value={pw} onChange={e => setPw(e.target.value)} placeholder="••••••••" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} />
+          {mode === 'signup' && (
+            <div style={{ marginTop: 6, font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+              {window.DXPasswordHint || 'Au moins 8 caractères, dont une majuscule, une minuscule, un chiffre et un caractère spécial.'}
+            </div>
+          )}
         </div>
         {mode === 'signup' && (
           <div>

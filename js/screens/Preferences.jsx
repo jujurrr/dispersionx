@@ -94,7 +94,8 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
     finally { setSavingName(false); }
   }
   async function savePw() {
-    if (newPw.length < 6) { addToast && addToast('Le mot de passe doit faire au moins 6 caractères.', 'error'); return; }
+    const pe = window.DXPasswordError ? window.DXPasswordError(newPw) : (newPw.length < 8 ? 'Le mot de passe doit faire au moins 8 caractères.' : null);
+    if (pe) { addToast && addToast(pe, 'error'); return; }
     setSavingPw(true);
     try { await C.auth.updatePassword(newPw); setNewPw(''); addToast && addToast('Mot de passe mis à jour.', 'ok'); }
     catch (e) { addToast && addToast('Échec : ' + (e && e.message ? e.message : ''), 'error'); }
@@ -197,11 +198,14 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
           <label style={label}>{t('Nouveau mot de passe')}</label>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ flex: 1, minWidth: 200 }}>
-              <PrefPwField style={input} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder={t('Au moins 6 caractères')} />
+              <PrefPwField style={input} value={newPw} onChange={e => setNewPw(e.target.value)} placeholder={t('Au moins 8 caractères')} />
             </div>
-            <Button variant="outline" size="md" onClick={savePw} disabled={savingPw || newPw.length < 6}>
+            <Button variant="outline" size="md" onClick={savePw} disabled={savingPw || newPw.length < 8}>
               {savingPw ? t('Mise à jour…') : t('Mettre à jour')}
             </Button>
+          </div>
+          <div style={{ marginTop: 8, font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
+            {t(window.DXPasswordHint || 'Au moins 8 caractères, dont une majuscule, une minuscule, un chiffre et un caractère spécial.')}
           </div>
         </PrefSection>
       )}

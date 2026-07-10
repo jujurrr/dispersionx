@@ -10,6 +10,9 @@ import './globals-setup.js';
 // 1a) Analytics privacy-first (Vercel Web Analytics, cookieless, RGPD) → window.DXTrack.
 import './analytics.js';
 
+// 1a-bis) Politique de mot de passe (source unique) → window.DXPasswordError.
+import '../js/lib/password.js';
+
 // 1b) Couche cloud (Supabase) → window.DXCloud. Inactive sans clés VITE_SUPABASE_*
 //     (l'app reste en localStorage). Doit exister avant que les écrans tournent.
 import './cloud.js';
