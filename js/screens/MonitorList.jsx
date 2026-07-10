@@ -45,7 +45,15 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
   }
 
   if (loading) return (
-    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement des positions…</div>
+    window.DXLoader ? (
+      <window.DXLoader title="Chargement des positions" steps={[
+        'Récupération de vos positions suivies…',
+        'Grecs recalculés au DTE restant…',
+        'Dernier P&L mark-to-market connu…',
+      ]} />
+    ) : (
+      <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement des positions…</div>
+    )
   );
 
   const open = positions.filter(p => p.status === 'open' || p.status === 'sain' || p.status === 'surveiller');

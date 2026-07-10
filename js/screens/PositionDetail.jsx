@@ -200,7 +200,15 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   }
 
   if (loading) return (
-    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Suivi live en cours…</div>
+    window.DXLoader ? (
+      <window.DXLoader title="Chargement de la position" steps={[
+        'Récupération de la stratégie et des snapshots…',
+        'Reprise au marché réel (spot + IV Cboe)…',
+        'Calcul du P&L et des grecs au DTE restant…',
+      ]} />
+    ) : (
+      <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Suivi live en cours…</div>
+    )
   );
 
   if (!data) return (

@@ -96,9 +96,17 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
   const liq2color = (l) => l === 'Élevée' ? 'var(--pos-bright)' : l === 'Bonne' ? 'var(--accent-hover)' : 'var(--warn)';
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 80, color: 'var(--text-muted)', font: 'var(--type-body)' }}>
-      Chargement de {symbol}…
-    </div>
+    window.DXLoader ? (
+      <window.DXLoader title={'Chargement de ' + symbol} steps={[
+        'Récupération des composants de l’indice…',
+        'Cours et variations des sous-jacents…',
+        'Scoring de dispersion action par action…',
+      ]} />
+    ) : (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 80, color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+        Chargement de {symbol}…
+      </div>
+    )
   );
 
   return (

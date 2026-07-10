@@ -50,7 +50,15 @@ function Checklist({ listId, onNav, addToast, mode, pro }) {
   }
 
   if (loading) return (
-    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Évaluation de la checklist…</div>
+    window.DXLoader ? (
+      <window.DXLoader title="Évaluation de la checklist" steps={[
+        'Contrôle des données de marché…',
+        'Liquidité et calendrier des résultats…',
+        'Analyse du risque de la construction…',
+      ]} />
+    ) : (
+      <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Évaluation de la checklist…</div>
+    )
   );
 
   // Normalise data shape — real API vs mock

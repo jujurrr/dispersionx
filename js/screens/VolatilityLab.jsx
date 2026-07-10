@@ -148,9 +148,17 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
   }, [ticker, index]);
 
   if (loading) return (
-    <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
-      Chargement <strong style={{ color: 'var(--text)' }}>{ticker}</strong>…
-    </div>
+    window.DXLoader ? (
+      <window.DXLoader title={'Chargement ' + ticker} steps={[
+        'Volatilité implicite (Cboe, différé)…',
+        'Volatilité historique et structure par terme…',
+        'Comparaison IV / HV et rang de volatilité…',
+      ]} />
+    ) : (
+      <div style={{ padding: 60, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+        Chargement <strong style={{ color: 'var(--text)' }}>{ticker}</strong>…
+      </div>
+    )
   );
 
   if (!data) return (

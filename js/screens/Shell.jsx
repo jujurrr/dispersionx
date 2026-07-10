@@ -648,9 +648,9 @@ function Topbar({ crumbs, crumbHome = 'home', mode, onMode, activeList, onNav, u
             ? <window.HintDot text={window.t ? window.t("Change uniquement l'aide affichée, pas les calculs ni les données. « Débutant » ajoute des encadrés d'explication sur chaque écran ; « Avancé » les masque pour une interface plus dense.") : "Change uniquement l'aide affichée, pas les calculs ni les données. « Débutant » ajoute des encadrés d'explication sur chaque écran ; « Avancé » les masque pour une interface plus dense."}>{toggle}</window.HintDot>
             : toggle;
         })()}
-        {!isMobile && <SectionToggle to="landing" />}
         <NotifBell onNav={onNav} />
         <CurrencySwitcher />
+        {!isMobile && <SectionToggle to="landing" />}
         <ThemeToggle />
         <div onClick={() => onNav && onNav(user ? 'preferences' : 'login')} title={user ? `${user.name} — ${window.t ? window.t('Préférences') : 'Préférences'}` : (window.t ? window.t('Connexion') : 'Connexion')}
           style={{ width: 28, height: 28, borderRadius: '50%', cursor: 'pointer',

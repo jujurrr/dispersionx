@@ -31,9 +31,17 @@ function Home({ onNav, lists, mode }) {
   const diffBadge = (d) => d === 'débutant' ? 'pos' : d === 'intermédiaire' ? 'accent' : 'warn';
 
   if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 80, color: 'var(--text-muted)', font: 'var(--type-body)' }}>
-      Chargement des indices…
-    </div>
+    window.DXLoader ? (
+      <window.DXLoader title="Chargement des indices" steps={[
+        'Niveaux et variations en temps quasi réel…',
+        'Volatilité implicite (Cboe, différé)…',
+        'Composants et scores de dispersion…',
+      ]} />
+    ) : (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 80, color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+        Chargement des indices…
+      </div>
+    )
   );
 
   return (

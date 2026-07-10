@@ -190,7 +190,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
     return typeof av === 'string' ? av.localeCompare(bv) * sort.dir : (av - bv) * sort.dir;
   });
 
-  if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
+  if (loading) return window.DXLoader
+    ? <window.DXLoader title="Chargement de la liste" steps={['Récupération des actions de la liste…', 'Cours et scores…']} />
+    : <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
   if (!list) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--neg)', font: 'var(--type-body)' }}>Liste introuvable.</div>;
 
   // Partage : liste partagée AVEC moi ; lecture seule si le rôle n'est pas 'editor'.

@@ -271,9 +271,17 @@ function SingleTickerCorr({ ctx, onCtx, lists, mode }) {
   }
 
   if (loading) return (
-    <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
-      Chargement corrélation <strong style={{ color: 'var(--text)' }}>{ticker}</strong> / {index}…
-    </div>
+    window.DXLoader ? (
+      <window.DXLoader title="Chargement de la corrélation" steps={[
+        'Cours historiques des sous-jacents…',
+        'Corrélation réalisée sur la fenêtre…',
+        'Corrélation implicite via le VIX…',
+      ]} />
+    ) : (
+      <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>
+        Chargement corrélation <strong style={{ color: 'var(--text)' }}>{ticker}</strong> / {index}…
+      </div>
+    )
   );
 
   if (!vol) return (
@@ -455,7 +463,9 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
       : `rgba(239,83,80,${(t - 0.5) * 1.2 + 0.12})`;
   };
 
-  if (loading) return <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
+  if (loading) return window.DXLoader
+    ? <window.DXLoader title="Chargement de la corrélation" steps={['Cours historiques…', 'Corrélation réalisée et implicite…']} />
+    : <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
 
   const C = data || {};
   const rhoImpl = C.rho_impl ?? 0.52;
