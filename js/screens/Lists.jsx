@@ -66,8 +66,18 @@ function Lists({ onNav, onListsChange, addToast }) {
     });
   }
 
+  // Export/import de listes = fonctionnalité Pro (comme le partage) : sinon le
+  // fichier JSON permettrait de contourner le partage réservé à Pro.
+  function guardPro() {
+    if (isProUser) return true;
+    addToast && addToast("Télécharger et importer des listes est réservé à l'offre Pro.", 'info');
+    onNav && onNav('pricing');
+    return false;
+  }
+
   async function handleExport(list, e) {
     e.stopPropagation();
+    if (!guardPro()) return;
     const blob = await DXApi.exportList(list.id);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
@@ -77,6 +87,7 @@ function Lists({ onNav, onListsChange, addToast }) {
   }
 
   async function handleExportAll() {
+    if (!guardPro()) return;
     const blob = await DXApi.exportAllLists();
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
@@ -88,6 +99,7 @@ function Lists({ onNav, onListsChange, addToast }) {
   async function handleImport(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!guardPro()) { e.target.value = ''; return; }
     try {
       const res = await DXApi.importLists(file);
       addToast && addToast(`${res.message || res.imported + ' liste(s) importée(s)'}.`);
@@ -174,8 +186,13 @@ function Lists({ onNav, onListsChange, addToast }) {
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <button onClick={e => { e.stopPropagation(); onNav('list-detail', { listId: list.id }); }}
           style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>Ouvrir</button>
-        <button onClick={e => handleExport(list, e)}
-          style={{ font: '600 11px/1 var(--font-sans)', padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↓</button>
+        {isProUser ? (
+          <button onClick={e => handleExport(list, e)} title="Télécharger (JSON)"
+            style={{ font: '600 11px/1 var(--font-sans)', padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↓</button>
+        ) : (
+          <button onClick={e => { e.stopPropagation(); onNav('pricing'); }} title="Téléchargement réservé à l'offre Pro"
+            style={{ font: '600 11px/1 var(--font-sans)', padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-dim)', opacity: 0.7, cursor: 'pointer' }}>🔒</button>
+        )}
         <button onClick={e => { e.stopPropagation(); handleDelete(list); }}
           style={{ font: '600 11px/1 var(--font-sans)', padding: '7px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>×</button>
       </div>
@@ -206,8 +223,13 @@ function Lists({ onNav, onListsChange, addToast }) {
       <button title={guest ? 'Groupes — compte requis' : (list.group_name ? 'Changer de groupe' : 'Ranger dans un groupe')}
         onClick={e => { e.stopPropagation(); if (needAccount()) { onNav('login'); return; } setGroupFor(list); setNewGroupName(''); }}
         style={{ ...smallBtn, border: '1px dashed var(--border)', color: guest ? 'var(--text-dim)' : 'var(--text-muted)', opacity: guest ? 0.6 : 1 }}>{guest ? '🔒' : '🗂'}</button>
-      <button title="Télécharger (JSON)" onClick={e => handleExport(list, e)}
-        style={{ ...smallBtn, border: '1px solid var(--border)', color: 'var(--text-soft)' }}>↓</button>
+      {isProUser ? (
+        <button title="Télécharger (JSON)" onClick={e => handleExport(list, e)}
+          style={{ ...smallBtn, border: '1px solid var(--border)', color: 'var(--text-soft)' }}>↓</button>
+      ) : (
+        <button title="Téléchargement réservé à l'offre Pro" onClick={e => { e.stopPropagation(); onNav('pricing'); }}
+          style={{ ...smallBtn, border: '1px solid var(--border)', color: 'var(--text-dim)', opacity: 0.7 }}>🔒</button>
+      )}
       {cloudOn && (isProUser ? (
         <button title="Partager" onClick={e => openShare(list, e)}
           style={{ ...smallBtn, border: '1px dashed var(--border)', color: 'var(--text-muted)' }}>⤳</button>
@@ -240,8 +262,17 @@ function Lists({ onNav, onListsChange, addToast }) {
         </div>
         <div style={{ display: 'flex', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
           <input ref={importRef} type="file" accept=".json" onChange={handleImport} style={{ display: 'none' }} />
-          <button onClick={() => importRef.current.click()} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↑ Importer</button>
-          <button onClick={handleExportAll} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↓ Tout exporter</button>
+          {isProUser ? (
+            <>
+              <button onClick={() => importRef.current.click()} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↑ Importer</button>
+              <button onClick={handleExportAll} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↓ Tout exporter</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => onNav('pricing')} title="Import réservé à l'offre Pro" style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-dim)', opacity: 0.75, cursor: 'pointer' }}>🔒 Importer · Pro</button>
+              <button onClick={() => onNav('pricing')} title="Export réservé à l'offre Pro" style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-dim)', opacity: 0.75, cursor: 'pointer' }}>🔒 Tout exporter · Pro</button>
+            </>
+          )}
           <button onClick={() => setShowCreate(true)} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>+ Nouvelle liste</button>
         </div>
       </div>

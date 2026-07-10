@@ -351,6 +351,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
   // Export : télécharge la stratégie courante en .json (ré-importable).
   function exportStrategy() {
+    if (!isProUser) { addToast && addToast("Le téléchargement de stratégie est réservé à l'offre Pro.", 'info'); onNav && onNav('pricing'); return; }
     const s = buildStrategy();
     if (!s) return;
     const blob = new Blob([JSON.stringify(s, null, 2)], { type: 'application/json' });
@@ -365,6 +366,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   // réglages (contrats, sizing, pondération, couverture, échéance) sont
   // adoptés et la stratégie est enregistrée telle quelle pour cette liste.
   function importStrategy(file) {
+    if (!isProUser) { addToast && addToast("L'import de stratégie est réservé à l'offre Pro.", 'info'); onNav && onNav('pricing'); return; }
     if (!file || !listId) return;
     file.text().then(txt => {
       let s = null;
@@ -724,14 +726,32 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
             <button onClick={() => save(true)} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
               Enregistrer puis ouvrir le Risk Lab →
             </button>
-            <button onClick={exportStrategy} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
-              ↓ Télécharger (.json)
-            </button>
-            <label style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
-              ↑ Importer une stratégie
-              <input type="file" accept=".json,application/json" style={{ display: 'none' }}
-                onChange={e => { const f = e.target.files && e.target.files[0]; if (f) importStrategy(f); e.target.value = ''; }} />
-            </label>
+            {/* Télécharger / importer une stratégie (.json) — réservé Pro (comme le
+                partage : sinon le fichier contourne le partage réservé à Pro). */}
+            {isProUser ? (
+              <button onClick={exportStrategy} style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+                ↓ Télécharger (.json)
+              </button>
+            ) : (
+              <button onClick={() => onNav && onNav('pricing')} title="Téléchargement réservé à l'offre Pro"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, font: '600 13px/1 var(--font-sans)', padding: '11px 16px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                🔒 Télécharger (.json)
+                <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pro</span>
+              </button>
+            )}
+            {isProUser ? (
+              <label style={{ font: '600 13px/1 var(--font-sans)', padding: '11px 18px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
+                ↑ Importer une stratégie
+                <input type="file" accept=".json,application/json" style={{ display: 'none' }}
+                  onChange={e => { const f = e.target.files && e.target.files[0]; if (f) importStrategy(f); e.target.value = ''; }} />
+              </label>
+            ) : (
+              <button onClick={() => onNav && onNav('pricing')} title="Import réservé à l'offre Pro"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 7, font: '600 13px/1 var(--font-sans)', padding: '11px 16px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
+                🔒 Importer une stratégie
+                <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 6px', borderRadius: 8, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pro</span>
+              </button>
+            )}
             {/* Export IBKR (Risk Navigator · What-If) — réservé Pro */}
             {isProUser ? (
               <button onClick={() => { save(false); setIbkrOpen(true); }} title="Générer un CSV importable dans le Risk Navigator de TWS (What-If)"

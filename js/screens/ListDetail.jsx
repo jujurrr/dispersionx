@@ -2,6 +2,7 @@
 // Journal d'audit : phrases/temps partagés via window.DXActivity (ActivityFeed.jsx).
 function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
+  const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // export réservé à Pro (comme le partage)
   const [list, setList]       = React.useState(null);
   const [analysis, setAnalysis] = React.useState(null);
   const [quotes, setQuotes]   = React.useState({});
@@ -142,6 +143,11 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   function toggleAudit() { const next = !showAudit; setShowAudit(next); if (next) refreshAudit(); }
 
   async function handleExport() {
+    if (!isProUser) {
+      addToast && addToast("Télécharger une liste est réservé à l'offre Pro.", 'info');
+      onNav && onNav('pricing');
+      return;
+    }
     const blob = await DXApi.exportList(listId);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a'); a.href = url;
@@ -222,7 +228,8 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
               style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: showAudit ? 'var(--bg-hover)' : 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Activité</button>
           )}
           <button onClick={handleExport}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>↓</button>
+            title={isProUser ? 'Télécharger (JSON)' : "Téléchargement réservé à l'offre Pro"}
+            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: isProUser ? 'var(--text-soft)' : 'var(--text-dim)', opacity: isProUser ? 1 : 0.75, cursor: 'pointer' }}>{isProUser ? '↓' : '🔒 ↓'}</button>
           <button onClick={handleDelete}
             title={isShared ? 'Seul le propriétaire peut supprimer cette liste.' : undefined}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: `1px solid ${isShared ? 'var(--border)' : 'var(--neg)'}`, background: 'transparent', color: isShared ? 'var(--text-dim)' : 'var(--neg-bright)', cursor: isShared ? 'not-allowed' : 'pointer', opacity: isShared ? 0.5 : 1 }}>Supprimer</button>

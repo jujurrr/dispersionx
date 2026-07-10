@@ -17,6 +17,7 @@ const DX_PRO = {
     'Suivi de positions en temps réel (P&L, grecs, snapshots)',
     'Export vers IBKR : stratégie prête à trader (Risk Navigator · What-If)',
     'Partage de listes & stratégies (lien ou e-mail)',
+    'Télécharger & importer listes et stratégies (fichiers .json)',
     'Journal / track record',
     'Rapports PDF',
   ],
@@ -174,6 +175,7 @@ const DX_PRO_COMPARE = [
   ['Suivi de positions en temps réel', false, true],
   ['Export vers IBKR (Risk Navigator · What-If)', false, true],
   ['Partage de listes & stratégies (lien / e-mail)', false, true],
+  ['Télécharger / importer listes & stratégies (fichiers)', false, true],
   ['Journal / track record', false, true],
   ['Rapports PDF', false, true],
 ];
