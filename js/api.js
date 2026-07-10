@@ -177,7 +177,11 @@
 
   async function getLists() {
     const c = _cloud();
-    if (c) { try { return await c.lists.getAll(); } catch (e) { console.warn('cloud getLists', e); } }
+    // Connecté : en cas d'échec de lecture cloud, renvoyer une liste VIDE — surtout
+    // PAS le repli DXMock, qui afficherait les listes de démo « invité » et ferait
+    // croire à une perte de données / un mode invité alors qu'on est bien connecté.
+    // Le repli DXMock ne vaut qu'en mode invité (c === null).
+    if (c) { try { return await c.lists.getAll(); } catch (e) { console.warn('cloud getLists', e); return []; } }
     return window.DXMock.lists;
   }
   async function createList(name, index_symbol, description = '') {
