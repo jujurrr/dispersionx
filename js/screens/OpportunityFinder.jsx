@@ -209,6 +209,7 @@ function oppCost(m, totalContracts, R) {
 function OpportunityFinder({ onNav, lists, addToast, pro }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
+  const t = window.t || ((s) => s);   // pancarte d'accueil traduite (le reste du module reste en FR)
   const INDICES = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
   const DURATIONS = [{ v: 15, l: '15 jours' }, { v: 30, l: '30 jours' }, { v: 45, l: '45 jours' }, { v: 60, l: '60 jours' }];
   const [index, setIndex] = React.useState('SPX');
@@ -350,6 +351,19 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {window.DXGuide && (
+        <window.DXGuide
+          id="opportunities"
+          title={t("L'auto-chercheur d'opportunités")}
+          intro={t("Il fait le travail d'analyse à ta place : au lieu de tester des paniers à la main, il en explore des milliers et te classe les meilleures dispersions d'un indice.")}
+          steps={[
+            [t('Choisis un indice et un horizon'), t('SPX, NDX, DJI, CAC ou DAX, puis l’échéance de référence (15 à 60 jours).')],
+            [t('Lance la recherche'), t('Le site évalue des milliers de paniers (5 à 20 actions) en combinant le score de dispersion de chaque action et la prime de corrélation du panier.')],
+            [t('Compare les meilleures opportunités'), t('Chaque résultat affiche sa prime, sa diversification et un backtest historique de la prime de corrélation captée.')],
+            [t('Ouvre-la pour l’affiner'), t('Un clic l’envoie en Construction — sizing vega-neutre et 3 scénarios de stress déjà calculés, comme au Risk Lab.')],
+          ]}
+        />
+      )}
       {/* En-tête */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 260 }}>

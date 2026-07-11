@@ -36,6 +36,90 @@ function PrefSection({ title, desc, children, right }) {
   );
 }
 
+// Historique d'abonnement — factures Stripe (date, période, montant, statut, lien).
+// Chargé paresseusement à l'affichage via window.DXCloud.proHistory(). DA du site,
+// présentation « à la Claude » (liste datée). Non-cassant : hors-ligne / non
+// configuré → message discret, jamais d'erreur bloquante.
+function SubscriptionHistory({ DS, t }) {
+  const { Badge } = DS;
+  const C = window.DXCloud;
+  const [st, setSt] = React.useState({ loading: true });
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const d = await (C && C.proHistory ? C.proHistory() : Promise.resolve({ entries: [] }));
+        if (alive) setSt({ loading: false, data: d || {} });
+      } catch { if (alive) setSt({ loading: false, error: true }); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const LOCALE = { fr: 'fr-FR', en: 'en-US', zh: 'zh-CN' };
+  const loc = LOCALE[(window.DXI18n && window.DXI18n.get && window.DXI18n.get()) || 'fr'] || 'fr-FR';
+  const fmtD = (s, opts) => (s ? new Date(s).toLocaleDateString(loc, opts || { day: 'numeric', month: 'short', year: 'numeric' }) : '');
+  const fmtMoney = (amt, cur) => {
+    if (amt == null || !isFinite(amt)) return '';
+    try { return new Intl.NumberFormat(loc, { style: 'currency', currency: cur || 'EUR' }).format(amt); }
+    catch { return amt + ' ' + (cur || 'EUR'); }
+  };
+  const STAT = {
+    paid:          { key: 'Payée',      tone: 'pos' },
+    open:          { key: 'En attente', tone: 'warn' },
+    void:          { key: 'Annulée',    tone: 'neutral' },
+    uncollectible: { key: 'Échouée',    tone: 'neg' },
+  };
+
+  if (st.loading) return <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>{t('Chargement de l’historique…')}</div>;
+  const d = st.data || {};
+  if (st.error || d.error) return <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>{t('Historique indisponible pour le moment.')}</div>;
+
+  const entries = Array.isArray(d.entries) ? d.entries : [];
+  const sinceTxt = d.since ? fmtD(d.since) : null;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {sinceTxt && (
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+          {t('Membre Pro depuis le {date}', { date: sinceTxt })}
+        </div>
+      )}
+      {entries.length === 0 ? (
+        <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+          {d.subscribed
+            ? t('Aucune facture pour l’instant — elle apparaîtra après le premier prélèvement.')
+            : t('Accès Pro accordé manuellement — aucun historique de facturation Stripe.')}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          {entries.map((e, i) => {
+            const s = STAT[e.status] || { key: e.status || '—', tone: 'neutral' };
+            return (
+              <div key={e.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 0', borderTop: i > 0 ? '1px solid var(--border-subtle)' : 'none' }}>
+                <div style={{ flex: 1, minWidth: 140 }}>
+                  <div style={{ font: '600 13px/1.3 var(--font-mono)', color: 'var(--text)' }}>{fmtD(e.date)}</div>
+                  {e.periodStart && e.periodEnd && (
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 3 }}>
+                      {t('Période du {start} au {end}', { start: fmtD(e.periodStart, { day: 'numeric', month: 'short' }), end: fmtD(e.periodEnd) })}
+                    </div>
+                  )}
+                </div>
+                <div style={{ font: '600 13px/1 var(--font-mono)', color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmtMoney(e.amount, e.currency)}</div>
+                <Badge tone={s.tone} size="sm">{t(s.key)}</Badge>
+                {e.url && (
+                  <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ font: '600 11px/1 var(--font-sans)', color: 'var(--accent-hover)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                    {t('Facture')} →
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const DS = window.DispersionXDesignSystem_cb86be;
   const { Button, Badge } = DS;
@@ -268,6 +352,16 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
           </div>
         )}
       </PrefSection>
+
+      {/* ── Historique d'abonnement ── */}
+      {isPro && (
+        <PrefSection
+          title={t('Historique d’abonnement')}
+          desc={t('Vos paiements et périodes de facturation, synchronisés avec Stripe.')}
+        >
+          <SubscriptionHistory DS={DS} t={t} />
+        </PrefSection>
+      )}
 
       {/* ── Langue ── */}
       <PrefSection title={t('Langue')} desc={t("Langue de l'interface.")}>

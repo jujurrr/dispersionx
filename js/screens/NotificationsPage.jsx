@@ -4,11 +4,13 @@
    Notifications = store partagé window.DXNotifStore (cohérent avec l'onglet). */
 
 // Libellé + CTA lisibles d'une notification, selon son type.
-function dxNotifMeta(kind) {
+function dxNotifMeta(kind, ref) {
   switch (kind) {
     case 'greek_drift': return { label: 'Grecs', cta: 'Voir la position' };
     case 'pnl':         return { label: 'P&L', cta: 'Voir la position' };
-    case 'subscription':return { label: 'Abonnement', cta: 'Gérer l’abonnement' };
+    case 'subscription':return ref === 'sub:activated'
+      ? { label: 'Abonnement', cta: 'Découvrir le Pro' }         // notif d'activation → avantages Pro
+      : { label: 'Abonnement', cta: 'Gérer l’abonnement' };
     case 'correlation': return { label: 'Corrélation', cta: 'Ouvrir Marché Pro' };
     default:            return { label: 'Info', cta: 'Ouvrir' };
   }
@@ -94,7 +96,7 @@ function NotificationsPage({ onNav, lists }) {
           <div style={{ padding: '34px 20px', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-body-sm)' }}>Aucune notification. Elles apparaîtront ici (dérive des grecs, P&L, abonnement, corrélation).</div>
         ) : notifs.map(n => {
           const col = A.toneColor(n.tone);
-          const meta = dxNotifMeta(n.kind);
+          const meta = dxNotifMeta(n.kind, n.ref);
           const target = A.notifTarget(n);
           return (
             <div key={n.id} onClick={target ? () => A.go(target) : undefined}

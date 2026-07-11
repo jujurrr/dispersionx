@@ -643,6 +643,54 @@
         '**Expiry {exp}** and **ATM strikes** — exactly those of the built strategy (the site models each leg closest to the price, on a standard monthly expiry). Contracts are validated on the real option chain when it is available. The file is optimized for US-listed underlyings (SPX→SPY, NDX→QQQ, DJI→DIA and their components){foreign}.',
       " ; pour les composants européens (CAC/DAX), la devise est renseignée mais tu devras éventuellement préciser la place de cotation dans TWS":
         '; for European components (CAC/DAX), the currency is filled in but you may need to specify the listing exchange in TWS',
+
+      // ── Historique d'abonnement (Préférences) ──
+      'Historique d’abonnement': 'Subscription history',
+      'Vos paiements et périodes de facturation, synchronisés avec Stripe.': 'Your payments and billing periods, synced with Stripe.',
+      'Chargement de l’historique…': 'Loading history…',
+      'Historique indisponible pour le moment.': 'History unavailable right now.',
+      'Membre Pro depuis le {date}': 'Pro member since {date}',
+      'Aucune facture pour l’instant — elle apparaîtra après le premier prélèvement.': 'No invoice yet — it will appear after the first charge.',
+      'Accès Pro accordé manuellement — aucun historique de facturation Stripe.': 'Pro access granted manually — no Stripe billing history.',
+      'Période du {start} au {end}': 'Period {start} – {end}',
+      'Payée': 'Paid',
+      'En attente': 'Pending',
+      'Annulée': 'Voided',
+      'Échouée': 'Failed',
+      'Facture': 'Invoice',
+
+      // ── Pancarte d'accueil (FirstVisitGuide) ──
+      'Bienvenue ✦': 'Welcome ✦',
+      'J’ai compris': 'Got it',
+      // Pancarte Opportunités
+      "L'auto-chercheur d'opportunités": 'The opportunity finder',
+      "Il fait le travail d'analyse à ta place : au lieu de tester des paniers à la main, il en explore des milliers et te classe les meilleures dispersions d'un indice.":
+        'It does the analysis for you: instead of testing baskets by hand, it explores thousands of them and ranks an index’s best dispersions.',
+      'Choisis un indice et un horizon': 'Pick an index and a horizon',
+      'SPX, NDX, DJI, CAC ou DAX, puis l’échéance de référence (15 à 60 jours).': 'SPX, NDX, DJI, CAC or DAX, then the reference expiry (15 to 60 days).',
+      'Lance la recherche': 'Run the search',
+      'Le site évalue des milliers de paniers (5 à 20 actions) en combinant le score de dispersion de chaque action et la prime de corrélation du panier.':
+        'The site evaluates thousands of baskets (5 to 20 stocks), combining each stock’s dispersion score with the basket’s correlation premium.',
+      'Compare les meilleures opportunités': 'Compare the best opportunities',
+      'Chaque résultat affiche sa prime, sa diversification et un backtest historique de la prime de corrélation captée.':
+        'Each result shows its premium, its diversification and a historical backtest of the correlation premium captured.',
+      'Ouvre-la pour l’affiner': 'Open it to refine it',
+      'Un clic l’envoie en Construction — sizing vega-neutre et 3 scénarios de stress déjà calculés, comme au Risk Lab.':
+        'One click sends it to Construction — vega-neutral sizing and 3 stress scenarios already computed, just like the Risk Lab.',
+      // Pancarte Suivi
+      'Le Suivi de tes positions': 'Tracking your positions',
+      'Toutes les stratégies que tu as engagées, réunies au même endroit pour suivre leur évolution dans le temps.':
+        'All the strategies you’ve committed, gathered in one place to follow how they evolve over time.',
+      'Tes positions committées arrivent ici': 'Your committed positions land here',
+      'Une stratégie engagée (Construction → Risk Lab → Checklist) apparaît automatiquement dans le Suivi, toutes listes confondues.':
+        'A committed strategy (Construction → Risk Lab → Checklist) automatically appears in Tracking, across all lists.',
+      'Trois façons de les ranger': 'Three ways to organize them',
+      'Bascule entre Grille, Groupes et Chronologique selon ce que tu veux voir.': 'Switch between Grid, Groups and Timeline depending on what you want to see.',
+      'Crée tes propres groupes': 'Create your own groups',
+      'Range chaque position dans un groupe personnalisé — synchronisé sur tous tes appareils.': 'File each position into a custom group — synced across all your devices.',
+      'Suis grecs et P&L dans le temps': 'Track greeks and P&L over time',
+      'Ouvre une position pour voir ses grecs au DTE restant, ses snapshots et son P&L théorique.':
+        'Open a position to see its greeks at the remaining DTE, its snapshots and its theoretical P&L.',
     },
     zh: {
       // ── Navigation (barre latérale) ──
@@ -1256,6 +1304,54 @@
         '**到期日 {exp}** 和 **平值行权价** — 与所构建策略完全一致（本网站以最接近价格的方式对每条腿建模，采用标准月度到期）。在真实期权链可用时会据此验证合约。该文件针对在美国挂牌的标的进行了优化（SPX→SPY、NDX→QQQ、DJI→DIA 及其成分股）{foreign}。',
       " ; pour les composants européens (CAC/DAX), la devise est renseignée mais tu devras éventuellement préciser la place de cotation dans TWS":
         '；对于欧洲成分股（CAC/DAX），已填写货币，但你可能需要在 TWS 中指定挂牌交易所',
+
+      // ── 订阅历史（偏好设置）──
+      'Historique d’abonnement': '订阅历史',
+      'Vos paiements et périodes de facturation, synchronisés avec Stripe.': '你的付款和账单周期，与 Stripe 同步。',
+      'Chargement de l’historique…': '正在加载历史…',
+      'Historique indisponible pour le moment.': '历史暂时不可用。',
+      'Membre Pro depuis le {date}': '自 {date} 起成为 Pro 会员',
+      'Aucune facture pour l’instant — elle apparaîtra après le premier prélèvement.': '暂无账单——将在首次扣款后显示。',
+      'Accès Pro accordé manuellement — aucun historique de facturation Stripe.': '手动授予的 Pro 访问权限——无 Stripe 账单历史。',
+      'Période du {start} au {end}': '周期 {start} 至 {end}',
+      'Payée': '已支付',
+      'En attente': '待处理',
+      'Annulée': '已作废',
+      'Échouée': '失败',
+      'Facture': '发票',
+
+      // ── 欢迎提示卡（FirstVisitGuide）──
+      'Bienvenue ✦': '欢迎 ✦',
+      'J’ai compris': '知道了',
+      // 机会提示卡
+      "L'auto-chercheur d'opportunités": '机会自动搜索器',
+      "Il fait le travail d'analyse à ta place : au lieu de tester des paniers à la main, il en explore des milliers et te classe les meilleures dispersions d'un indice.":
+        '它替你完成分析：无需手动测试篮子，它会探索成千上万个组合，并为你排出某个指数最佳的离散度。',
+      'Choisis un indice et un horizon': '选择指数和期限',
+      'SPX, NDX, DJI, CAC ou DAX, puis l’échéance de référence (15 à 60 jours).': 'SPX、NDX、DJI、CAC 或 DAX，然后选择参考到期日（15 至 60 天）。',
+      'Lance la recherche': '开始搜索',
+      'Le site évalue des milliers de paniers (5 à 20 actions) en combinant le score de dispersion de chaque action et la prime de corrélation du panier.':
+        '网站会评估成千上万个篮子（5 至 20 只股票），结合每只股票的离散度评分与篮子的相关性溢价。',
+      'Compare les meilleures opportunités': '比较最佳机会',
+      'Chaque résultat affiche sa prime, sa diversification et un backtest historique de la prime de corrélation captée.':
+        '每个结果都会显示其溢价、分散度以及所捕获相关性溢价的历史回测。',
+      'Ouvre-la pour l’affiner': '打开它进行细化',
+      'Un clic l’envoie en Construction — sizing vega-neutre et 3 scénarios de stress déjà calculés, comme au Risk Lab.':
+        '一键将其发送到“构建” — 已计算好 vega 中性头寸规模和 3 个压力情景，就像风险实验室一样。',
+      // 跟踪提示卡
+      'Le Suivi de tes positions': '跟踪你的持仓',
+      'Toutes les stratégies que tu as engagées, réunies au même endroit pour suivre leur évolution dans le temps.':
+        '你已建立的所有策略，集中在一处，便于跟踪它们随时间的演变。',
+      'Tes positions committées arrivent ici': '你已建立的持仓会出现在这里',
+      'Une stratégie engagée (Construction → Risk Lab → Checklist) apparaît automatiquement dans le Suivi, toutes listes confondues.':
+        '已建立的策略（构建 → 风险实验室 → 检查清单）会自动出现在跟踪中，涵盖所有列表。',
+      'Trois façons de les ranger': '三种整理方式',
+      'Bascule entre Grille, Groupes et Chronologique selon ce que tu veux voir.': '根据你想查看的内容，在网格、分组和时间线之间切换。',
+      'Crée tes propres groupes': '创建你自己的分组',
+      'Range chaque position dans un groupe personnalisé — synchronisé sur tous tes appareils.': '将每个持仓归入自定义分组 — 在你所有设备间同步。',
+      'Suis grecs et P&L dans le temps': '随时间跟踪希腊值和盈亏',
+      'Ouvre une position pour voir ses grecs au DTE restant, ses snapshots et son P&L théorique.':
+        '打开一个持仓，查看其在剩余 DTE 时的希腊值、快照和理论盈亏。',
     },
   };
 

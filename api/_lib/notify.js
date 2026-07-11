@@ -88,7 +88,7 @@ export function subscriptionActivatedNotif({ periodEnd } = {}) {
   return {
     kind: 'subscription', tone: 'pos',
     title: 'Bienvenue dans DispersionX Pro ✦',
-    body: `Ton paiement a bien été reçu et ton accès Pro est activé.${renewTxt} Merci de ta confiance !`,
+    body: `Ton paiement a bien été reçu et ton accès Pro est activé.${renewTxt} Merci de ta confiance ! Découvre tout ce que tu viens de débloquer avec Pro.`,
     ref: 'sub:activated',
   };
 }

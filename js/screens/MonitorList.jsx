@@ -10,6 +10,7 @@
    hors-ligne. Affectation : DXApi.setPositionGroup. */
 function MonitorList({ onNav, addToast, mode, pro, lists }) {
   const { Badge } = window.DispersionXDesignSystem_cb86be;
+  const t = window.t || ((s) => s);   // pancarte d'accueil traduite (le reste du module reste en FR)
   const [positions, setPositions] = React.useState([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -125,6 +126,19 @@ function MonitorList({ onNav, addToast, mode, pro, lists }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {window.DXGuide && (
+        <window.DXGuide
+          id="monitor"
+          title={t('Le Suivi de tes positions')}
+          intro={t('Toutes les stratégies que tu as engagées, réunies au même endroit pour suivre leur évolution dans le temps.')}
+          steps={[
+            [t('Tes positions committées arrivent ici'), t('Une stratégie engagée (Construction → Risk Lab → Checklist) apparaît automatiquement dans le Suivi, toutes listes confondues.')],
+            [t('Trois façons de les ranger'), t('Bascule entre Grille, Groupes et Chronologique selon ce que tu veux voir.')],
+            [t('Crée tes propres groupes'), t('Range chaque position dans un groupe personnalisé — synchronisé sur tous tes appareils.')],
+            [t('Suis grecs et P&L dans le temps'), t('Ouvre une position pour voir ses grecs au DTE restant, ses snapshots et son P&L théorique.')],
+          ]}
+        />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>

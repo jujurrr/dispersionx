@@ -69,7 +69,10 @@ window.DXActivity = { sentence: dxAuditSentence, timeAgo: dxAuditTimeAgo, tone: 
 function dxNotifTarget(n) {
   const ref = (n && n.ref) || '';
   switch (n && n.kind) {
-    case 'subscription': return { screen: 'preferences' };                 // section Abonnement
+    case 'subscription':
+      // Activation → module Pro concret (Opportunités) pour découvrir ce qui est
+      // débloqué. Les autres (renouvellement/résiliation) → section Abonnement.
+      return ref === 'sub:activated' ? { screen: 'opportunities' } : { screen: 'preferences' };
     case 'correlation':  return { screen: 'market-pro' };                  // baromètre ρ (Pro)
     case 'greek_drift':
     case 'pnl': {

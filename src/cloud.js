@@ -113,6 +113,21 @@ const proApi = {
     if (!r.ok || !j.url) throw new Error(j.error || 'portail_indisponible');
     window.location.href = j.url;
   },
+  // Historique d'abonnement (factures Stripe). Lecture seule, authentifiée par le
+  // JWT Supabase (comme le portail). Non-cassant : en cas d'échec/hors-ligne,
+  // renvoie une enveloppe vide plutôt que de lever.
+  async history() {
+    if (!currentUser) return { entries: [], subscribed: false };
+    try {
+      const { data } = await supa.auth.getSession();
+      const token = data?.session?.access_token;
+      if (!token) return { entries: [], subscribed: false };
+      const r = await fetch('/api/pro/history', { headers: { Authorization: `Bearer ${token}` } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) return { entries: [], subscribed: false, error: j.error || 'indisponible' };
+      return { entries: [], subscribed: false, ...j };
+    } catch { return { entries: [], subscribed: false, error: 'indisponible' }; }
+  },
 };
 
 function userFromSession(session) {
@@ -693,6 +708,7 @@ window.DXCloud = {
   refreshPro: () => proApi.refresh(),
   confirmPro: (sessionId) => proApi.confirmCheckout(sessionId),
   openProPortal: () => proApi.openPortal(),
+  proHistory: () => proApi.history(),
   exportAccount: () => exportAccount(),
   lists: supa ? lists : null,
   strategies: supa ? strategies : null,
