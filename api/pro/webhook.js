@@ -3,9 +3,12 @@
 // pro_access via la clé service role (serveur uniquement). C'est le SEUL chemin
 // qui accorde le Pro : le navigateur ne peut jamais se l'auto-attribuer.
 //   checkout.session.completed  → accorde (status actif, période)
+//   invoice.payment_succeeded   → renouvellement (notif + période à jour)
 //   customer.subscription.updated → met à jour statut/période (résiliation, échec)
 //   customer.subscription.deleted → révoque (status canceled)
 export const config = { runtime: 'edge' };
+
+import { subscriptionRenewedNotif, insertNotif } from '../_lib/notify.js';
 
 const SB_BASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const SB_KEY  = process.env.SUPABASE_SERVICE_KEY || '';
@@ -91,6 +94,21 @@ export default async (req) => {
           status: sub.status || 'active',
           current_period_end: iso(cpeSec),
         });
+      }
+    } else if (event.type === 'invoice.payment_succeeded' || event.type === 'invoice.paid') {
+      // Renouvellement d'un cycle (≠ 1er paiement 'subscription_create', ≠ MAJ) :
+      // on rafraîchit la période ET on dépose une notif « Pro renouvelé ».
+      if (obj.billing_reason === 'subscription_cycle') {
+        const subId = obj.subscription;
+        const sub = subId ? await stripeGet(`/subscriptions/${subId}`) : null;
+        const cpeSec = periodEndOf(sub);
+        const userId = sub?.metadata?.user_id || obj.subscription_details?.metadata?.user_id || null;
+        if (userId && cpeSec) {
+          const periodEnd = iso(cpeSec);
+          await sbUpsert({ user_id: userId, status: sub.status || 'active', current_period_end: periodEnd, stripe_subscription_id: subId, stripe_customer_id: obj.customer || null });
+          const sbHeaders = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' };
+          try { await insertNotif(SB_BASE, sbHeaders, userId, subscriptionRenewedNotif({ periodEnd }), 24 * 40); } catch {}
+        }
       }
     } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
       // Résiliation programmée (cancel_at_period_end) : l'accès reste dû jusqu'à la

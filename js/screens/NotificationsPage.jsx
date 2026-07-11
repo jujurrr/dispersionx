@@ -24,8 +24,12 @@ function NotificationsPage({ onNav, lists }) {
   const [activity, setActivity] = React.useState(null);   // { account, shared, nameMap } — comme le Dashboard
 
   // Notifications (store partagé) + « tout lu » à l'ouverture → réinitialise la cloche.
+  // On CAPTURE le dernier id vu AVANT markSeen : les notifs déjà vues s'affichent en
+  // neutre (le bandeau coloré ne revient pas), les nouvelles gardent leur couleur.
+  const seenAtOpen = React.useRef(0);
   React.useEffect(() => {
     if (!store) return;
+    seenAtOpen.current = store.getSeenId ? store.getSeenId() : 0;
     const h = () => force(x => x + 1);
     window.addEventListener('dx-notif-store', h);
     store.start();
@@ -98,17 +102,16 @@ function NotificationsPage({ onNav, lists }) {
           const col = A.toneColor(n.tone);
           const meta = dxNotifMeta(n.kind, n.ref);
           const target = A.notifTarget(n);
-          // Clic sur la notif → on va au bon endroit (si cible) ET on la retire du
-          // fil (elle ne réapparaît plus, y compris après refresh). Le ✕ retire
-          // sans naviguer.
-          const dismiss = () => { if (store) store.dismiss(n.id); };
+          // La notif reste 30 j dans le fil. Une fois VUE (id ≤ dernier id vu à
+          // l'ouverture), elle passe en NEUTRE (plus de bandeau coloré) et le reste.
+          const isNew = Number(n.id) > seenAtOpen.current;
           return (
-            <div key={n.id} onClick={() => { if (target) A.go(target); dismiss(); }}
-              style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone), cursor: 'pointer' }}>
-              <span style={{ width: 10, height: 10, borderRadius: '50%', background: col, flexShrink: 0, marginTop: 5, boxShadow: `0 0 0 3px ${A.toneSoft(n.tone)}` }} />
+            <div key={n.id} onClick={target ? () => A.go(target) : undefined}
+              style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${isNew ? col : 'var(--border)'}`, background: isNew ? A.toneSoft(n.tone) : 'transparent', cursor: target ? 'pointer' : 'default' }}>
+              <span style={{ width: 10, height: 10, borderRadius: '50%', background: isNew ? col : 'var(--text-dim)', flexShrink: 0, marginTop: 5, boxShadow: isNew ? `0 0 0 3px ${A.toneSoft(n.tone)}` : 'none' }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ font: '600 10px/1 var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999, background: 'var(--bg-elevated)', color: col, border: `1px solid ${col}` }}>{meta.label}</span>
+                  <span style={{ font: '600 10px/1 var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '2px 7px', borderRadius: 999, background: 'var(--bg-elevated)', color: isNew ? col : 'var(--text-muted)', border: `1px solid ${isNew ? col : 'var(--border)'}` }}>{meta.label}</span>
                   <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{n.title}</span>
                 </div>
                 {n.body && <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', marginTop: 5, lineHeight: 1.5 }}>{n.body}</div>}
@@ -117,8 +120,6 @@ function NotificationsPage({ onNav, lists }) {
                   {target && <span style={{ font: '600 11px/1 var(--font-sans)', color: 'var(--accent-hover)' }}>{meta.cta} →</span>}
                 </div>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); dismiss(); }} aria-label="Retirer la notification" title="Retirer"
-                style={{ flexShrink: 0, alignSelf: 'flex-start', width: 24, height: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', font: '700 12px/1 var(--font-mono)' }}>✕</button>
             </div>
           );
         })}

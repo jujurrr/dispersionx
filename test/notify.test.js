@@ -1,7 +1,7 @@
 // Décisions de notifications « intelligentes » — fonctions pures.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { grossPremium, deltaDriftNotif, pnlNotif, subscriptionNotif, subscriptionActivatedNotif, correlationNotif } from '../api/_lib/notify.js';
+import { grossPremium, deltaDriftNotif, pnlNotif, subscriptionNotif, subscriptionActivatedNotif, subscriptionRenewedNotif, correlationNotif } from '../api/_lib/notify.js';
 
 const strat = { portfolio: { idxPrem: 10000 }, components: [{ premium: 4000 }, { premium: 6000 }] };
 const pos = { id: 'p1', name: 'Tech NDX', strategy: strat };   // prime brute = 20000
@@ -57,6 +57,16 @@ test('subscriptionActivatedNotif : Pro activé, ref stable, date de renouvelleme
   const n2 = subscriptionActivatedNotif({});
   assert.doesNotMatch(n2.body, /renouvellement/);
   assert.equal(n2.ref, 'sub:activated');
+});
+
+test('subscriptionRenewedNotif : renouvellement, ref UNIQUE par période', () => {
+  const a = subscriptionRenewedNotif({ periodEnd: '2026-08-11T00:00:00Z' });
+  assert.ok(a && a.kind === 'subscription' && a.tone === 'pos');
+  assert.match(a.title, /renouvel/i);
+  assert.equal(a.ref, 'sub:renewed:2026-08-11');
+  // Une période différente ⇒ ref différente (une notif par cycle, pas de dédup).
+  const b = subscriptionRenewedNotif({ periodEnd: '2026-09-11T00:00:00Z' });
+  assert.notEqual(a.ref, b.ref);
 });
 
 test('correlationNotif : structure + ref par indice', () => {

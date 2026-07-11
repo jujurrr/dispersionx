@@ -93,6 +93,23 @@ export function subscriptionActivatedNotif({ periodEnd } = {}) {
   };
 }
 
+// Renouvellement d'abonnement (paiement d'un nouveau cycle réussi). Déposée par le
+// webhook sur invoice.payment_succeeded (billing_reason = subscription_cycle). ref
+// UNIQUE par période → une notif par renouvellement (pas de dédup entre cycles).
+export function subscriptionRenewedNotif({ periodEnd } = {}) {
+  let nextTxt = '', key = 'x';
+  if (periodEnd) {
+    const d = new Date(periodEnd);
+    if (!isNaN(d)) { nextTxt = ` Prochaine échéance le ${d.toLocaleDateString('fr-FR')}.`; key = d.toISOString().slice(0, 10); }
+  }
+  return {
+    kind: 'subscription', tone: 'pos',
+    title: 'Abonnement Pro renouvelé',
+    body: `Ton abonnement Pro a été renouvelé et ton accès continue sans interruption.${nextTxt}`,
+    ref: `sub:renewed:${key}`,
+  };
+}
+
 // Corrélation attractive (au passage du seuil, edge-trigger côté alerts/run).
 export function correlationNotif({ index, percentile, verdict }) {
   if (typeof percentile !== 'number') return null;
