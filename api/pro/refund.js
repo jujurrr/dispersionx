@@ -72,15 +72,26 @@ export default async (req) => {
     return Response.json({ error: 'hors_delai', days: GUARANTEE_DAYS }, { status: 403 });
   }
 
-  // Paiement à rembourser = dernière facture payée de l'abonnement.
-  let inv = null;
-  const latest = (sub.latest_invoice && typeof sub.latest_invoice === 'object') ? sub.latest_invoice.id : sub.latest_invoice;
-  if (latest) inv = await stripe(`/invoices/${latest}`);
-  if (!inv || inv.status !== 'paid') {
-    const list = await stripe(`/invoices?subscription=${encodeURIComponent(subId)}&status=paid&limit=1`);
-    inv = (list && Array.isArray(list.data)) ? list.data[0] : null;
+  // Paiement à rembourser — robuste aux versions d'API Stripe. « Basil » (2025-03-31+)
+  // a retiré invoice.payment_intent ET invoice.charge → on cible d'abord la dernière
+  // CHARGE payée non remboursée du client (API charges, stable), repli sur la facture.
+  const customer = (sub.customer && typeof sub.customer === 'object') ? sub.customer.id : sub.customer;
+  let ref = null;
+  if (customer) {
+    const ch = await stripe(`/charges?customer=${encodeURIComponent(customer)}&limit=10`);
+    const c = (ch && Array.isArray(ch.data) ? ch.data : []).find(x =>
+      x && x.paid && x.status === 'succeeded' && !x.refunded && (x.amount_refunded || 0) < x.amount && x.amount > 0);
+    if (c) ref = { charge: c.id };
   }
-  const ref = paymentRef(inv);
+  if (!ref) {   // repli : lien facture→paiement (anciennes versions d'API)
+    const latest = (sub.latest_invoice && typeof sub.latest_invoice === 'object') ? sub.latest_invoice.id : sub.latest_invoice;
+    let inv = latest ? await stripe(`/invoices/${latest}`) : null;
+    if (!inv || inv.status !== 'paid') {
+      const list = await stripe(`/invoices?subscription=${encodeURIComponent(subId)}&status=paid&limit=1`);
+      inv = (list && Array.isArray(list.data)) ? list.data[0] : null;
+    }
+    ref = paymentRef(inv);
+  }
   if (!ref) return Response.json({ error: 'paiement_introuvable' }, { status: 502 });
 
   // 1) Remboursement intégral.

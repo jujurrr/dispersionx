@@ -16,14 +16,21 @@
   var notifs = [];
   var maxId = 0;
   var seenId = null;               // dernier id vu (persisté), chargé paresseusement
-  var uid = 'anon';
+  var seenUid = null;              // compte pour lequel seenId a été chargé
   var timer = null;
   var started = false;
 
-  function seenKey() { return 'dx-notif-seen-' + uid; }
+  // uid = compte connecté, lu DIRECTEMENT à chaque appel (et non mémorisé au 1er
+  // render). Bug corrigé : le badge appelait unseen() avant que refresh() ne fixe
+  // l'uid → il chargeait « anon » puis markSeen persistait sous le vrai compte →
+  // le point rouge revenait au reload. On (re)charge donc dès que l'uid change.
+  function currentUid() { var C = window.DXCloud; return (C && C.user && C.user.id) || 'anon'; }
+  function seenKey(u) { return 'dx-notif-seen-' + u; }
   function loadSeen() {
-    if (seenId != null) return;
-    try { var raw = localStorage.getItem(seenKey()); seenId = raw != null ? (parseInt(raw, 10) || 0) : 0; }
+    var u = currentUid();
+    if (seenId != null && seenUid === u) return;
+    seenUid = u;
+    try { var raw = localStorage.getItem(seenKey(u)); seenId = raw != null ? (parseInt(raw, 10) || 0) : 0; }
     catch (e) { seenId = 0; }
   }
   function emit() { try { window.dispatchEvent(new CustomEvent('dx-notif-store')); } catch (e) {} }
@@ -34,7 +41,6 @@
   async function refresh() {
     var C = window.DXCloud;
     if (!(C && C.enabled)) { if (notifs.length) { notifs = []; emit(); } return; }
-    uid = (C.user && C.user.id) || 'anon';
     loadSeen();
     try {
       var list = await window.DXApi.getNotifications(50);
@@ -48,9 +54,12 @@
   }
 
   function markSeen() {
-    loadSeen();
-    seenId = maxId;
-    try { localStorage.setItem(seenKey(), String(maxId)); } catch (e) {}
+    var u = currentUid();
+    // maxId robuste : recalcule depuis les notifs courantes (au cas où refresh
+    // n'aurait pas encore tourné) et ne recule jamais.
+    var mx = notifs.reduce(function (m, n) { return Math.max(m, Number(n.id) || 0); }, maxId);
+    seenId = mx; seenUid = u; maxId = mx;
+    try { localStorage.setItem(seenKey(u), String(mx)); } catch (e) {}
     emit();
   }
 
@@ -59,7 +68,7 @@
     refresh();
     timer = setInterval(refresh, 20000);
     window.addEventListener('dx-activity-poke', refresh);
-    window.addEventListener('dx-auth-change', function () { seenId = null; uid = 'anon'; notifs = []; maxId = 0; refresh(); });
+    window.addEventListener('dx-auth-change', function () { seenId = null; seenUid = null; notifs = []; maxId = 0; refresh(); });
   }
 
   window.DXNotifStore = {
