@@ -27,6 +27,11 @@ import '../js/i18n.js';
 //     fail-safe USD si le taux /api/fx est indisponible. Affichage seulement.
 import '../js/lib/currency.js';
 
+// 1e) Rendu balisé des chaînes traduites (gras + liens en ligne) → window.DXRich.
+//     Utilisé par les pages légales/dialogues pour garder une clé i18n par
+//     paragraphe. Après React et i18n (il lit window.React au rendu).
+import '../js/lib/rich-text.js';
+
 // 2) Styles du design system.
 import '../project/styles.css';
 
