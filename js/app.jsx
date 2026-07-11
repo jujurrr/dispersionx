@@ -205,12 +205,17 @@ function App() {
       // 1) Confirmation SYNCHRONE via Stripe (indépendante du webhook) : accorde le
       //    Pro + dépose la notification « Pro activé ». C'est ce qui débloque le cas
       //    « paiement OK mais accès jamais accordé » quand le webhook n'est pas prêt.
+      let confirmErr = null;
       if (sessionId && window.DXCloud.confirmPro) {
         try {
-          if (await window.DXCloud.confirmPro(sessionId)) {
+          const cr = await window.DXCloud.confirmPro(sessionId);
+          if (cr && cr.pro) {
             try { window.dispatchEvent(new CustomEvent('dx-activity-poke')); } catch {}   // fait remonter la notif
+          } else if (cr && cr.error) {
+            confirmErr = cr.error;
+            try { console.warn('[pro] confirmation échouée :', cr.error); } catch {}
           }
-        } catch {}
+        } catch (e) { confirmErr = 'exception'; }
       }
       // 2) Rafraîchit l'accès (confirmation OU webhook a écrit pro_access), avec un
       //    petit poll de secours le temps que l'écriture soit visible.
@@ -221,7 +226,13 @@ function App() {
         try { ok = await window.DXCloud.refreshPro(); } catch {}
         if (ok) { done = true; addToast && addToast('Accès Pro activé ✦', 'ok'); onNav('opportunities'); return; }
         if (n < 6) setTimeout(tick, 2500);
-        else if (!done) addToast && addToast('Paiement reçu — votre accès Pro s\'activera dans un instant.', 'info');
+        else if (!done) {
+          // Échec réel : on montre le motif (diagnostic) plutôt qu'un message vague.
+          const msg = confirmErr
+            ? ('Paiement reçu, mais l\'activation a échoué (' + confirmErr + '). Réessayez ou contactez le support.')
+            : 'Paiement reçu — votre accès Pro s\'activera dans un instant.';
+          addToast && addToast(msg, confirmErr ? 'error' : 'info');
+        }
       };
       tick();
     })();

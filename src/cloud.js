@@ -87,15 +87,19 @@ const proApi = {
   // (+ notification). Filet de sécurité si le webhook n'est pas configuré. Le
   // serveur accorde au user_id enregistré dans la session, pas à un id client.
   async confirmCheckout(sessionId) {
-    if (!sessionId) return false;
+    if (!sessionId) return { pro: false, error: 'session_manquante' };
     try {
       const r = await fetch('/api/pro/confirm', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ session_id: sessionId }),
       });
       const j = await r.json().catch(() => ({}));
-      return !!(r.ok && j.pro);
-    } catch { return false; }
+      const pro = !!(r.ok && j.pro);
+      // On remonte le motif d'échec (diagnostic : periode_indisponible, grant_failed,
+      // not_configured…) pour pouvoir l'afficher plutôt que d'échouer en silence.
+      if (!pro && !j.error) j.error = 'http_' + r.status;
+      return { pro, error: pro ? null : j.error };
+    } catch (e) { return { pro: false, error: 'reseau' }; }
   },
   // Portail de facturation Stripe (résilier, carte, factures). L'endpoint valide
   // le JWT Supabase → on lui transmet le token de session, pas le user_id.

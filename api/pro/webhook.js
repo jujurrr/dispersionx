@@ -49,6 +49,17 @@ async function stripeGet(path) {
 }
 const iso = sec => sec ? new Date(sec * 1000).toISOString() : null;
 
+// Fin de période (epoch s). Stripe (API « Basil » 2025-03-31+) a RETIRÉ
+// current_period_end de l'objet Subscription et l'a déplacé sur ses items. On lit
+// les deux emplacements pour rester compatible quelle que soit la version d'API.
+function periodEndOf(sub) {
+  if (!sub) return null;
+  if (sub.current_period_end) return sub.current_period_end;              // API < Basil
+  const items = Array.isArray(sub.items?.data) ? sub.items.data : [];     // API ≥ Basil
+  for (const it of items) { if (it && it.current_period_end) return it.current_period_end; }
+  return null;
+}
+
 export default async (req) => {
   if (req.method !== 'POST') return new Response('method', { status: 405 });
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -70,14 +81,15 @@ export default async (req) => {
         const sub = await stripeGet(`/subscriptions/${subId}`);
         // La fin de période est INDISPENSABLE (sinon accès « à vie » côté client) :
         // si on ne l'obtient pas, on renvoie 5xx → Stripe réessaie le webhook.
-        if (!sub || !sub.current_period_end) throw new Error('subscription_period_unavailable');
+        const cpeSec = periodEndOf(sub);
+        if (!sub || !cpeSec) throw new Error('subscription_period_unavailable');
         await sbUpsert({
           user_id: userId,
           since: new Date().toISOString(),
           stripe_customer_id: obj.customer || null,
           stripe_subscription_id: subId,
           status: sub.status || 'active',
-          current_period_end: iso(sub.current_period_end),
+          current_period_end: iso(cpeSec),
         });
       }
     } else if (event.type === 'customer.subscription.updated' || event.type === 'customer.subscription.deleted') {
@@ -88,7 +100,7 @@ export default async (req) => {
       const status = event.type === 'customer.subscription.deleted'
         ? 'canceled'
         : (obj.cancel_at_period_end ? 'canceling' : obj.status);
-      const cpe = iso(obj.current_period_end);
+      const cpe = iso(periodEndOf(obj));
       const userId = obj.metadata?.user_id;
       if (userId) {
         await sbUpsert({ user_id: userId, status, current_period_end: cpe, stripe_subscription_id: obj.id, stripe_customer_id: obj.customer || null });

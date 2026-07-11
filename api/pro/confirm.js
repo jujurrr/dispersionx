@@ -20,6 +20,18 @@ const SB_KEY  = process.env.SUPABASE_SERVICE_KEY || '';
 const STRIPE  = 'https://api.stripe.com/v1';
 const iso = sec => (sec ? new Date(sec * 1000).toISOString() : null);
 
+// Fin de période (epoch s). Stripe (API « Basil » 2025-03-31+) a RETIRÉ
+// current_period_end de l'objet Subscription et l'a déplacé sur ses items. On lit
+// les deux emplacements pour rester compatible quelle que soit la version d'API du
+// compte (sinon l'octroi échoue silencieusement : paiement OK mais pas d'accès).
+function periodEndOf(sub) {
+  if (!sub) return null;
+  if (sub.current_period_end) return sub.current_period_end;              // API < Basil
+  const items = Array.isArray(sub.items?.data) ? sub.items.data : [];     // API ≥ Basil
+  for (const it of items) { if (it && it.current_period_end) return it.current_period_end; }
+  return null;
+}
+
 async function stripeGet(path) {
   const r = await fetch(`${STRIPE}${path}`, {
     headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` },
@@ -54,10 +66,11 @@ export default async (req) => {
 
   // 3) Fin de période INDISPENSABLE (sinon l'accès serait « à vie » côté client).
   const sub = await stripeGet(`/subscriptions/${subId}`);
-  if (!sub || !sub.current_period_end) return Response.json({ error: 'periode_indisponible', pro: false }, { status: 502 });
+  const cpeSec = periodEndOf(sub);
+  if (!sub || !cpeSec) return Response.json({ error: 'periode_indisponible', pro: false }, { status: 502 });
 
   const sbHeaders = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' };
-  const periodEnd = iso(sub.current_period_end);
+  const periodEnd = iso(cpeSec);
 
   // 4) Accord Pro — MÊME écriture que le webhook (idempotent : merge-duplicates).
   const up = await fetch(`${SB_BASE}/rest/v1/pro_access`, {
