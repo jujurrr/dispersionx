@@ -40,7 +40,7 @@ function PrefSection({ title, desc, children, right }) {
 // Chargé paresseusement à l'affichage via window.DXCloud.proHistory(). DA du site,
 // présentation « à la Claude » (liste datée). Non-cassant : hors-ligne / non
 // configuré → message discret, jamais d'erreur bloquante.
-function SubscriptionHistory({ DS, t }) {
+function SubscriptionHistory({ DS, t, PrefSection }) {
   const { Badge } = DS;
   const C = window.DXCloud;
   const [st, setSt] = React.useState({ loading: true });
@@ -69,54 +69,72 @@ function SubscriptionHistory({ DS, t }) {
     void:          { key: 'Annulée',    tone: 'neutral' },
     uncollectible: { key: 'Échouée',    tone: 'neg' },
   };
+  // Statut du COMPTE (persiste même sans accès Pro) : actif → résilié → remboursé…
+  const ACCT = {
+    active:    { key: 'Actif',              tone: 'pos' },
+    trialing:  { key: 'Essai',              tone: 'pos' },
+    canceling: { key: 'Se termine bientôt', tone: 'warn' },
+    canceled:  { key: 'Résilié',            tone: 'neutral' },
+    refunded:  { key: 'Remboursé',          tone: 'info' },
+  };
 
-  if (st.loading) return <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>{t('Chargement de l’historique…')}</div>;
+  if (st.loading) return null;                          // pas de flash pendant le chargement
   const d = st.data || {};
-  if (st.error || d.error) return <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>{t('Historique indisponible pour le moment.')}</div>;
-
+  if (st.error || d.error) return null;
   const entries = Array.isArray(d.entries) ? d.entries : [];
+  // Section masquée seulement si l'utilisateur n'a JAMAIS eu d'abonnement.
+  const hasHistory = !!(d.since || entries.length || d.subscribed || d.status);
+  if (!hasHistory) return null;
+
+  const acct = ACCT[d.status] || { key: 'Inactif', tone: 'neutral' };
   const sinceTxt = d.since ? fmtD(d.since) : null;
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {sinceTxt && (
-        <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
-          {t('Membre Pro depuis le {date}', { date: sinceTxt })}
-        </div>
-      )}
-      {entries.length === 0 ? (
-        <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
-          {d.subscribed
-            ? t('Aucune facture pour l’instant — elle apparaîtra après le premier prélèvement.')
-            : t('Accès Pro accordé manuellement — aucun historique de facturation Stripe.')}
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          {entries.map((e, i) => {
-            const s = STAT[e.status] || { key: e.status || '—', tone: 'neutral' };
-            return (
-              <div key={e.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 0', borderTop: i > 0 ? '1px solid var(--border-subtle)' : 'none' }}>
-                <div style={{ flex: 1, minWidth: 140 }}>
-                  <div style={{ font: '600 13px/1.3 var(--font-mono)', color: 'var(--text)' }}>{fmtD(e.date)}</div>
-                  {e.periodStart && e.periodEnd && (
-                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 3 }}>
-                      {t('Période du {start} au {end}', { start: fmtD(e.periodStart, { day: 'numeric', month: 'short' }), end: fmtD(e.periodEnd) })}
-                    </div>
+    <PrefSection
+      title={t('Historique d’abonnement')}
+      desc={t('Vos paiements et périodes de facturation, synchronisés avec Stripe.')}
+      right={<Badge tone={acct.tone} size="sm">{t(acct.key)}</Badge>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {sinceTxt && (
+          <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+            {t('Membre Pro depuis le {date}', { date: sinceTxt })}
+          </div>
+        )}
+        {entries.length === 0 ? (
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
+            {d.subscribed
+              ? t('Aucune facture pour l’instant — elle apparaîtra après le premier prélèvement.')
+              : t('Accès Pro accordé manuellement — aucun historique de facturation Stripe.')}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {entries.map((e, i) => {
+              const s = STAT[e.status] || { key: e.status || '—', tone: 'neutral' };
+              return (
+                <div key={e.id || i} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 0', borderTop: i > 0 ? '1px solid var(--border-subtle)' : 'none' }}>
+                  <div style={{ flex: 1, minWidth: 140 }}>
+                    <div style={{ font: '600 13px/1.3 var(--font-mono)', color: 'var(--text)' }}>{fmtD(e.date)}</div>
+                    {e.periodStart && e.periodEnd && (
+                      <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 3 }}>
+                        {t('Période du {start} au {end}', { start: fmtD(e.periodStart, { day: 'numeric', month: 'short' }), end: fmtD(e.periodEnd) })}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ font: '600 13px/1 var(--font-mono)', color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmtMoney(e.amount, e.currency)}</div>
+                  <Badge tone={s.tone} size="sm">{t(s.key)}</Badge>
+                  {e.url && (
+                    <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ font: '600 11px/1 var(--font-sans)', color: 'var(--accent-hover)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                      {t('Facture')} →
+                    </a>
                   )}
                 </div>
-                <div style={{ font: '600 13px/1 var(--font-mono)', color: 'var(--text)', whiteSpace: 'nowrap' }}>{fmtMoney(e.amount, e.currency)}</div>
-                <Badge tone={s.tone} size="sm">{t(s.key)}</Badge>
-                {e.url && (
-                  <a href={e.url} target="_blank" rel="noopener noreferrer" style={{ font: '600 11px/1 var(--font-sans)', color: 'var(--accent-hover)', textDecoration: 'none', whiteSpace: 'nowrap' }}>
-                    {t('Facture')} →
-                  </a>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </PrefSection>
   );
 }
 
@@ -385,15 +403,8 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
         )}
       </PrefSection>
 
-      {/* ── Historique d'abonnement ── */}
-      {isPro && (
-        <PrefSection
-          title={t('Historique d’abonnement')}
-          desc={t('Vos paiements et périodes de facturation, synchronisés avec Stripe.')}
-        >
-          <SubscriptionHistory DS={DS} t={t} />
-        </PrefSection>
-      )}
+      {/* ── Historique d'abonnement (reste visible après résiliation/remboursement) ── */}
+      {configured && <SubscriptionHistory DS={DS} t={t} PrefSection={PrefSection} />}
 
       {/* ── Langue ── */}
       <PrefSection title={t('Langue')} desc={t("Langue de l'interface.")}>

@@ -658,6 +658,12 @@
       'Annulée': 'Voided',
       'Échouée': 'Failed',
       'Facture': 'Invoice',
+      // Statuts de compte (historique)
+      'Actif': 'Active',
+      'Essai': 'Trial',
+      'Résilié': 'Canceled',
+      'Remboursé': 'Refunded',
+      'Inactif': 'Inactive',
       // ── Remboursement 14 jours (garantie) ──
       'Résilier & être remboursé (14 j)': 'Cancel & get refunded (14 days)',
       'Traitement…': 'Processing…',
@@ -1362,6 +1368,12 @@
       'Annulée': '已作废',
       'Échouée': '失败',
       'Facture': '发票',
+      // 账户状态（历史）
+      'Actif': '有效',
+      'Essai': '试用',
+      'Résilié': '已取消',
+      'Remboursé': '已退款',
+      'Inactif': '未激活',
       // ── 14 天退款保证 ──
       'Résilier & être remboursé (14 j)': '取消并获得退款（14 天）',
       'Traitement…': '处理中…',

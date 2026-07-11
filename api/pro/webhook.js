@@ -39,13 +39,6 @@ async function sbUpsert(row) {
     body: JSON.stringify(row), signal: AbortSignal.timeout(5000),
   });
 }
-async function sbPatchBySub(subId, patch) {
-  return fetch(`${SB_BASE}/rest/v1/pro_access?stripe_subscription_id=eq.${encodeURIComponent(subId)}`, {
-    method: 'PATCH',
-    headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-    body: JSON.stringify(patch), signal: AbortSignal.timeout(5000),
-  });
-}
 async function stripeGet(path) {
   const r = await fetch(`${STRIPE}${path}`, { headers: { Authorization: `Bearer ${process.env.STRIPE_SECRET_KEY}` }, signal: AbortSignal.timeout(8000) });
   return r.ok ? r.json() : null;
@@ -120,10 +113,17 @@ export default async (req) => {
         : (obj.cancel_at_period_end ? 'canceling' : obj.status);
       const cpe = iso(periodEndOf(obj));
       const userId = obj.metadata?.user_id;
-      if (userId) {
-        await sbUpsert({ user_id: userId, status, current_period_end: cpe, stripe_subscription_id: obj.id, stripe_customer_id: obj.customer || null });
-      } else if (obj.id) {
-        await sbPatchBySub(obj.id, { status, current_period_end: cpe });
+      // PATCH conditionnel : ne JAMAIS écraser un statut terminal 'refunded'
+      // (remboursement garantie 14 j) par 'canceled'. La ligne existe déjà (créée
+      // à l'abonnement) → un PATCH suffit (pas d'upsert).
+      const filter = userId ? `user_id=eq.${userId}` : (obj.id ? `stripe_subscription_id=eq.${encodeURIComponent(obj.id)}` : null);
+      if (filter) {
+        await fetch(`${SB_BASE}/rest/v1/pro_access?${filter}&status=neq.refunded`, {
+          method: 'PATCH',
+          headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({ status, current_period_end: cpe, stripe_subscription_id: obj.id, stripe_customer_id: obj.customer || null }),
+          signal: AbortSignal.timeout(5000),
+        });
       }
     }
   } catch {

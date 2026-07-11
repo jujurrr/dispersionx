@@ -92,12 +92,13 @@ export default async (req) => {
   // 2) Annulation immédiate de l'abonnement (best-effort : le remboursement prime).
   try { await stripe(`/subscriptions/${subId}`, 'DELETE'); } catch {}
 
-  // 3) Coupe l'accès Pro tout de suite (le webhook confirmera aussi).
+  // 3) Coupe l'accès Pro tout de suite avec le statut TERMINAL 'refunded' (distinct
+  //    de 'canceled' → visible dans l'historique). Le webhook ne l'écrasera pas.
   try {
     await fetch(`${SB_BASE}/rest/v1/pro_access?user_id=eq.${userId}`, {
       method: 'PATCH',
       headers: { ...sbHeaders, Prefer: 'return=minimal' },
-      body: JSON.stringify({ status: 'canceled', current_period_end: new Date().toISOString() }),
+      body: JSON.stringify({ status: 'refunded', current_period_end: new Date().toISOString() }),
       signal: AbortSignal.timeout(6000),
     });
   } catch {}
