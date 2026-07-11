@@ -98,9 +98,13 @@ function NotificationsPage({ onNav, lists }) {
           const col = A.toneColor(n.tone);
           const meta = dxNotifMeta(n.kind, n.ref);
           const target = A.notifTarget(n);
+          // Clic sur la notif → on va au bon endroit (si cible) ET on la retire du
+          // fil (elle ne réapparaît plus, y compris après refresh). Le ✕ retire
+          // sans naviguer.
+          const dismiss = () => { if (store) store.dismiss(n.id); };
           return (
-            <div key={n.id} onClick={target ? () => A.go(target) : undefined}
-              style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone), cursor: target ? 'pointer' : 'default' }}>
+            <div key={n.id} onClick={() => { if (target) A.go(target); dismiss(); }}
+              style={{ display: 'flex', gap: 12, padding: '14px 20px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone), cursor: 'pointer' }}>
               <span style={{ width: 10, height: 10, borderRadius: '50%', background: col, flexShrink: 0, marginTop: 5, boxShadow: `0 0 0 3px ${A.toneSoft(n.tone)}` }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
@@ -113,6 +117,8 @@ function NotificationsPage({ onNav, lists }) {
                   {target && <span style={{ font: '600 11px/1 var(--font-sans)', color: 'var(--accent-hover)' }}>{meta.cta} →</span>}
                 </div>
               </div>
+              <button onClick={(e) => { e.stopPropagation(); dismiss(); }} aria-label="Retirer la notification" title="Retirer"
+                style={{ flexShrink: 0, alignSelf: 'flex-start', width: 24, height: 24, borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', font: '700 12px/1 var(--font-mono)' }}>✕</button>
             </div>
           );
         })}

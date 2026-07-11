@@ -304,16 +304,20 @@ function ActivityFeed() {
               const n = item.n;
               const col = A.toneColor(n.tone);
               const target = dxNotifTarget(n);
-              const go = target ? () => { dxGo(target); setOpen(false); } : undefined;
+              // Clic → navigation (si cible) + retrait définitif de la notif + ferme.
+              const dismiss = () => { if (window.DXNotifStore) window.DXNotifStore.dismiss(n.id); };
+              const go = () => { if (target) dxGo(target); dismiss(); setOpen(false); };
               return (
-                <div key={item.key} onClick={go} title={target ? 'Ouvrir' : undefined}
-                  style={{ display: 'flex', gap: 9, padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone), cursor: target ? 'pointer' : 'default' }}>
+                <div key={item.key} onClick={go} title={target ? 'Ouvrir' : 'Retirer'}
+                  style={{ display: 'flex', gap: 9, padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', borderLeft: `3px solid ${col}`, background: A.toneSoft(n.tone), cursor: 'pointer' }}>
                   <span style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0, marginTop: 4, boxShadow: `0 0 0 2px ${A.toneSoft(n.tone)}` }} />
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ font: '600 11px/1.35 var(--font-sans)', color: 'var(--text)' }}>{n.title}{!n.body && target && <DxArrow />}</div>
                     {n.body && <div style={{ font: '10px/1.4 var(--font-sans)', color: 'var(--text-soft)', marginTop: 2 }}>{n.body}{target && <DxArrow />}</div>}
                     <div style={{ font: '9px/1.2 var(--font-sans)', color: 'var(--text-dim)', marginTop: 3 }}>{A.timeAgo(n.created_at)}</div>
                   </div>
+                  <button onClick={(e) => { e.stopPropagation(); dismiss(); }} aria-label="Retirer" title="Retirer"
+                    style={{ flexShrink: 0, alignSelf: 'flex-start', width: 18, height: 18, borderRadius: 4, border: 'none', background: 'transparent', color: 'var(--text-dim)', cursor: 'pointer', font: '700 11px/1 var(--font-mono)' }}>✕</button>
                 </div>
               );
             }

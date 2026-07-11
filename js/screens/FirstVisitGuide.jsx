@@ -12,15 +12,19 @@
    L'appelant fournit des chaînes déjà traduites (t()). */
 function FirstVisitGuide({ id, title, intro, steps = [], cta }) {
   const t = window.t || ((s) => s);
-  const KEY = 'dx-guide-' + id;
+  // Clé PROPRE AU COMPTE : la pancarte doit s'afficher une fois par compte (et non
+  // une fois par appareil, tous comptes confondus). L'uid vient du compte connecté ;
+  // sans compte (cas impossible sur un module Pro), on ne persiste pas globalement.
+  const uid = (window.DXCloud && window.DXCloud.user && window.DXCloud.user.id) || null;
+  const KEY = uid ? ('dx-guide-' + id + '-' + uid) : null;
   const [open, setOpen] = React.useState(() => {
-    if (!id) return false;
+    if (!id || !KEY) return false;
     try { return !localStorage.getItem(KEY); } catch { return false; }   // localStorage absent → on n'insiste pas
   });
   if (!open) return null;
 
   const close = () => {
-    try { localStorage.setItem(KEY, '1'); } catch {}
+    try { if (KEY) localStorage.setItem(KEY, '1'); } catch {}
     setOpen(false);
   };
 
