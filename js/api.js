@@ -469,6 +469,26 @@
   function _savePositions(arr) { try { localStorage.setItem(LS_POS, JSON.stringify(arr)); } catch {} }
   function _isLocalPos(cid) { return String(cid).indexOf('loc-') === 0; }
 
+  // Range une position dans un groupe (rangement du hub « Suivi »), en miroir de
+  // setListGroup. Positions LOCALES (id « loc-… ») → group_name sur l'objet stocké
+  // (dx-positions). Positions CLOUD → colonne positions.group_name (Supabase §16b) :
+  // l'erreur REMONTE si la colonne est absente, pour que l'UI invite à la migration.
+  async function setPositionGroup(id, group) {
+    const g = (group || '').trim() || null;
+    if (_isLocalPos(id)) {
+      const arr = _loadPositions(); const p = arr.find(x => x.id === id);
+      if (p) { p.group_name = g; _savePositions(arr); }
+      return { success: true, group_name: g, local: true };
+    }
+    const c = _cloud();
+    if (c && c.positions && c.positions.setGroup) {
+      const r = await c.positions.setGroup(id, g); _poke(); return r;
+    }
+    // Repli backend REST (best-effort) — le groupe reste sinon en mémoire d'affichage.
+    try { return await _post('/monitor/position/' + id + '/group', { group_name: g }); }
+    catch { return { success: true, group_name: g }; }
+  }
+
   // Ligne de liste (MonitorList) dérivée d'un objet position BRUT — même forme
   // que la position vienne du store local (dx-positions) ou du cloud (Supabase).
   function _positionRow(p) {
@@ -480,7 +500,7 @@
     return {
       id: p.id, list_id: p.list_id, name: p.name || m.name,
       index_symbol: (s.indexEtf && s.indexEtf !== s.index) ? s.indexEtf + ' (' + s.index + ')' : (s.index || 'SPX'),
-      strategy_type: 'dispersion', status: p.status,
+      strategy_type: 'dispersion', status: p.status, group_name: p.group_name || null,
       committed_at: p.committed_at, n_snapshots: (p.snapshots || []).length,
       // `pnl` reste null (pas de reprise live par carte) ; `last_pnl` = dernier P&L
       // mark-to-market déjà persisté (snapshots), pour afficher $ + % sans réseau.
@@ -695,6 +715,7 @@
     getRisk,
     getChecklist, commitPosition,
     getPositions, getPosition, snapshotPosition, closePosition, deletePosition, reprice, renamePosition,
+    setPositionGroup,
   };
 
   // Auto-health-check on load, then every 15s

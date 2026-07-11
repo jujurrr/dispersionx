@@ -679,6 +679,22 @@ alter table public.lists add column if not exists group_name text;
 Rien d'autre : la RLS existante de `lists` couvre déjà cette colonne, et le tri
 chronologique s'appuie sur `created_at` (déjà présent).
 
+### 16b. Groupes de positions (optionnel)
+
+Même principe pour organiser les **positions suivies** en groupes (vue « Groupes »
+de l'onglet Pro **Suivi**). Une seule colonne — **non-cassant** : sans elle, l'app
+fonctionne comme avant, les positions locales (hors-ligne) rangent quand même leur
+groupe en local, et l'affectation d'une position **cloud** échoue avec un message
+invitant à appliquer cette migration.
+
+```sql
+-- Un groupe = une simple étiquette texte sur la position (pas de table dédiée).
+alter table public.positions add column if not exists group_name text;
+```
+
+La RLS existante de `positions` couvre déjà cette colonne ; le tri chronologique
+s'appuie sur `committed_at` (déjà présent).
+
 ## 17. Notifications « intelligentes » (fil Activité)
 
 Notifications personnelles affichées, colorées, dans le fil **Activité** : dérive

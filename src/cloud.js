@@ -390,7 +390,7 @@ const strategies = {
 
 // ── Positions committées (façonnées comme le store local dx-positions) ───────
 function shapePosition(r) {
-  return { id: r.id, list_id: r.list_id, name: r.name, strategy: r.strategy, status: r.status, committed_at: r.committed_at, snapshots: r.snapshots || [] };
+  return { id: r.id, list_id: r.list_id, name: r.name, strategy: r.strategy, status: r.status, committed_at: r.committed_at, snapshots: r.snapshots || [], group_name: r.group_name || null };
 }
 const positions = {
   async list(listId) {
@@ -430,6 +430,15 @@ const positions = {
     const { error } = await supa.from('positions').update({ name: name || null }).eq('id', id);
     if (error) throw error;
     return { success: true };
+  },
+  // Range une position dans un groupe (étiquette texte) ou l'en retire (null).
+  // Colonne positions.group_name (voir SUPABASE_SETUP.md §16b). L'erreur remonte
+  // si la colonne est absente → l'UI invite à appliquer la migration.
+  async setGroup(id, group_name) {
+    const g = (group_name && String(group_name).trim()) || null;
+    const { error } = await supa.from('positions').update({ group_name: g }).eq('id', id);
+    if (error) throw error;
+    return { success: true, group_name: g };
   },
   async remove(id) {
     const { error } = await supa.from('positions').delete().eq('id', id);
