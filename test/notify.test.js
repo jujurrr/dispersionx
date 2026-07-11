@@ -1,7 +1,7 @@
 // Décisions de notifications « intelligentes » — fonctions pures.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { grossPremium, deltaDriftNotif, pnlNotif, subscriptionNotif, correlationNotif } from '../api/_lib/notify.js';
+import { grossPremium, deltaDriftNotif, pnlNotif, subscriptionNotif, subscriptionActivatedNotif, correlationNotif } from '../api/_lib/notify.js';
 
 const strat = { portfolio: { idxPrem: 10000 }, components: [{ premium: 4000 }, { premium: 6000 }] };
 const pos = { id: 'p1', name: 'Tech NDX', strategy: strat };   // prime brute = 20000
@@ -45,6 +45,18 @@ test('subscriptionNotif : paliers 7/3/1 j, ton par urgence', () => {
   assert.equal(subscriptionNotif(mk(1)).tone, 'neg');
   assert.equal(subscriptionNotif(mk(-2)), null, 'déjà expiré → rien');
   assert.match(subscriptionNotif(mk(3, 'canceled')).body, /Réactive/);
+});
+
+test('subscriptionActivatedNotif : Pro activé, ref stable, date de renouvellement', () => {
+  const n = subscriptionActivatedNotif({ periodEnd: '2026-08-11T00:00:00Z' });
+  assert.ok(n && n.kind === 'subscription' && n.tone === 'pos' && n.ref === 'sub:activated');
+  assert.match(n.title, /Pro/);
+  assert.match(n.body, /activé/);
+  assert.match(n.body, /renouvellement/);
+  // Sans date valide : corps sans mention de renouvellement, ref inchangée (dédup).
+  const n2 = subscriptionActivatedNotif({});
+  assert.doesNotMatch(n2.body, /renouvellement/);
+  assert.equal(n2.ref, 'sub:activated');
 });
 
 test('correlationNotif : structure + ref par indice', () => {

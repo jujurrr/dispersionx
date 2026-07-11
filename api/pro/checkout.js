@@ -29,7 +29,9 @@ export default async (req) => {
   form.set('mode', 'subscription');
   form.set('line_items[0][price]', price);
   form.set('line_items[0][quantity]', '1');
-  form.set('success_url', `${origin}/?pro=success`);
+  // session_id renvoyé → confirmation SYNCHRONE côté client (/api/pro/confirm),
+  // indépendante du webhook. Stripe remplace le gabarit {CHECKOUT_SESSION_ID}.
+  form.set('success_url', `${origin}/?pro=success&session_id={CHECKOUT_SESSION_ID}`);
   form.set('cancel_url', `${origin}/?pro=cancel`);
   form.set('client_reference_id', userId);
   form.set('metadata[user_id]', userId);

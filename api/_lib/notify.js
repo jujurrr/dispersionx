@@ -75,6 +75,24 @@ export function subscriptionNotif(row, now = Date.now(), { paliers = [7, 3, 1] }
   };
 }
 
+// Activation de l'abonnement Pro (paiement confirmé). Déposée par /api/pro/confirm
+// au retour du Checkout → l'utilisateur voit dans son fil que le paiement a bien
+// été pris en compte, en plus du toast éphémère. ref stable → une seule par
+// activation (dédup par fenêtre côté insertNotif).
+export function subscriptionActivatedNotif({ periodEnd } = {}) {
+  let renewTxt = '';
+  if (periodEnd) {
+    const d = new Date(periodEnd);
+    if (!isNaN(d)) renewTxt = ` Prochain renouvellement le ${d.toLocaleDateString('fr-FR')}.`;
+  }
+  return {
+    kind: 'subscription', tone: 'pos',
+    title: 'Bienvenue dans DispersionX Pro ✦',
+    body: `Ton paiement a bien été reçu et ton accès Pro est activé.${renewTxt} Merci de ta confiance !`,
+    ref: 'sub:activated',
+  };
+}
+
 // Corrélation attractive (au passage du seuil, edge-trigger côté alerts/run).
 export function correlationNotif({ index, percentile, verdict }) {
   if (typeof percentile !== 'number') return null;

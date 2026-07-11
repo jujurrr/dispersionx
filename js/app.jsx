@@ -190,7 +190,8 @@ function App() {
     let sp; try { sp = new URLSearchParams(window.location.search); } catch { return; }
     const p = sp.get('pro');
     if (!p) return;
-    const clean = () => { try { sp.delete('pro'); const q = sp.toString(); history.replaceState(null, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash); } catch {} };
+    const sessionId = sp.get('session_id');   // lu AVANT le nettoyage d'URL
+    const clean = () => { try { sp.delete('pro'); sp.delete('session_id'); const q = sp.toString(); history.replaceState(null, '', window.location.pathname + (q ? '?' + q : '') + window.location.hash); } catch {} };
     clean();
     if (p === 'cancel') { addToast && addToast('Paiement annulé — vous pouvez réessayer à tout moment.', 'info'); return; }
     if (p === 'managed') {   // retour du portail de facturation : l'accès a pu changer
@@ -200,16 +201,30 @@ function App() {
     }
     if (p !== 'success' || !(window.DXCloud && window.DXCloud.refreshPro)) return;
     addToast && addToast('Merci ! Activation de votre accès Pro…', 'ok');
-    let n = 0, done = false;
-    const tick = async () => {
-      n++;
-      let ok = false;
-      try { ok = await window.DXCloud.refreshPro(); } catch {}
-      if (ok) { done = true; addToast && addToast('Accès Pro activé ✦', 'ok'); onNav('opportunities'); return; }
-      if (n < 6) setTimeout(tick, 2500);
-      else if (!done) addToast && addToast('Paiement reçu — votre accès Pro s\'activera dans un instant.', 'info');
-    };
-    setTimeout(tick, 1500);
+    (async () => {
+      // 1) Confirmation SYNCHRONE via Stripe (indépendante du webhook) : accorde le
+      //    Pro + dépose la notification « Pro activé ». C'est ce qui débloque le cas
+      //    « paiement OK mais accès jamais accordé » quand le webhook n'est pas prêt.
+      if (sessionId && window.DXCloud.confirmPro) {
+        try {
+          if (await window.DXCloud.confirmPro(sessionId)) {
+            try { window.dispatchEvent(new CustomEvent('dx-activity-poke')); } catch {}   // fait remonter la notif
+          }
+        } catch {}
+      }
+      // 2) Rafraîchit l'accès (confirmation OU webhook a écrit pro_access), avec un
+      //    petit poll de secours le temps que l'écriture soit visible.
+      let n = 0, done = false;
+      const tick = async () => {
+        n++;
+        let ok = false;
+        try { ok = await window.DXCloud.refreshPro(); } catch {}
+        if (ok) { done = true; addToast && addToast('Accès Pro activé ✦', 'ok'); onNav('opportunities'); return; }
+        if (n < 6) setTimeout(tick, 2500);
+        else if (!done) addToast && addToast('Paiement reçu — votre accès Pro s\'activera dans un instant.', 'info');
+      };
+      tick();
+    })();
   }, []);
 
   // Rafraîchissement des prix toutes les 15 s (tick global) — uniquement quand

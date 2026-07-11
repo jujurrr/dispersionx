@@ -82,6 +82,21 @@ const proApi = {
     window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: proAccess }));
     return proAccess;
   },
+  // Confirmation SYNCHRONE du paiement au retour du Checkout, INDÉPENDANTE du
+  // webhook : le serveur revérifie la session auprès de Stripe et accorde le Pro
+  // (+ notification). Filet de sécurité si le webhook n'est pas configuré. Le
+  // serveur accorde au user_id enregistré dans la session, pas à un id client.
+  async confirmCheckout(sessionId) {
+    if (!sessionId) return false;
+    try {
+      const r = await fetch('/api/pro/confirm', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      const j = await r.json().catch(() => ({}));
+      return !!(r.ok && j.pro);
+    } catch { return false; }
+  },
   // Portail de facturation Stripe (résilier, carte, factures). L'endpoint valide
   // le JWT Supabase → on lui transmet le token de session, pas le user_id.
   async openPortal() {
@@ -676,6 +691,7 @@ window.DXCloud = {
   isPro: () => checkPro(),
   startProCheckout: (cycle) => proApi.startCheckout(cycle),
   refreshPro: () => proApi.refresh(),
+  confirmPro: (sessionId) => proApi.confirmCheckout(sessionId),
   openProPortal: () => proApi.openPortal(),
   exportAccount: () => exportAccount(),
   lists: supa ? lists : null,
