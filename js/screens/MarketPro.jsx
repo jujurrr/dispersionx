@@ -6,6 +6,7 @@
 function MarketPro({ onNav, addToast, pro, lists }) {
   const DS = window.DispersionXDesignSystem_cb86be;
   const { Badge } = DS;
+  const t = window.t || ((s) => s);   // pancarte d'accueil traduite (le reste du module reste en FR)
   const INDICES = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
   const [index, setIndex] = React.useState('SPX');
 
@@ -31,6 +32,19 @@ function MarketPro({ onNav, addToast, pro, lists }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {window.DXGuide && (
+        <window.DXGuide
+          id="market-pro"
+          title={t('Le Marché Pro')}
+          intro={t('Le contexte de marché de la dispersion : quand la corrélation est chère, quels catalyseurs arrivent, et des alertes pour ne pas rater le bon moment.')}
+          steps={[
+            [t('Le baromètre de corrélation'), t('Vois si la corrélation implicite d’un indice est chère ou bon marché — le meilleur moment pour vendre de la dispersion.')],
+            [t('Choisis ton indice'), t('SPX, NDX, DJI, CAC ou DAX : tout le contexte s’adapte à l’indice sélectionné.')],
+            [t('Le calendrier des résultats'), t('Repère les publications de résultats à venir sur les composants — des catalyseurs de volatilité à surveiller.')],
+            [t('Pose des alertes'), t('Sois prévenu quand la corrélation franchit un seuil, pour agir au bon moment.')],
+          ]}
+        />
+      )}
       {/* En-tête */}
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>

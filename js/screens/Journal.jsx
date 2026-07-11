@@ -12,6 +12,7 @@ const fmtD = d => d ? new Date(d).toLocaleDateString('fr-FR', { day: 'numeric', 
 function Journal({ onNav, addToast, pro, lists, prefill }) {
   const DS = window.DispersionXDesignSystem_cb86be;
   const { Button, Badge } = DS;
+  const t = window.t || ((s) => s);   // pancarte d'accueil traduite (le reste du module reste en FR)
   const C = window.DXCloud;
   const canCloud = !!(C && C.enabled && C.trades);
 
@@ -103,6 +104,19 @@ function Journal({ onNav, addToast, pro, lists, prefill }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+      {window.DXGuide && (
+        <window.DXGuide
+          id="journal"
+          title={t('Ton Journal de trades')}
+          intro={t('Enregistre tes dispersions et bâtis ton track record dans le temps : réalisé vs attendu, taux de réussite, P&L cumulé.')}
+          steps={[
+            [t('Enregistre un trade'), t('« + Nouveau trade » : indice, composants, prime d’entrée et horizon — ou pré-rempli depuis une opportunité ou une liste.')],
+            [t('Suis réalisé vs attendu'), t('À la clôture, compare la performance réelle à ce que tu visais, avec le P&L et l’issue du trade.')],
+            [t('Bâtis ta performance'), t('Le journal cumule ton taux de réussite et ton P&L au fil des trades — ton vrai track record.')],
+            [t('Synchronisé et privé'), t('Tes trades sont stockés dans ton compte (cloud, privé) et te suivent sur tous tes appareils.')],
+          ]}
+        />
+      )}
       {/* En-tête */}
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 240 }}>

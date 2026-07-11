@@ -691,6 +691,36 @@
       'Suis grecs et P&L dans le temps': 'Track greeks and P&L over time',
       'Ouvre une position pour voir ses grecs au DTE restant, ses snapshots et son P&L théorique.':
         'Open a position to see its greeks at the remaining DTE, its snapshots and its theoretical P&L.',
+      // Pancarte Marché Pro
+      'Le Marché Pro': 'Market Pro',
+      'Le contexte de marché de la dispersion : quand la corrélation est chère, quels catalyseurs arrivent, et des alertes pour ne pas rater le bon moment.':
+        'The market context for dispersion: when correlation is expensive, which catalysts are coming, and alerts so you don’t miss the right moment.',
+      'Le baromètre de corrélation': 'The correlation barometer',
+      'Vois si la corrélation implicite d’un indice est chère ou bon marché — le meilleur moment pour vendre de la dispersion.':
+        'See whether an index’s implied correlation is expensive or cheap — the best moment to sell dispersion.',
+      'Choisis ton indice': 'Pick your index',
+      'SPX, NDX, DJI, CAC ou DAX : tout le contexte s’adapte à l’indice sélectionné.': 'SPX, NDX, DJI, CAC or DAX: the whole context adapts to the selected index.',
+      'Le calendrier des résultats': 'The earnings calendar',
+      'Repère les publications de résultats à venir sur les composants — des catalyseurs de volatilité à surveiller.':
+        'Spot upcoming earnings on the components — volatility catalysts to watch.',
+      'Pose des alertes': 'Set alerts',
+      'Sois prévenu quand la corrélation franchit un seuil, pour agir au bon moment.': 'Get notified when correlation crosses a threshold, to act at the right time.',
+      // Pancarte Journal
+      'Ton Journal de trades': 'Your trade journal',
+      'Enregistre tes dispersions et bâtis ton track record dans le temps : réalisé vs attendu, taux de réussite, P&L cumulé.':
+        'Log your dispersions and build your track record over time: realized vs expected, win rate, cumulative P&L.',
+      'Enregistre un trade': 'Log a trade',
+      '« + Nouveau trade » : indice, composants, prime d’entrée et horizon — ou pré-rempli depuis une opportunité ou une liste.':
+        '“+ New trade”: index, components, entry premium and horizon — or pre-filled from an opportunity or a list.',
+      'Suis réalisé vs attendu': 'Track realized vs expected',
+      'À la clôture, compare la performance réelle à ce que tu visais, avec le P&L et l’issue du trade.':
+        'At close, compare the real performance to what you were aiming for, with the P&L and the outcome.',
+      'Bâtis ta performance': 'Build your performance',
+      'Le journal cumule ton taux de réussite et ton P&L au fil des trades — ton vrai track record.':
+        'The journal adds up your win rate and P&L trade after trade — your real track record.',
+      'Synchronisé et privé': 'Synced and private',
+      'Tes trades sont stockés dans ton compte (cloud, privé) et te suivent sur tous tes appareils.':
+        'Your trades are stored in your account (cloud, private) and follow you across all your devices.',
     },
     zh: {
       // ── Navigation (barre latérale) ──
@@ -1352,6 +1382,36 @@
       'Suis grecs et P&L dans le temps': '随时间跟踪希腊值和盈亏',
       'Ouvre une position pour voir ses grecs au DTE restant, ses snapshots et son P&L théorique.':
         '打开一个持仓，查看其在剩余 DTE 时的希腊值、快照和理论盈亏。',
+      // 市场 Pro 提示卡
+      'Le Marché Pro': '市场 Pro',
+      'Le contexte de marché de la dispersion : quand la corrélation est chère, quels catalyseurs arrivent, et des alertes pour ne pas rater le bon moment.':
+        '离散度交易的市场背景：相关性何时偏贵、有哪些催化剂即将到来，以及提醒你不错过合适时机。',
+      'Le baromètre de corrélation': '相关性晴雨表',
+      'Vois si la corrélation implicite d’un indice est chère ou bon marché — le meilleur moment pour vendre de la dispersion.':
+        '查看某个指数的隐含相关性是偏贵还是便宜 — 卖出离散度的最佳时机。',
+      'Choisis ton indice': '选择你的指数',
+      'SPX, NDX, DJI, CAC ou DAX : tout le contexte s’adapte à l’indice sélectionné.': 'SPX、NDX、DJI、CAC 或 DAX：整个背景会随所选指数调整。',
+      'Le calendrier des résultats': '财报日历',
+      'Repère les publications de résultats à venir sur les composants — des catalyseurs de volatilité à surveiller.':
+        '发现成分股即将公布的财报 — 值得关注的波动率催化剂。',
+      'Pose des alertes': '设置提醒',
+      'Sois prévenu quand la corrélation franchit un seuil, pour agir au bon moment.': '当相关性突破阈值时收到通知，以便在合适的时机行动。',
+      // 交易日志提示卡
+      'Ton Journal de trades': '你的交易日志',
+      'Enregistre tes dispersions et bâtis ton track record dans le temps : réalisé vs attendu, taux de réussite, P&L cumulé.':
+        '记录你的离散度交易，随时间建立业绩记录：实际 vs 预期、胜率、累计盈亏。',
+      'Enregistre un trade': '记录一笔交易',
+      '« + Nouveau trade » : indice, composants, prime d’entrée et horizon — ou pré-rempli depuis une opportunité ou une liste.':
+        '“+ 新交易”：指数、成分股、入场溢价和期限 — 或从机会或列表中预填。',
+      'Suis réalisé vs attendu': '跟踪实际 vs 预期',
+      'À la clôture, compare la performance réelle à ce que tu visais, avec le P&L et l’issue du trade.':
+        '平仓时，将实际表现与你的目标进行比较，包含盈亏和结果。',
+      'Bâtis ta performance': '建立你的业绩',
+      'Le journal cumule ton taux de réussite et ton P&L au fil des trades — ton vrai track record.':
+        '日志逐笔累计你的胜率和盈亏 — 你真正的业绩记录。',
+      'Synchronisé et privé': '同步且私密',
+      'Tes trades sont stockés dans ton compte (cloud, privé) et te suivent sur tous tes appareils.':
+        '你的交易存储在你的账户中（云端、私密），在你所有设备间同步。',
     },
   };
 
