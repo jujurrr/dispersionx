@@ -137,6 +137,8 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const [savingEmail, setSavingEmail] = React.useState(false);
   const [busyDelete, setBusyDelete] = React.useState(false);
   const [confirmDel, setConfirmDel] = React.useState(false);
+  const [busyRefund, setBusyRefund] = React.useState(false);
+  const [confirmRefund, setConfirmRefund] = React.useState(false);
   const [busyExport, setBusyExport] = React.useState(false);
 
   React.useEffect(() => { setName(user ? user.name : ''); setEmail(user ? user.email : ''); }, [user && user.name, user && user.email]);
@@ -165,6 +167,11 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const periodEnd = C && C.proPeriodEnd;
   const canceling = C && (C.proStatus === 'canceling' || C.proStatus === 'canceled');
   const periodTxt = periodEnd ? new Date(periodEnd).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+  // Fenêtre « satisfait ou remboursé » (14 j depuis le début). L'éligibilité est
+  // aussi revérifiée côté serveur — ici on ne montre le bouton que si pertinent.
+  const GUARANTEE_DAYS = window.DX_PRO ? window.DX_PRO.guaranteeDays : 14;
+  const proSince = C && C.proSince;
+  const withinGuarantee = subscribed && proSince && (Date.now() - Date.parse(proSince)) <= GUARANTEE_DAYS * 86400000;
 
   async function saveName() {
     const nm = name.trim();
@@ -239,6 +246,21 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
       const m = e && e.message === 'aucun_abonnement' ? 'Aucun abonnement Stripe (accès accordé manuellement).' : 'Portail indisponible : ' + (e && e.message ? e.message : '');
       addToast && addToast(m, 'error'); setBusyPro(false);
     }
+  }
+  async function doRefund() {
+    setBusyRefund(true);
+    try {
+      await C.requestRefund();
+      if (C.refreshPro) await C.refreshPro().catch(() => {});
+      addToast && addToast(t('Abonnement résilié et remboursé. Le remboursement apparaîtra sous quelques jours.'), 'ok');
+      setConfirmRefund(false);
+    } catch (e) {
+      const code = e && e.message ? e.message : '';
+      const m = code === 'hors_delai' ? t('Délai de 14 jours dépassé — le remboursement automatique n’est plus disponible.')
+        : code === 'aucun_abonnement' ? t('Aucun abonnement Stripe à rembourser.')
+        : t('Remboursement impossible pour le moment : {err}', { err: code });
+      addToast && addToast(m, 'error');
+    } finally { setBusyRefund(false); }
   }
 
   return (
@@ -335,7 +357,17 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
                   {busyPro ? t('Ouverture…') : t("Gérer l'abonnement")}
                 </Button>
               )}
+              {withinGuarantee && !canceling && (
+                <Button variant="outline" size="md" onClick={() => setConfirmRefund(true)} disabled={busyRefund}>
+                  {busyRefund ? t('Traitement…') : t('Résilier & être remboursé (14 j)')}
+                </Button>
+              )}
             </div>
+            {withinGuarantee && !canceling && (
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
+                {t('Garantie « satisfait ou remboursé » : dans les {days} jours suivant le premier paiement, résilie et obtiens un remboursement intégral en un clic.', { days: GUARANTEE_DAYS })}
+              </div>
+            )}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -442,6 +474,20 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
           onConfirm={doDelete}
           onCancel={() => { if (!busyDelete) setConfirmDel(false); }}
           busy={busyDelete}
+        />
+      )}
+
+      {window.ConfirmDialog && (
+        <window.ConfirmDialog
+          open={confirmRefund}
+          title={t('Résilier et être remboursé ?')}
+          message={t('Ton accès Pro sera coupé immédiatement et ton dernier paiement intégralement remboursé (garantie 14 jours). Cette action est définitive.')}
+          confirmLabel={t('Confirmer le remboursement')}
+          cancelLabel={t('Annuler')}
+          tone="danger"
+          onConfirm={doRefund}
+          onCancel={() => { if (!busyRefund) setConfirmRefund(false); }}
+          busy={busyRefund}
         />
       )}
     </div>

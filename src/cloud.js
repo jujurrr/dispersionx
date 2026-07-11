@@ -30,17 +30,18 @@ let proAccess = false;      // accès au module « Opportunités Pro » (table p
 let proSubscribed = false;  // Pro issu d'un abonnement Stripe (a un customer) → portail dispo
 let proStatus = null;       // statut d'abonnement ('active', 'canceled', …) si connu
 let proPeriodEnd = null;    // fin de période en cours (ISO) si abonnement
+let proSince = null;        // début de l'abonnement (ISO) — fenêtre garantie 14 j
 let pendingMfa = null;      // { factorId } si un défi 2FA (AAL2) est en attente, sinon null
 
 // Vérifie l'accès Pro de l'utilisateur courant (RLS : il ne lit que sa ligne).
 // Un abonnement Stripe écrit status + current_period_end (via webhook, service
 // role). Compat : les octrois manuels en SQL (sans statut) restent actifs.
 async function checkPro() {
-  proSubscribed = false; proStatus = null; proPeriodEnd = null;
+  proSubscribed = false; proStatus = null; proPeriodEnd = null; proSince = null;
   if (!supa || !currentUser) return false;
   try {
     const { data, error } = await supa.from('pro_access')
-      .select('status,current_period_end,stripe_customer_id,stripe_subscription_id').eq('user_id', currentUser.id).maybeSingle();
+      .select('status,current_period_end,stripe_customer_id,stripe_subscription_id,since').eq('user_id', currentUser.id).maybeSingle();
     if (error || !data) return false;
     const status = data.status || 'active';                       // octroi manuel = actif
     // 'canceling' = résiliation programmée (Stripe cancel_at_period_end) : l'accès
@@ -59,6 +60,7 @@ async function checkPro() {
     }
     proSubscribed = !!data.stripe_customer_id;                    // abonnement Stripe → portail dispo
     proStatus = status; proPeriodEnd = data.current_period_end || null;
+    proSince = data.since || null;
     return true;
   } catch { return false; }
 }
@@ -131,6 +133,20 @@ const proApi = {
       if (!r.ok) return { entries: [], subscribed: false, error: j.error || 'indisponible' };
       return { entries: [], subscribed: false, ...j };
     } catch { return { entries: [], subscribed: false, error: 'indisponible' }; }
+  },
+  // Garantie 14 j « satisfait ou remboursé » (self-service) : rembourse le paiement
+  // initial, annule l'abonnement et coupe le Pro. Éligibilité vérifiée côté serveur.
+  async requestRefund() {
+    if (!currentUser) throw new Error('not_signed_in');
+    const { data } = await supa.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new Error('not_signed_in');
+    const r = await fetch('/api/pro/refund', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: '{}',
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || 'remboursement_indisponible');
+    return true;
   },
 };
 
@@ -707,12 +723,14 @@ window.DXCloud = {
   get proSubscribed() { return proSubscribed; },
   get proStatus() { return proStatus; },
   get proPeriodEnd() { return proPeriodEnd; },
+  get proSince() { return proSince; },
   isPro: () => checkPro(),
   startProCheckout: (cycle) => proApi.startCheckout(cycle),
   refreshPro: () => proApi.refresh(),
   confirmPro: (sessionId) => proApi.confirmCheckout(sessionId),
   openProPortal: () => proApi.openPortal(),
   proHistory: () => proApi.history(),
+  requestRefund: () => proApi.requestRefund(),
   exportAccount: () => exportAccount(),
   lists: supa ? lists : null,
   strategies: supa ? strategies : null,

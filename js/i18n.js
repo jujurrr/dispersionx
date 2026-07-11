@@ -658,6 +658,19 @@
       'Annulée': 'Voided',
       'Échouée': 'Failed',
       'Facture': 'Invoice',
+      // ── Remboursement 14 jours (garantie) ──
+      'Résilier & être remboursé (14 j)': 'Cancel & get refunded (14 days)',
+      'Traitement…': 'Processing…',
+      'Garantie « satisfait ou remboursé » : dans les {days} jours suivant le premier paiement, résilie et obtiens un remboursement intégral en un clic.':
+        'Money-back guarantee: within {days} days of your first payment, cancel and get a full refund in one click.',
+      'Résilier et être remboursé ?': 'Cancel and get refunded?',
+      'Ton accès Pro sera coupé immédiatement et ton dernier paiement intégralement remboursé (garantie 14 jours). Cette action est définitive.':
+        'Your Pro access will be cut immediately and your last payment fully refunded (14-day guarantee). This action is final.',
+      'Confirmer le remboursement': 'Confirm refund',
+      'Abonnement résilié et remboursé. Le remboursement apparaîtra sous quelques jours.': 'Subscription canceled and refunded. The refund will appear within a few days.',
+      'Délai de 14 jours dépassé — le remboursement automatique n’est plus disponible.': 'The 14-day window has passed — automatic refund is no longer available.',
+      'Aucun abonnement Stripe à rembourser.': 'No Stripe subscription to refund.',
+      'Remboursement impossible pour le moment : {err}': 'Refund unavailable right now: {err}',
 
       // ── Pancarte d'accueil (FirstVisitGuide) ──
       'Bienvenue ✦': 'Welcome ✦',
@@ -1349,6 +1362,19 @@
       'Annulée': '已作废',
       'Échouée': '失败',
       'Facture': '发票',
+      // ── 14 天退款保证 ──
+      'Résilier & être remboursé (14 j)': '取消并获得退款（14 天）',
+      'Traitement…': '处理中…',
+      'Garantie « satisfait ou remboursé » : dans les {days} jours suivant le premier paiement, résilie et obtiens un remboursement intégral en un clic.':
+        '“满意或退款”保证：在首次付款后的 {days} 天内，一键取消并获得全额退款。',
+      'Résilier et être remboursé ?': '取消并退款？',
+      'Ton accès Pro sera coupé immédiatement et ton dernier paiement intégralement remboursé (garantie 14 jours). Cette action est définitive.':
+        '你的 Pro 访问将立即中止，最后一次付款将全额退款（14 天保证）。此操作不可撤销。',
+      'Confirmer le remboursement': '确认退款',
+      'Abonnement résilié et remboursé. Le remboursement apparaîtra sous quelques jours.': '订阅已取消并退款。退款将在几天内显示。',
+      'Délai de 14 jours dépassé — le remboursement automatique n’est plus disponible.': '已超过 14 天期限 — 自动退款不再可用。',
+      'Aucun abonnement Stripe à rembourser.': '没有可退款的 Stripe 订阅。',
+      'Remboursement impossible pour le moment : {err}': '目前无法退款：{err}',
 
       // ── 欢迎提示卡（FirstVisitGuide）──
       'Bienvenue ✦': '欢迎 ✦',
