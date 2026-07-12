@@ -15,17 +15,51 @@ const _oppCache = {};        // index -> { at, results, ctx }
 // Poids de l'objectif « mix équilibré » (ajustables).
 const W_PRIME = 0.45, W_SCORE = 0.30, W_DIV = 0.15, W_OVERFIT = 0.10;
 
-// Évalue un panier (liste de tickers) : prime, score moyen, diversification, objectif.
+// Corrélation implicite d'un panier (formule CBOE) — miroir navigateur de
+// api/_lib/dispersion-math.js. names = [{ w, sigma }], w normalisés ici, σ décimal.
+function oppImpliedCorr(sigmaI, names) {
+  const valid = names.filter(n => n.w > 0 && n.sigma > 0);
+  if (!(sigmaI > 0) || valid.length < 2) return null;
+  const wsum = valid.reduce((s, n) => s + n.w, 0) || 1;
+  let A = 0, B = 0;
+  for (const n of valid) { const w = n.w / wsum; A += w * n.sigma; B += w * w * n.sigma * n.sigma; }
+  const denom = A * A - B;
+  if (denom <= 1e-9) return null;
+  return Math.max(0.05, Math.min(0.95, (sigmaI * sigmaI - B) / denom));
+}
+
+// Évalue un panier (liste de tickers) : prime, score, diversification, objectif.
+// VEGA-PONDÉRÉ : une dispersion se dimensionne au vega, donc la corrélation
+// réalisée, la corrélation implicite (formule CBOE sur IV) et le score du panier
+// pondèrent chaque nom par son vega. Repli équipondéré si vega indisponible.
 function oppEval(members, ctx) {
   const k = members.length;
-  let rsum = 0, rcnt = 0;
-  for (let i = 0; i < k; i++) for (let j = i + 1; j < k; j++) { rsum += ctx.corr[members[i]][members[j]]; rcnt++; }
-  const rhoReal = rcnt ? rsum / rcnt : 0;
-  const avgHV = members.reduce((s, m) => s + (ctx.hv[m] || 25), 0) / k;
-  const sigmaComp = (avgHV / 100 * 1.08) || 1e-6;
-  const rhoImpl = Math.min(0.95, Math.max(0.05, (ctx.sigmaIdx / sigmaComp) ** 2));
+  const vg = members.map(m => (ctx.vega && ctx.vega[m] > 0) ? ctx.vega[m] : 1);
+  const vsum = vg.reduce((a, b) => a + b, 0) || k;
+  const vw = vg.map(v => v / vsum);   // parts vega normalisées (Σ = 1)
+
+  // ρ réalisée VEGA-pondérée sur les paires (Σ vᵢvⱼ ρᵢⱼ / Σ vᵢvⱼ)
+  let rnum = 0, rden = 0;
+  for (let i = 0; i < k; i++) for (let j = i + 1; j < k; j++) {
+    const wij = vw[i] * vw[j];
+    rnum += wij * ctx.corr[members[i]][members[j]];
+    rden += wij;
+  }
+  const rhoReal = rden ? rnum / rden : 0;
+
+  // ρ implicite RÉELLE du panier (formule CBOE, IV composants vega-pondérés) ;
+  // repli sur l'ancien proxy HV si la formule n'est pas calculable.
+  const names = members.map((m, idx) => ({ w: vw[idx], sigma: (ctx.iv[m] || ctx.hv[m] || 25) / 100 }));
+  let rhoImpl = oppImpliedCorr(ctx.sigmaIdx, names);
+  if (rhoImpl == null) {
+    const avgHV = members.reduce((s, m) => s + (ctx.hv[m] || 25), 0) / k;
+    rhoImpl = Math.min(0.95, Math.max(0.05, (ctx.sigmaIdx / ((avgHV / 100 * 1.08) || 1e-6)) ** 2));
+  }
   const prime = (rhoImpl - rhoReal) * 100;
-  const avgScore = members.reduce((s, m) => s + (ctx.score[m] || 0), 0) / k;
+
+  // Score de dispersion du panier, VEGA-pondéré (Σ vwᵢ·scoreᵢ, Σvw = 1)
+  const avgScore = members.reduce((s, m, idx) => s + vw[idx] * (ctx.score[m] || 0), 0);
+
   const diversification = 1 - Math.max(0, rhoReal);
   const sizePen = Math.max(0, (8 - k)) / 8;   // paniers < 8 légèrement pénalisés (anti-sur-optimisation)
   const objective = W_PRIME * (prime / 15) + W_SCORE * (avgScore / 100) + W_DIV * diversification - W_OVERFIT * sizePen;
@@ -138,9 +172,12 @@ async function oppGather(index, dur) {
   const poolTickers = scored.slice(0, OPP_POOL_MAX);
   if (poolTickers.length < OPP_SIZE_MIN) throw new Error('pas assez d\'actions scorées pour cet indice — réessayez dans quelques secondes (scoring en cours).');
 
-  const [corrData, volData] = await Promise.all([
+  const wMap = {};
+  comps.forEach(c => { if (c.ticker) wMap[c.ticker] = (c.weight != null ? c.weight : null); });
+  const [corrData, volData, implData] = await Promise.all([
     DXApi.getCorrelation(null, poolTickers, index),
     DXApi.getBatchVol(poolTickers, index),
+    DXApi.impliedCorrelation(index, poolTickers, poolTickers.map(t => wMap[t]), dur),
   ]);
   const mt = corrData?.matrixTickers || [];
   const M = corrData?.matrix || [];
@@ -149,15 +186,23 @@ async function oppGather(index, dur) {
   mt.forEach((ta, i) => { corr[ta] = {}; mt.forEach((tb, j) => { corr[ta][tb] = i === j ? 1 : (M[i] && M[i][j] != null ? M[i][j] : 0.5); }); });
   const hv = {}, iv = {}, beta = {};
   (volData?.results || []).forEach(r => { if (r && r.ticker && !r.error) { hv[r.ticker] = r.hv30 != null ? r.hv30 : 25; iv[r.ticker] = r.iv_est != null ? r.iv_est : 30; beta[r.ticker] = r.beta != null ? r.beta : 1.0; } });
+  // Vega réel par nom (Cboe, via /api/correlation/implied) — pondération vega du panier.
+  const vega = {};
+  (implData?.per_name || []).forEach(p => { if (p && p.ticker && p.vega > 0) vega[p.ticker] = p.vega; });
   const quotes = d.quotes || {};
   const price = {}, sector = {};
   mt.forEach(t => { price[t] = quotes[t] && quotes[t].price != null ? parseFloat(quotes[t].price) : null; });
   comps.forEach(c => { if (c.ticker) sector[c.ticker] = c.sector || 'Autre'; });
-  const sigmaIdx = corrData && corrData.vix_level ? corrData.vix_level / 100 : (d.snap && d.snap.iv_est ? d.snap.iv_est / 100 : 0.18);
+  // σ indice = IV implicite RÉELLE du panier (endpoint /correlation/implied) en
+  // priorité, sinon niveau VIX de la matrice, sinon IV estimée du snapshot.
+  const sigmaIdx = (implData && implData.sigma_index > 0) ? implData.sigma_index / 100
+    : (corrData && corrData.vix_level ? corrData.vix_level / 100 : (d.snap && d.snap.iv_est ? d.snap.iv_est / 100 : 0.18));
   const pool = mt.filter(t => hv[t] != null && scores[t] != null);
   if (pool.length < OPP_SIZE_MIN) throw new Error('vivier trop maigre (données de vol manquantes) — réessayez.');
   return {
-    index, pool, corr, hv, iv, beta, score: scores, price, sector, sigmaIdx,
+    index, pool, corr, hv, iv, beta, vega, score: scores, price, sector, sigmaIdx,
+    rhoImplPool: (implData && implData.rho_impl != null) ? implData.rho_impl : null,
+    implMethod: implData?.method || null,
     indexPrice: (d.snap && (d.snap.etf_price || d.snap.price)) || 100,
     indexIV: (d.snap && d.snap.iv_est) || 18,
     indexEtf: (d.snap && d.snap.etf) || index,
@@ -459,14 +504,18 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
                   <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>Opportunité #{i + 1} · {o.k} actions</div>
                   <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>Score d'opportunité {o.opp}/100 · {index} · horizon {duration}j</div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, auto)', gap: 18 }}>
-                  <div style={{ textAlign: 'right' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, auto)', gap: 18 }}>
+                  <div style={{ textAlign: 'right' }} title="Prime de dispersion = ρ implicite RÉELLE du panier (formule CBOE, IV vega-pondérées) − ρ réalisée. Positive = corrélation chère.">
                     <div style={{ font: 'var(--type-data)', color: o.prime >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{(o.prime >= 0 ? '+' : '') + o.prime.toFixed(1)} pts</div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Prime ρ</div>
                   </div>
-                  <div style={{ textAlign: 'right' }}>
+                  <div style={{ textAlign: 'right' }} title="Corrélation implicite du panier (formule CBOE, IV vega-pondérées) — le prix de marché de la corrélation.">
+                    <div style={{ font: 'var(--type-data)', color: 'var(--accent-hover)' }}>{(o.rhoImpl * 100).toFixed(0)}%</div>
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ρ implicite</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }} title="Score de dispersion du panier, pondéré par le vega de chaque nom.">
                     <div style={{ font: 'var(--type-data)', color: 'var(--text)' }}>{Math.round(o.avgScore)}</div>
-                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Score moy.</div>
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Score vega</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ font: 'var(--type-data)', color: 'var(--info)' }}>{o.rhoReal.toFixed(2)}</div>
