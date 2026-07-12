@@ -179,16 +179,12 @@ export default async (req) => {
   const ivRank = ivMax > ivMin ? Math.round(Math.max(0, Math.min(100, (iv - ivMin) / (ivMax - ivMin) * 100))) : 50;
   const ivPct  = Math.round(Math.max(0, Math.min(100, ivRank * 0.95)));
 
-  const volPrem    = iv - hv;
-  const edgeRho    = (RHO_IMPL_EST - rho) * 40;
-  const betaScore  = Math.max(0, 12 - Math.abs(beta - 1.1) * 10);
-  const volContrib = Math.max(-25, Math.min(25, volPrem));
-  const score      = Math.round(Math.max(0, Math.min(100, 50 + volContrib + edgeRho + betaScore)));
-  const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
+  const volPrem = iv - hv;   // information (IV vs HV) — n'entre PLUS dans le score
+  // (le score composite est calculé plus bas, une fois evScore connu — modèle pondéré)
 
   // ── Risque événement (earnings) — RÉEL via Finnhub. Un résultat DANS la fenêtre
   //    de la stratégie = risque de gap directionnel + IV crush → sous-score plus
-  //    bas. Sous-score d'affichage (n'entre pas dans le score composite). ──
+  //    bas. Ce sous-score pèse 15 % du score composite (modèle pondéré). ──
   let earningsDate = '—', daysToEarnings = null, earningsInStrategy = false, evScore = 72, evReason;
   if (earnRes == null) {
     // Momentanément indisponible (Finnhub throttlé / pas de clé) — score neutre.
@@ -213,12 +209,30 @@ export default async (req) => {
     }
   }
 
+  // ── Modèle de score : MOYENNE PONDÉRÉE de 5 sous-scores ∈ [0,100] ───────────
+  //  Corrélation 45 % (cœur de la dispersion) · IV-rank 20 % (coût d'achat de la
+  //  vol — BON SENS : IV basse dans son historique = favorable) · Risque event
+  //  15 % · Beta 10 % · Liquidité 10 % (proxy prix → poids volontairement modéré).
+  //  Remplace l'ancien « 50 + (IV−HV) + edgeρ + beta », où le terme IV−HV avait le
+  //  MAUVAIS signe pour la jambe LONGUE : on ACHÈTE la vol des composants, donc la
+  //  payer chère (IV ≫ HV) est un coût, pas un avantage.
+  const clampS = v => Math.max(0, Math.min(100, v));
+  const corrScore    = Math.round(clampS(50 + (RHO_IMPL_EST - rho) * 130));  // ρ réal < ρ impl = favorable
+  const ivRankScore  = Math.round(clampS(100 - ivRank));                      // IV basse dans son historique = favorable
+  const betaFitScore = Math.round(clampS(100 - Math.abs(beta - 1.1) * 60));   // β proche de ~1.1 = exposition correcte
+  const liqScore     = Math.round(Math.min(99, 50 + Math.log(Math.max(1, price)) * 5));
+  const W = { correlation: 0.45, iv_rank: 0.20, event: 0.15, beta: 0.10, liquidity: 0.10 };
+  const score = Math.round(clampS(
+    W.correlation * corrScore + W.iv_rank * ivRankScore + W.event * evScore +
+    W.beta * betaFitScore + W.liquidity * liqScore));
+  const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
+
   const subscores = {
-    vol_attractive:     { score: Math.round(Math.max(0, Math.min(99, 50 + volPrem * 1.8))), reason: `IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}% (prime ${volPrem >= 0 ? '+' : ''}${volPrem.toFixed(1)} pts)` },
-    dispersion_contrib: { score: Math.round(Math.max(0, Math.min(99, (1 - Math.max(0, rho)) * 120))), reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs indice (${rho < 0.5 ? 'faible = favorable' : rho < 0.7 ? 'modérée' : 'élevée = défavorable'})` },
-    liquidity:          { score: Math.min(99, Math.round(50 + Math.log(Math.max(1, price)) * 5)), reason: `Prix ${price.toFixed(2)}$ — proxy liquidité` },
-    execution:          { score: Math.min(99, Math.round(75 - rho * 28)), reason: `Spread estimé selon corrélation` },
-    event_risk:         { score: evScore, reason: evReason },
+    dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(RHO_IMPL_EST * 100).toFixed(0)}% (${rho < 0.5 ? 'faible = favorable' : rho < 0.7 ? 'modérée' : 'élevée = défavorable'})` },
+    vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}% (${ivRank <= 40 ? "vol bon marché à l'achat" : ivRank >= 65 ? "vol chère à l'achat" : 'vol moyenne'})` },
+    event_risk:         { score: evScore,      reason: evReason },
+    beta_fit:           { score: betaFitScore, reason: `β ${beta.toFixed(2)} vs cible ~1.10 (exposition indicielle)` },
+    liquidity:          { score: liqScore,     reason: `Prix ${price.toFixed(2)}$ — proxy liquidité` },
   };
 
   // Coût d'exécution ESTIMÉ, spécifique à chaque action (pas de vraie chaîne
@@ -236,14 +250,25 @@ export default async (req) => {
   const expiryDate = new Date(Date.now() + duration * 86400000).toISOString().slice(0, 10);
 
   let rec;
-  if (score >= 75)     rec = `Score favorable (${score}/100) : prime de corrélation positive (ρ réal. ${(rho * 100).toFixed(0)}% < ρ impl. 65%) et prime de vol ${volPrem >= 0 ? 'positive (+' + volPrem.toFixed(1) + ' pts)' : 'légèrement négative (' + volPrem.toFixed(1) + ' pts)'}. Composant attractif pour une stratégie de dispersion.`;
-  else if (score >= 55) rec = `Score modéré (${score}/100) : composant utilisable. ρ réalisée ${(rho * 100).toFixed(0)}% — prime de corrélation ${edgeRho >= 0 ? 'présente' : 'faible'}. Surveiller les coûts de spread et la liquidité des options.`;
-  else                  rec = `Score faible (${score}/100) : corrélation élevée avec l'indice (ρ=${(rho * 100).toFixed(0)}%) limite l'apport à la dispersion${volPrem < 0 ? ' et la prime de vol est négative' : ''}. Envisager un autre composant.`;
+  if (score >= 75)     rec = `Score favorable (${score}/100) : prime de corrélation présente (ρ réal. ${(rho * 100).toFixed(0)}% < ρ impl. ${(RHO_IMPL_EST * 100).toFixed(0)}%) et volatilité ${ivRank <= 45 ? "bon marché à l'achat" : 'correcte'} (IV rank ${ivRank}%). Bon candidat pour la jambe longue d'une dispersion.`;
+  else if (score >= 55) rec = `Score modéré (${score}/100) : composant utilisable. ρ réalisée ${(rho * 100).toFixed(0)}% ; IV rank ${ivRank}%. Surveiller la liquidité et un éventuel résultat dans la fenêtre.`;
+  else                  rec = `Score faible (${score}/100) : ${rho >= 0.7 ? `corrélation élevée avec l'indice (ρ=${(rho * 100).toFixed(0)}%) limite l'apport à la dispersion` : 'profil peu favorable à la dispersion'}${ivRank >= 65 ? " et IV chère à l'achat (IV rank élevé)" : ''}. Envisager un autre composant.`;
 
   return Response.json({
     scoring: {
       score, signal, signal_color,
-      comp_a_edge: Number(edgeRho.toFixed(1)), comp_b_vol_premium: Number(volPrem.toFixed(1)), comp_c_costs: compCcosts,
+      weights: W,
+      // Décomposition pondérée : contribution = poids × sous-score (∑ = score).
+      comp_correlation: Number((W.correlation * corrScore).toFixed(1)),
+      comp_iv_rank:     Number((W.iv_rank * ivRankScore).toFixed(1)),
+      comp_event:       Number((W.event * evScore).toFixed(1)),
+      comp_beta:        Number((W.beta * betaFitScore).toFixed(1)),
+      comp_liquidity:   Number((W.liquidity * liqScore).toFixed(1)),
+      iv_rank_used: ivRank,
+      // rétro-compat (anciens noms) — dérivés du nouveau modèle :
+      comp_a_edge: Number((W.correlation * corrScore).toFixed(1)),
+      comp_b_vol_premium: Number(volPrem.toFixed(1)),   // info IV−HV (hors score)
+      comp_c_costs: compCcosts,
       rho_implicit_final: RHO_IMPL_EST, rho_real_expected: rho,
       cost_source: 'estimated', spread_pct_real: Number(spreadPctEst.toFixed(2)), cost_spread: costSpread, cost_earnings: costEarnings,
       subscores, composite_score: { score },

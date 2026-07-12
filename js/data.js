@@ -280,24 +280,46 @@
   }
 
   const MOCK_SCORE = (ticker) => {
-    const score = scoreFor(ticker);
-    const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
+    // Miroir HORS-LIGNE du modèle serveur (api/stocks/auto-score.js) : même moyenne
+    // pondérée de 5 sous-scores 0-100 (corrélation 45 % · IV-rank 20 % · event 15 %
+    // · beta 10 % · liquidité 10 %), pour que le repli affiche la MÊME logique que
+    // l'API. Repli marqué is_fallback en amont (api.js).
     const comp = compOf(ticker);
     const iv = comp?.iv ?? 30, hv = comp?.hv ?? 27, beta = comp?.beta ?? 1.1, weight = comp?.weight ?? 2.0, rho = comp?.rho ?? 0.5;
+    const RHO_IMPL = 0.65;
+    const cl = v => Math.max(0, Math.min(100, v));
+    // IV rank estimé depuis un range HV (miroir du repli serveur : ivMin=hv*0.6, ivMax=hv*2).
+    const ivMin = Math.max(5, +(hv * 0.6).toFixed(1)), ivMax = +(hv * 2.0).toFixed(1);
+    const ivRank = ivMax > ivMin ? Math.round(cl((iv - ivMin) / (ivMax - ivMin) * 100)) : 50;
+    const corrScore    = Math.round(cl(50 + (RHO_IMPL - rho) * 130));   // ρ réal < ρ impl = favorable
+    const ivRankScore  = Math.round(cl(100 - ivRank));                  // IV basse dans son historique = favorable
+    const evScore      = comp?.earnings ? 45 : 85;
+    const betaFitScore = Math.round(cl(100 - Math.abs(beta - 1.1) * 60));
+    const liqScore     = 62;   // pas de prix en mode repli → proxy neutre
+    const W = { correlation: 0.45, iv_rank: 0.20, event: 0.15, beta: 0.10, liquidity: 0.10 };
+    const score = Math.round(cl(W.correlation * corrScore + W.iv_rank * ivRankScore + W.event * evScore + W.beta * betaFitScore + W.liquidity * liqScore));
+    const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
     return {
       scoring: {
         score, signal, signal_color,
-        comp_a_edge: Number(((0.61 - rho) * 40).toFixed(1)),
-        comp_b_vol_premium: Number((iv - hv).toFixed(1)),
+        weights: W,
+        comp_correlation: Number((W.correlation * corrScore).toFixed(1)),
+        comp_iv_rank:     Number((W.iv_rank * ivRankScore).toFixed(1)),
+        comp_event:       Number((W.event * evScore).toFixed(1)),
+        comp_beta:        Number((W.beta * betaFitScore).toFixed(1)),
+        comp_liquidity:   Number((W.liquidity * liqScore).toFixed(1)),
+        iv_rank_used: ivRank,
+        comp_a_edge: Number((W.correlation * corrScore).toFixed(1)),
+        comp_b_vol_premium: Number((iv - hv).toFixed(1)),   // info IV−HV (hors score)
         comp_c_costs: -4.1,
-        rho_implicit_final: 0.61, rho_real_expected: rho,
+        rho_implicit_final: RHO_IMPL, rho_real_expected: rho,
         cost_source: 'estimated', spread_pct_real: 0.22, cost_spread: 2.8, cost_earnings: 1.3,
         subscores: {
-          liquidity: { score: Math.min(99, score + 8), reason: 'Liquidité estimée à partir du profil du composant' },
-          vol_attractive: { score, reason: `IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}%` },
-          dispersion_contrib: { score: Math.max(20, score - 6), reason: 'β et corrélation favorables à la dispersion' },
-          execution: { score: Math.min(99, score + 4), reason: 'Exécution estimée' },
-          event_risk: { score: comp?.earnings ? 45 : 80, reason: comp?.earnings ? 'Earnings possibles dans la durée' : "Pas d'earnings dans la durée" },
+          dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(RHO_IMPL * 100).toFixed(0)}%` },
+          vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}%` },
+          event_risk:         { score: evScore,      reason: comp?.earnings ? 'Earnings possibles dans la durée' : "Pas d'earnings dans la durée" },
+          beta_fit:           { score: betaFitScore, reason: `β ${beta.toFixed(2)} vs cible ~1.10` },
+          liquidity:          { score: liqScore,     reason: 'Liquidité estimée (repli hors-ligne)' },
         },
         composite_score: { score, missing: [] },
         pipeline: {
@@ -305,13 +327,13 @@
           weights_normalized: { 20: 0.25, 60: 0.50, 120: 0.25 },
           blend: rho, regime_factor: 1.0, rho_hat_final: rho,
         },
-        recommendation: score >= 75 ? 'Score favorable : prime de corrélation positive et profil attractif.' : score >= 55 ? 'Score modéré : composant utilisable, surveiller les coûts et la liquidité.' : 'Score faible : apport à la dispersion limité dans ce contexte.',
+        recommendation: score >= 75 ? "Score favorable : prime de corrélation présente et volatilité correcte à l'achat." : score >= 55 ? 'Score modéré : composant utilisable, surveiller liquidité et earnings.' : "Score faible : corrélation élevée ou IV chère à l'achat.",
       },
       stock: {
         symbol: ticker, weight, iv, hv, beta,
         last_price: null, iv_source: 'estimated_from_hv',
         earnings_in_strategy: !!comp?.earnings, days_to_earnings: comp?.earnings ? 6 : 48, earnings_date: '—',
-        iv_rank: { iv_rank: Math.round(score * 0.7), iv_percentile: Math.round(score * 0.66), iv_min: Math.max(5, hv - 12), iv_max: hv + 30, note: 'Estimation à partir du profil de volatilité.' },
+        iv_rank: { iv_rank: ivRank, iv_percentile: Math.round(ivRank * 0.95), iv_min: ivMin, iv_max: ivMax, note: 'Estimation à partir du profil de volatilité.' },
         greeks: { delta: 0.02, gamma: 0.0008, vega: 148.2, theta: -44.1, strike: 0, expiry: '—' },
       },
       index: { symbol: 'SPX', name: 'S&P 500', iv: 18.2 },
