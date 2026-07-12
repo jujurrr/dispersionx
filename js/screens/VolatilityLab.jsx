@@ -33,9 +33,10 @@ function VLine({ points, w = 420, h = 130, color = 'var(--accent-hover)', fill =
 }
 
 /* ── Nuage IV vs HV (par composant) ──────────────────────────────── */
-/* Chaque point = une action. Diagonale IV=HV : au-dessus → volatilité
-   « chère » (IV > HV, vendeur d'options avantagé) ; en-dessous → « bon
-   marché ». Vue idéale pour repérer les meilleurs candidats dispersion. */
+/* Chaque point = une action = une jambe LONGUE potentielle (on l'ACHÈTE).
+   Diagonale IV=HV : en-dessous → vol « bon marché » (IV < HV = meilleur
+   point d'entrée à l'achat, en vert) ; au-dessus → vol « chère » (IV > HV,
+   on la paierait au prix fort, en rouge). Bon marché + décorrélé = idéal. */
 function IvHvScatter({ rows }) {
   const pts = (rows || []).filter(r => r.hv30 != null && r.iv_est != null);
   if (pts.length < 2) return null;
@@ -60,10 +61,10 @@ function IvHvScatter({ rows }) {
       <line x1={sx(lo)} y1={sy(lo)} x2={sx(hi)} y2={sy(hi)} stroke="var(--warn)" strokeWidth="1.5" strokeDasharray="5 4" />
       <text x={sx(hi) - 4} y={sy(hi) + 13} fontSize="9" fontFamily="var(--font-mono)" fill="var(--warn)" textAnchor="end">IV = HV</text>
       {pts.map(p => {
-        const pos = p.iv_est >= p.hv30;
+        const cheap = p.iv_est <= p.hv30;   // IV < HV = vol bon marché à l'achat = favorable (jambe longue)
         return (
           <g key={p.ticker}>
-            <circle cx={sx(p.hv30)} cy={sy(p.iv_est)} r="5" fill={pos ? 'var(--pos-bright)' : 'var(--neg-bright)'} fillOpacity="0.85" stroke="var(--bg-card)" strokeWidth="1.5" />
+            <circle cx={sx(p.hv30)} cy={sy(p.iv_est)} r="5" fill={cheap ? 'var(--pos-bright)' : 'var(--neg-bright)'} fillOpacity="0.85" stroke="var(--bg-card)" strokeWidth="1.5" />
             <text x={sx(p.hv30) + 8} y={sy(p.iv_est) + 3} fontSize="9" fontFamily="var(--font-mono)" fill="var(--text-soft)">{p.ticker}</text>
           </g>
         );
@@ -82,7 +83,8 @@ function VolPrimeBars({ rows }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
       {items.map(it => {
-        const pos = it.spread >= 0;
+        const pos = it.spread >= 0;       // sens de la barre (droite = prime positive)
+        const cheap = it.spread <= 0;     // couleur : vol bon marché à l'achat = favorable
         const bar = Math.abs(it.spread) / maxAbs * 46;
         return (
           <div key={it.ticker} style={{ display: 'grid', gridTemplateColumns: '64px 1fr 52px', gap: 8, alignItems: 'center' }}>
@@ -92,11 +94,11 @@ function VolPrimeBars({ rows }) {
               <div style={{
                 position: 'absolute', top: 3, bottom: 3,
                 [pos ? 'left' : 'right']: '50%', width: bar + '%',
-                background: pos ? 'var(--pos-bright)' : 'var(--neg-bright)',
+                background: cheap ? 'var(--pos-bright)' : 'var(--neg-bright)',
                 borderRadius: 2, opacity: 0.85, transition: 'width 0.7s var(--ease)',
               }} />
             </div>
-            <span style={{ font: '700 11px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>
+            <span style={{ font: '700 11px/1 var(--font-mono)', color: cheap ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>
               {pos ? '+' : ''}{it.spread.toFixed(1)}
             </span>
           </div>
@@ -226,7 +228,7 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
 
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
-          La HV (historique) mesure la volatilité réellement observée. L'IV (implicite) est ce que le marché anticipe. Quand IV &gt; HV, la volatilité est «&nbsp;chère&nbsp;» — les vendeurs d'options sont avantagés. L'écart IV−HV est la prime de risque de vol.
+          La HV (historique) mesure la volatilité réellement observée ; l'IV (implicite) est ce que le marché anticipe. Leur écart IV−HV est la <strong>prime de risque de vol</strong>. En dispersion, tu <strong>vends</strong> la vol de l'indice (tu la veux <strong>chère</strong>) et tu <strong>achètes</strong> la vol des composants comme cette action (tu la veux <strong>bon marché</strong>). Donc pour cette action, une <strong>IV basse / peu au-dessus de sa HV = meilleur point d'entrée à l'achat</strong>.
         </BeginnerExplanationBox>
       )}
 
@@ -287,7 +289,7 @@ function SingleTickerView({ ctx, onCtx, lists, mode }) {
             { label: 'Beta (90j)', value: beta != null ? beta.toFixed(2) : '—', sub: 'sensibilité directionnelle vs ' + index, color: beta == null ? 'var(--text-muted)' : Math.abs(beta - 1) < 0.2 ? 'var(--pos)' : 'var(--warn)' },
             { label: 'Corrélation', value: corr != null ? corr.toFixed(2) : '—', sub: 'coefficient Pearson 90j vs ' + index, color: corr == null ? 'var(--text-muted)' : corr > 0.7 ? 'var(--neg)' : 'var(--pos)' },
             { label: 'Vol relative', value: hv30 != null ? (hv30 > 20 ? 'Élevée' : hv30 > 12 ? 'Modérée' : 'Faible') : '—', sub: 'HV30 = ' + (hv30?.toFixed(1) ?? '—') + '%', color: hv30 == null ? 'var(--text-muted)' : hv30 > 20 ? 'var(--neg)' : 'var(--pos)' },
-            { label: 'Prime IV', value: spread != null ? (spread > 0 ? 'Positive' : 'Négative') : '—', sub: spread == null ? 'Donnée indisponible' : 'IV ' + (spread > 0 ? '>' : '<') + ' HV : vol ' + (spread > 0 ? 'chère' : 'bon marché'), color: spread == null ? 'var(--text-muted)' : spread > 2 ? 'var(--pos)' : spread > 0 ? 'var(--warn)' : 'var(--neg)' },
+            { label: 'Vol à l\'achat', value: spread != null ? (spread <= 0 ? 'Bon marché' : spread <= 3 ? 'Correcte' : 'Chère') : '—', sub: spread == null ? 'Donnée indisponible' : 'IV ' + (spread >= 0 ? '>' : '<') + ' HV (' + (spread >= 0 ? '+' : '') + spread.toFixed(1) + ' pts) — jambe longue', color: spread == null ? 'var(--text-muted)' : spread <= 0 ? 'var(--pos)' : spread <= 3 ? 'var(--warn)' : 'var(--neg)' },
           ].map(item => (
             <div key={item.label} style={{ padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
               <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>{item.label}</div>
@@ -412,9 +414,9 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
           <MetricCard label="Tickers analysés" value={rows.length} accent="var(--accent)" />
           <MetricCard label="HV 30j moy." value={avgHV?.toFixed(1) ?? '···'} unit="%" accent="var(--info)" hint="Volatilité réalisée" />
           <MetricCard label="IV moy." value={avgIV?.toFixed(1) ?? '···'} unit="%" accent="var(--warn)" hint="Volatilité implicite moyenne du panier — IV réelle Cboe (estimée HV×1.12 si l'IV réelle est indisponible)." />
-          <MetricCard label="Prime IV moy." value={avgSprd != null ? (avgSprd >= 0 ? '+' : '') + avgSprd.toFixed(1) : '···'} unit="pts" accent={avgSprd == null ? 'var(--text-muted)' : avgSprd > 0 ? 'var(--pos)' : 'var(--neg)'} hint="IV − HV" />
-          <MetricCard label="Ratio IV/HV moy." value={avgRatio?.toFixed(2) ?? '···'} accent={avgRatio == null ? 'var(--text-muted)' : avgRatio > 1 ? 'var(--pos)' : 'var(--neg)'} hint="> 1 = vol chère" />
-          <MetricCard label="% vol chère" value={pctRich != null ? pctRich : '···'} unit="%" accent={pctRich == null ? 'var(--text-muted)' : pctRich >= 50 ? 'var(--pos)' : 'var(--warn)'} hint="noms IV > HV" />
+          <MetricCard label="Prime IV moy." value={avgSprd != null ? (avgSprd >= 0 ? '+' : '') + avgSprd.toFixed(1) : '···'} unit="pts" accent={avgSprd == null ? 'var(--text-muted)' : avgSprd <= 0 ? 'var(--pos)' : avgSprd <= 3 ? 'var(--warn)' : 'var(--neg)'} hint="IV − HV — bas = bon marché à acheter" />
+          <MetricCard label="Ratio IV/HV moy." value={avgRatio?.toFixed(2) ?? '···'} accent={avgRatio == null ? 'var(--text-muted)' : avgRatio <= 1 ? 'var(--pos)' : avgRatio <= 1.2 ? 'var(--warn)' : 'var(--neg)'} hint="≤ 1 = vol bon marché à l'achat" />
+          <MetricCard label="% vol bon marché" value={pctRich != null ? 100 - pctRich : '···'} unit="%" accent={pctRich == null ? 'var(--text-muted)' : (100 - pctRich) >= 50 ? 'var(--pos)' : 'var(--warn)'} hint="noms IV ≤ HV — favorables à l'achat" />
         </div>
       )}
 
@@ -422,7 +424,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
         <React.Fragment>
           {mode === 'Débutant' && (
             <BeginnerExplanationBox>
-              Sur un panier, on cherche une <strong>prime de vol moyenne positive</strong> (IV &gt; HV : la vol est «&nbsp;chère&nbsp;», favorable au vendeur d'options) <em>et</em> une <strong>forte dispersion</strong> des volatilités entre composants — c'est ce qui rend une stratégie de dispersion intéressante. Le nuage IV/HV montre quels noms portent la prime ; les points au-dessus de la diagonale sont les plus attractifs.
+              Une dispersion, c'est <strong>vendre la vol de l'indice</strong> (on la veut <strong>chère</strong>) et <strong>acheter la vol des composants</strong> (on les veut <strong>bon marché</strong>). Donc sur ce panier de composants, on cherche : une <strong>corrélation faible</strong> et une <strong>forte dispersion des HV</strong> (le vrai moteur — les actions bougent chacune de leur côté), <em>et</em> des vols <strong>pas chères à l'achat</strong> (IV proche ou sous la HV = meilleur point d'entrée). Dans le nuage IV/HV, les points <strong>sous la diagonale</strong> (en vert) sont les plus favorables à acheter.
             </BeginnerExplanationBox>
           )}
 
@@ -465,15 +467,15 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
                 <Badge tone="neutral" size="sm">{rows.length} actions</Badge>
               </div>
               <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 6px' }}>
-                Au-dessus de la diagonale = <span style={{ color: 'var(--pos-bright)' }}>vol chère</span> (IV &gt; HV) ·
-                en-dessous = <span style={{ color: 'var(--neg-bright)' }}>vol bon marché</span>.
+                Sous la diagonale = <span style={{ color: 'var(--pos-bright)' }}>vol bon marché</span> (IV &lt; HV, favorable à l'achat) ·
+                au-dessus = <span style={{ color: 'var(--neg-bright)' }}>vol chère</span> (IV &gt; HV).
               </p>
               <IvHvScatter rows={rows} />
             </div>
 
             <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
               <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: '0 0 4px' }}>Prime de vol par composant</h3>
-              <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>IV − HV, du plus cher au moins cher.</p>
+              <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>IV − HV par composant. Vert = bon marché à l'achat (favorable), rouge = cher.</p>
               <VolPrimeBars rows={rows} />
             </div>
           </div>
@@ -486,7 +488,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
                 { label: 'Beta moyen', value: avgBeta != null ? avgBeta.toFixed(2) : '—', sub: 'sensibilité directionnelle vs ' + (listMeta?.index_symbol || index), color: avgBeta == null ? 'var(--text-muted)' : Math.abs(avgBeta - 1) < 0.2 ? 'var(--pos)' : 'var(--warn)' },
                 { label: 'Corrélation moy.', value: avgCorr != null ? avgCorr.toFixed(2) : '—', sub: 'ρ moyen 90j vs ' + (listMeta?.index_symbol || index), color: avgCorr == null ? 'var(--text-muted)' : avgCorr > 0.7 ? 'var(--neg)' : 'var(--pos)' },
                 { label: 'Dispersion HV', value: hvStd != null ? hvStd.toFixed(1) : '—', sub: 'écart-type des HV — élevé = favorable', color: hvStd == null ? 'var(--text-muted)' : hvStd > 8 ? 'var(--pos)' : 'var(--warn)' },
-                { label: 'Prime IV', value: avgSprd != null ? (avgSprd > 0 ? 'Positive' : 'Négative') : '—', sub: avgSprd == null ? 'Donnée indisponible' : 'vol ' + (avgSprd > 0 ? 'chère en moyenne' : 'bon marché'), color: avgSprd == null ? 'var(--text-muted)' : avgSprd > 2 ? 'var(--pos)' : avgSprd > 0 ? 'var(--warn)' : 'var(--neg)' },
+                { label: 'Vol à l\'achat', value: avgSprd != null ? (avgSprd <= 0 ? 'Bon marché' : avgSprd <= 3 ? 'Correcte' : 'Chère') : '—', sub: avgSprd == null ? 'Donnée indisponible' : 'IV ' + (avgSprd >= 0 ? '>' : '<') + ' HV en moyenne — jambes longues', color: avgSprd == null ? 'var(--text-muted)' : avgSprd <= 0 ? 'var(--pos)' : avgSprd <= 3 ? 'var(--warn)' : 'var(--neg)' },
               ].map(item => (
                 <div key={item.label} style={{ padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
                   <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--text-muted)', marginBottom: 6 }}>{item.label}</div>
@@ -523,7 +525,8 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
             </thead>
             <tbody>
               {sorted.map((r, i) => {
-                const pos = (r.spread ?? 0) >= 0;
+                const pos = (r.spread ?? 0) >= 0;      // signe affiché
+                const cheap = (r.spread ?? 0) <= 0;    // couleur : bas = bon marché à l'achat
                 return (
                   <tr key={r.ticker} style={{ borderBottom: i < sorted.length - 1 ? '1px solid var(--border-subtle)' : 'none', background: i % 2 === 0 ? 'transparent' : 'var(--bg-elevated)' }}>
                     <td style={{ padding: '10px 16px' }}>
@@ -540,7 +543,7 @@ function ListVolView({ ctx, onCtx, lists, mode }) {
                     <td style={{ padding: '10px 10px', font: 'var(--type-data)', color: 'var(--text-soft)', textAlign: 'right' }}>{r.hv90?.toFixed(1) ?? '—'}%</td>
                     <td style={{ padding: '10px 10px', font: 'var(--type-data)', color: 'var(--warn)', textAlign: 'right' }}>{r.iv_est?.toFixed(1) ?? '—'}%</td>
                     <td style={{ padding: '10px 10px', textAlign: 'right' }}>
-                      <span style={{ font: '700 12px/1 var(--font-mono)', color: pos ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
+                      <span style={{ font: '700 12px/1 var(--font-mono)', color: cheap ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
                         {r.spread != null ? (pos ? '+' : '') + r.spread.toFixed(1) : '—'}
                       </span>
                     </td>
