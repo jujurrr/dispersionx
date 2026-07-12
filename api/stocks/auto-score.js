@@ -13,6 +13,7 @@ import { fetchClosesSmart, cboeIvBundle } from '../_lib/cboe.js';
 import { proxyEtf } from '../_lib/proxy-scale.js';
 import { kvCacheGet, kvCacheSet } from '../_lib/iv-cache.js';
 import { recordIv, ivRankFromHistory } from '../_lib/iv-history.js';
+import { recordSignal } from '../_lib/signal-history.js';
 
 const R = 0.043;
 const RHO_IMPL_EST = 0.65;
@@ -312,6 +313,20 @@ export default async (req) => {
   if (score >= 75)     rec = `Score favorable (${score}/100) : prime de corrélation présente (ρ réal. ${(rho * 100).toFixed(0)}% < ρ impl. ${(rhoImpl * 100).toFixed(0)}%${rhoImplSrc === 'basket_cboe' ? ' réelle' : ''}) et volatilité ${ivRank <= 45 ? "bon marché à l'achat" : 'correcte'} (IV rank ${ivRank}%). Bon candidat pour la jambe longue d'une dispersion.`;
   else if (score >= 55) rec = `Score modéré (${score}/100) : composant utilisable. ρ réalisée ${(rho * 100).toFixed(0)}% ; IV rank ${ivRank}%. Surveiller la liquidité et un éventuel résultat dans la fenêtre.`;
   else                  rec = `Score faible (${score}/100) : ${rho >= 0.7 ? `corrélation élevée avec l'indice (ρ=${(rho * 100).toFixed(0)}%) limite l'apport à la dispersion` : 'profil peu favorable à la dispersion'}${ivRank >= 65 ? " et IV chère à l'achat (IV rank élevé)" : ''}. Envisager un autre composant.`;
+
+  // ── #0 Dataset de validation : log opportuniste du vecteur de signaux (IV
+  //    réelle uniquement, pour la qualité). Idempotent/jour. Non-bloquant. ──
+  if (ivSrc === 'cboe_delayed' || ivSrc === 'marketdata') {
+    recordSignal({
+      symbol: sym, index_symbol: indexSym, duration,
+      score, corr_score: corrScore, ivrank_score: ivRankScore, earnings_score: evScore,
+      idio_score: idioScore, liq_score: liqScore,
+      rho_impl: rhoImpl, rho_real: rho, iv, hv, iv_rank: ivRank,
+      spread_pct: atmSpreadPct, price: Number(price.toFixed(2)),
+      earnings_in_window: earningsInStrategy,
+      rho_impl_source: rhoImplSrc, iv_source: ivSrc, iv_rank_method: ivRankMethod,
+    }).catch(() => {});
+  }
 
   return Response.json({
     scoring: {

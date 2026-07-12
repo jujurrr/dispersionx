@@ -114,6 +114,27 @@ create table if not exists public.iv_history (
 );
 alter table public.iv_history enable row level security;
 -- Aucune policy publique : seule la clé "service_role" (serveur) y accède.
+
+-- Historique des SIGNAUX (dataset de validation/backtest du score) : le vecteur
+-- complet du jour par (symbole, date, indice, échéance). Alimenté par le scoring.
+-- Optionnel : sans cette table, le scoring fonctionne, on ne collecte juste pas
+-- de données de validation (rien ne casse).
+create table if not exists public.signal_history (
+  symbol text not null,
+  d date not null,
+  index_symbol text not null default 'SPX',
+  duration int not null default 30,
+  score numeric,
+  corr_score numeric, ivrank_score numeric, earnings_score numeric,
+  idio_score numeric, liq_score numeric,
+  rho_impl numeric, rho_real numeric, iv numeric, hv numeric, iv_rank numeric,
+  spread_pct numeric, price numeric,
+  earnings_in_window boolean,
+  rho_impl_source text, iv_source text, iv_rank_method text,
+  primary key (symbol, d, index_symbol, duration)
+);
+alter table public.signal_history enable row level security;
+-- Aucune policy publique : seule la clé "service_role" (serveur) y accède.
 ```
 
 **b) Ajouter la clé service dans Vercel** :

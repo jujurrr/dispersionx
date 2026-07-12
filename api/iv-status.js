@@ -5,6 +5,7 @@
 export const config = { runtime: 'edge' };
 
 import { allow, tooMany } from './_lib/ratelimit.js';
+import { signalRowCount } from './_lib/signal-history.js';
 
 const BASE = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
 const KEY  = process.env.SUPABASE_SERVICE_KEY || '';
@@ -55,6 +56,7 @@ export default async (req) => {
       total_symbols: symbols.length,
       ready_count: symbols.filter(s => s.ready).length,
       ready_at_days: READY_DAYS,
+      signal_history_rows: await signalRowCount(),   // #0 dataset de validation du score
       capped: rows.length >= FETCH_CAP,   // au-delà, utiliser ?symbol= pour le détail exact
       symbols,
     });
