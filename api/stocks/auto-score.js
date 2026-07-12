@@ -12,6 +12,7 @@ import { allow, tooMany } from '../_lib/ratelimit.js';
 import { fetchClosesSmart, cboeIvBundle } from '../_lib/cboe.js';
 import { proxyEtf } from '../_lib/proxy-scale.js';
 import { kvCacheGet, kvCacheSet } from '../_lib/iv-cache.js';
+import { recordIv, ivRankFromHistory } from '../_lib/iv-history.js';
 
 const R = 0.043;
 const RHO_IMPL_EST = 0.65;
@@ -44,7 +45,7 @@ function bsAtm(S, sigma, T) {
 
 async function fetchBarsData(sym) {
   try {
-    const valid = await fetchClosesSmart(sym, 70);   // ~3 mois de clôtures
+    const valid = await fetchClosesSmart(sym, 252);   // ~1 AN de clôtures (fenêtre standard IV-rank)
     if (!valid || valid.length < 10) return null;
     const lastClose = valid[valid.length - 1];
     const rets = [];
@@ -56,6 +57,9 @@ async function fetchBarsData(sym) {
       const v = slice.reduce((a, b) => a + (b - m) ** 2, 0) / (slice.length - 1);
       return Number((Math.sqrt(v * 252) * 100).toFixed(1));
     }
+    // HV réalisée sur fenêtres glissantes de 20 j (sur ~1 an) → min/max BRUTS,
+    // SANS multiplicateur artificiel (plus de ×0.85 / ×1.5). Sert de proxy
+    // « range » pour l'IV-rank ESTIMÉ tant qu'on n'a pas d'historique d'IV réel.
     const windowedHVs = [];
     for (let w = 0; w + 20 <= rets.length; w += 5) {
       const slice = rets.slice(w, w + 20);
@@ -63,9 +67,10 @@ async function fetchBarsData(sym) {
       const v = slice.reduce((a, b) => a + (b - m) ** 2, 0) / (slice.length - 1);
       windowedHVs.push(Math.sqrt(v * 252) * 100);
     }
-    const hvMin = windowedHVs.length ? Number((Math.min(...windowedHVs) * 0.85).toFixed(1)) : null;
-    const hvMax = windowedHVs.length ? Number((Math.max(...windowedHVs) * 1.5).toFixed(1)) : null;
-    return { lastClose, hv: hvOf(HV_WINDOW), rets, hvMin, hvMax };
+    const hvMin = windowedHVs.length ? Number(Math.min(...windowedHVs).toFixed(1)) : null;
+    const hvMax = windowedHVs.length ? Number(Math.max(...windowedHVs).toFixed(1)) : null;
+    const hvNow = windowedHVs.length ? Number(windowedHVs[windowedHVs.length - 1].toFixed(1)) : null;  // 20 j le plus récent
+    return { lastClose, hv: hvOf(HV_WINDOW), rets, hvMin, hvMax, hvNow };
   } catch { return null; }
 }
 
@@ -182,9 +187,30 @@ export default async (req) => {
   const rho  = idxData?.rets ? Number((pearson(stockData.rets, idxData.rets) ?? 0.55).toFixed(3)) : 0.55;
   const beta = idxData?.rets ? (computeBeta(stockData.rets, idxData.rets) ?? 1.0) : 1.0;
 
-  const ivMin  = stockData.hvMin ?? Number((hv * 0.6).toFixed(1));
-  const ivMax  = stockData.hvMax ?? Number((hv * 2.0).toFixed(1));
-  const ivRank = ivMax > ivMin ? Math.round(Math.max(0, Math.min(100, (iv - ivMin) / (ivMax - ivMin) * 100))) : 50;
+  // ── IV RANK — deux indicateurs (période de transition) ──────────────────────
+  //  • ESTIMÉ (HV) : rang de la vol RÉALISÉE actuelle (20 j) dans sa plage
+  //    réalisée sur ~1 an, min/max BRUTS. Proxy honnête tant qu'on n'a pas
+  //    d'historique d'IV — clairement affiché comme estimation.
+  //  • VRAI IV RANK (52 sem.) : dès qu'assez de snapshots d'IV réelle sont
+  //    accumulés (Supabase), formule standard broker. Pilote le score quand
+  //    l'historique est suffisant, sinon on retombe sur l'estimé.
+  const hvMinR = stockData.hvMin ?? Number((hv * 0.6).toFixed(1));
+  const hvMaxR = stockData.hvMax ?? Number((hv * 2.0).toFixed(1));
+  const hvNow  = stockData.hvNow ?? hv;
+  const estRank = hvMaxR > hvMinR ? Math.round(Math.max(0, Math.min(100, (hvNow - hvMinR) / (hvMaxR - hvMinR) * 100))) : 50;
+
+  // Enregistre le point d'IV du jour (si IV réelle) puis lit le vrai rang 52 s.
+  // Non-bloquant : Supabase/table indispo → null → on garde l'estimé.
+  if (ivSrc === 'cboe_delayed') recordIv(sym, iv).catch(() => {});
+  const trueRankRes = await ivRankFromHistory(sym, iv).catch(() => null);
+  const TRUE_MIN_FOR_SCORE = 60;   // ≥ ~3 mois de snapshots pour piloter le score
+  const trueOk = !!(trueRankRes && !trueRankRes.insufficient && trueRankRes.n_days >= TRUE_MIN_FOR_SCORE);
+
+  const ivRank        = trueOk ? trueRankRes.rank : estRank;
+  const ivRankMethod  = trueOk ? 'true_iv' : 'hv_estimated';
+  const ivRankMin     = trueOk ? trueRankRes.min : hvMinR;
+  const ivRankMax     = trueOk ? trueRankRes.max : hvMaxR;
+  const ivHistoryDays = trueRankRes ? (trueRankRes.n_days || 0) : 0;
   const ivPct  = Math.round(Math.max(0, Math.min(100, ivRank * 0.95)));
 
   const volPrem = iv - hv;   // information (IV vs HV) — n'entre PLUS dans le score
@@ -231,13 +257,14 @@ export default async (req) => {
   //  liquidité 10 % (spread bid/ask réel du straddle ATM).
   const clampS = v => Math.max(0, Math.min(100, v));
   const corrScore    = Math.round(clampS(50 + (rhoImpl - rho) * 130));  // ρ réal < ρ impl (RÉEL) = favorable
-  // IV-rank décontaminé de la prime d'EARNINGS : si un résultat est dans la
-  // fenêtre, l'IV est gonflée pour une raison ATTENDUE (prime d'earnings, déjà
-  // valorisée par le catalyseur earnings) — pas une richesse structurelle. On
-  // n'autorise donc PAS cette IV gonflée à re-pénaliser le titre (plancher neutre) :
-  // sinon l'earnings serait compté DEUX fois (catalyseur + IV-rank).
-  let ivRankScore    = Math.round(clampS(100 - ivRank));                      // IV basse dans son historique = favorable
-  if (earningsInStrategy) ivRankScore = Math.max(ivRankScore, 50);
+  // IV-rank décontaminé de la prime d'EARNINGS (UNIQUEMENT sur le VRAI rang basé
+  // IV implicite) : un earnings dans la fenêtre gonfle l'IV pour une raison
+  // ATTENDUE (déjà valorisée par le catalyseur earnings) — pas une richesse
+  // structurelle → on ne la re-pénalise pas (plancher neutre), sinon l'earnings
+  // serait compté deux fois. Inutile pour l'estimé HV (la HV réalisée n'intègre
+  // pas la prime d'un earnings À VENIR).
+  let ivRankScore    = Math.round(clampS(100 - ivRank));                      // IV/vol basse dans son historique = favorable
+  if (earningsInStrategy && ivRankMethod === 'true_iv') ivRankScore = Math.max(ivRankScore, 50);
   // Vol IDIOSYNCRATIQUE : combien l'action bouge INDÉPENDAMMENT de l'indice
   // (σ_idio = HV·√(1−ρ²)). C'est le vrai moteur du straddle long — il faut que
   // ça bouge tout seul pour payer. Remplace l'ancien « beta vs 1.1 » (mesure
@@ -311,7 +338,16 @@ export default async (req) => {
       symbol: sym, weight: 10.0, iv, hv, beta,
       last_price: Number(price.toFixed(2)), iv_source: ivSrc,
       earnings_in_strategy: earningsInStrategy, days_to_earnings: daysToEarnings, earnings_date: earningsDate,
-      iv_rank: { iv_rank: ivRank, iv_percentile: ivPct, iv_min: ivMin, iv_max: ivMax, note: ivSrc === 'cboe_delayed' ? 'IV réelle Cboe (différé 15 min) — rang estimé depuis HV historique' : ivSrc === 'marketdata' ? 'IV réelle MarketData — rang estimé depuis HV historique' : 'IV et rang estimés depuis la HV historique' },
+      iv_rank: {
+        iv_rank: ivRank, iv_percentile: ivPct, iv_min: ivRankMin, iv_max: ivRankMax,
+        method: ivRankMethod, history_days: ivHistoryDays,
+        estimated_rank: estRank,
+        true_rank: (trueRankRes && !trueRankRes.insufficient) ? trueRankRes.rank : null,
+        true_days: trueRankRes ? (trueRankRes.n_days || 0) : 0,
+        note: ivRankMethod === 'true_iv'
+          ? `Vrai IV Rank sur ${ivHistoryDays} j d'historique d'IV réelle (52 sem.)`
+          : `IV Rank ESTIMÉ (vol réalisée sur ~1 an) — pas encore d'historique d'IV suffisant${ivHistoryDays ? ` : ${ivHistoryDays} j accumulés` : ''}`,
+      },
       // Grecs du straddle ATM (Black-Scholes) — désormais nourris par l'IV réelle.
       // Strike/échéance réels de la chaîne Cboe quand disponibles.
       greeks: g ? {

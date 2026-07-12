@@ -7,6 +7,7 @@
 export const config = { runtime: 'edge' };
 
 import { cboeIvBundle } from './_lib/cboe.js';
+import { recordIv } from './_lib/iv-history.js';
 
 // Indices + composants courants des listes de démo. Ajuste au besoin.
 const SYMBOLS = [
@@ -33,6 +34,7 @@ export default async (req) => {
   // Concurrence 4 = assez doux pour ne pas déclencher le throttling Cboe.
   const res = await mapLimit(SYMBOLS, 4, async (s) => {
     const b = await cboeIvBundle(s, 30, 12000, true).catch(() => null);   // force le rafraîchissement
+    if (b?.iv != null) recordIv(s, b.iv).catch(() => {});   // snapshot d'IV du jour → historique → vrai IV Rank
     return b?.iv != null;
   });
   const warmed = res.filter(Boolean).length;

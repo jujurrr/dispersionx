@@ -101,6 +101,19 @@ create table if not exists public.iv_cache (
 );
 alter table public.iv_cache enable row level security;
 -- Aucune policy publique : seule la clé "service_role" (serveur) y accède.
+
+-- Historique d'IV ATM (1 ligne/jour/symbole) → VRAI IV Rank 52 semaines façon
+-- broker. Alimenté par le réchauffeur (/api/warm) + le scoring ; lu par
+-- /api/stocks/auto-score. Optionnel : sans cette table, l'app affiche l'IV Rank
+-- ESTIMÉ (vol réalisée sur ~1 an) et rien ne casse.
+create table if not exists public.iv_history (
+  symbol text not null,
+  d date not null,
+  iv numeric not null,
+  primary key (symbol, d)
+);
+alter table public.iv_history enable row level security;
+-- Aucune policy publique : seule la clé "service_role" (serveur) y accède.
 ```
 
 **b) Ajouter la clé service dans Vercel** :

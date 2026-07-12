@@ -162,15 +162,18 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               {stock.iv_rank && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
                   <div>
-                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>IV Rank</div>
+                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>{stock.iv_rank.method === 'true_iv' ? 'IV Rank (réel)' : 'IV Rank (estimé HV)'}</div>
                     <div style={{ font: '700 22px/1 var(--font-mono)', color: 'var(--text)' }}>{stock.iv_rank.iv_rank}%</div>
+                    {stock.iv_rank.method !== 'true_iv' && stock.iv_rank.true_days > 0 && (
+                      <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 2 }}>vrai IV rank en constitution · {stock.iv_rank.true_days} j</div>
+                    )}
                   </div>
                   <div>
                     <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>IV Percentile</div>
                     <div style={{ font: '700 22px/1 var(--font-mono)', color: 'var(--text)' }}>{stock.iv_rank.iv_percentile}%</div>
                   </div>
                   <div>
-                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>Range annuel</div>
+                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>{stock.iv_rank.method === 'true_iv' ? 'Range 52 sem. (IV)' : 'Range 1 an (HV)'}</div>
                     <div style={{ font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{stock.iv_rank.iv_min?.toFixed(1)}% – {stock.iv_rank.iv_max?.toFixed(1)}%</div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>{stock.iv_rank.note}</div>
                   </div>

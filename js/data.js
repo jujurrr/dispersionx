@@ -336,7 +336,7 @@
         symbol: ticker, weight, iv, hv, beta,
         last_price: null, iv_source: 'estimated_from_hv',
         earnings_in_strategy: !!comp?.earnings, days_to_earnings: comp?.earnings ? 6 : 48, earnings_date: '—',
-        iv_rank: { iv_rank: ivRank, iv_percentile: Math.round(ivRank * 0.95), iv_min: ivMin, iv_max: ivMax, note: 'Estimation à partir du profil de volatilité.' },
+        iv_rank: { iv_rank: ivRank, iv_percentile: Math.round(ivRank * 0.95), iv_min: ivMin, iv_max: ivMax, method: 'hv_estimated', history_days: 0, estimated_rank: ivRank, true_rank: null, true_days: 0, note: 'IV Rank ESTIMÉ (vol réalisée) — repli hors-ligne.' },
         greeks: { delta: 0.02, gamma: 0.0008, vega: 148.2, theta: -44.1, strike: 0, expiry: '—' },
       },
       index: { symbol: 'SPX', name: 'S&P 500', iv: 18.2 },
