@@ -293,8 +293,9 @@
     const ivMin = Math.max(5, +(hv * 0.6).toFixed(1)), ivMax = +(hv * 2.0).toFixed(1);
     const ivRank = ivMax > ivMin ? Math.round(cl((iv - ivMin) / (ivMax - ivMin) * 100)) : 50;
     const corrScore    = Math.round(cl(50 + (RHO_IMPL - rho) * 130));   // ρ réal < ρ impl = favorable
-    const ivRankScore  = Math.round(cl(100 - ivRank));                  // IV basse dans son historique = favorable
-    const evScore      = comp?.earnings ? 45 : 85;
+    let ivRankScore    = Math.round(cl(100 - ivRank));                  // IV basse dans son historique = favorable
+    const evScore      = comp?.earnings ? 85 : 60;                      // earnings = catalyseur de décorrélation (favorable)
+    if (comp?.earnings) ivRankScore = Math.max(ivRankScore, 50);        // ne pas re-pénaliser la prime d'earnings (double comptage)
     const idioVol   = hv * Math.sqrt(Math.max(0, 1 - rho * rho));   // vol idiosyncratique (mouvement propre)
     const idioScore = Math.round(cl(idioVol * 2.2));
     const liqScore  = 55;   // pas de chaîne d'options en repli → neutre (spread ATM indisponible)
@@ -319,7 +320,7 @@
         subscores: {
           dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(RHO_IMPL * 100).toFixed(0)}%` },
           vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}%` },
-          event_risk:         { score: evScore,      reason: comp?.earnings ? 'Earnings possibles dans la durée' : "Pas d'earnings dans la durée" },
+          earnings_catalyst:  { score: evScore,      reason: comp?.earnings ? 'Earnings dans la durée — gap idiosyncratique = décorrélation (favorable)' : "Pas de catalyseur d'earnings" },
           idio_vol:           { score: idioScore,    reason: `Vol idio ${idioVol.toFixed(0)}% (HV × √(1−ρ²)) — mouvement propre` },
           liquidity:          { score: liqScore,     reason: 'Liquidité estimée (repli hors-ligne)' },
         },

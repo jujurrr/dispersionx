@@ -190,43 +190,54 @@ export default async (req) => {
   const volPrem = iv - hv;   // information (IV vs HV) — n'entre PLUS dans le score
   // (le score composite est calculé plus bas, une fois evScore connu — modèle pondéré)
 
-  // ── Risque événement (earnings) — RÉEL via Finnhub. Un résultat DANS la fenêtre
-  //    de la stratégie = risque de gap directionnel + IV crush → sous-score plus
-  //    bas. Ce sous-score pèse 15 % du score composite (modèle pondéré). ──
-  let earningsDate = '—', daysToEarnings = null, earningsInStrategy = false, evScore = 72, evReason;
+  // ── Catalyseur EARNINGS — RÉEL via Finnhub. Sur un COMPOSANT, un résultat DANS
+  //    la fenêtre = gap IDIOSYNCRATIQUE = décorrélation vs l'indice = CARBURANT de
+  //    la dispersion (la jambe longue paie sur le mouvement propre, l'indice
+  //    moyenne et bouge peu). On le RÉCOMPENSE au lieu de le pénaliser comme un
+  //    straddle-long naïf. Pèse 15 %. La prime d'IV liée à l'earnings est en plus
+  //    DÉCONTAMINÉE de l'IV-rank (sinon l'earnings serait compté deux fois). ──
+  let earningsDate = '—', daysToEarnings = null, earningsInStrategy = false, evScore = 60, evReason;
   if (earnRes == null) {
-    // Momentanément indisponible (Finnhub throttlé / pas de clé) — score neutre.
-    evScore = 72;
+    // Calendrier indisponible (Finnhub throttlé / pas de clé) — neutre.
+    evScore = 60;
     evReason = process.env.FINNHUB_API_KEY ? 'Calendrier des résultats momentanément indisponible.' : 'Calendrier des résultats non configuré.';
   } else if (earnRes.none) {
-    // Aucun résultat dans les 60 prochains jours — risque événement faible.
-    evScore = 85; earningsDate = 'aucun proche';
-    evReason = `Aucun résultat dans les ${EARN_HORIZON} prochains jours — risque événement faible.`;
+    // Aucun résultat proche — pas de catalyseur de décorrélation par earnings (neutre).
+    evScore = 60; earningsDate = 'aucun proche';
+    evReason = `Aucun résultat dans les ${EARN_HORIZON} prochains jours — pas de catalyseur de décorrélation.`;
   } else {
     const d = earnRes.date;
     earningsDate = d;
     daysToEarnings = Math.max(0, Math.round((Date.parse(d + 'T12:00:00Z') - Date.now()) / 86400000));
     earningsInStrategy = daysToEarnings <= duration;
     if (earningsInStrategy) {
+      // FAVORABLE : gap idiosyncratique dans la fenêtre. Pic quand l'earnings est
+      // assez tôt pour tenir à travers ET capturer le mouvement (frac ≈ 0.4).
       const frac = duration > 0 ? Math.min(1, daysToEarnings / duration) : 0;
-      evScore = Math.round(Math.max(35, Math.min(62, 38 + frac * 24)));
-      evReason = `Résultats le ${d} (dans ${daysToEarnings} j, DANS la fenêtre) — gap directionnel & IV crush possibles.`;
+      evScore = Math.round(Math.max(72, Math.min(92, 92 - Math.abs(frac - 0.4) * 32)));
+      evReason = `Résultats le ${d} (dans ${daysToEarnings} j, DANS la fenêtre) — gap idiosyncratique = décorrélation, favorable à la dispersion.`;
     } else {
-      evScore = 88;
-      evReason = `Prochains résultats le ${d} (dans ${daysToEarnings} j, après l'échéance) — hors fenêtre.`;
+      // Earnings après l'échéance : gap non capté dans la fenêtre → neutre.
+      evScore = 60;
+      evReason = `Prochains résultats le ${d} (dans ${daysToEarnings} j, après l'échéance) — gap non capté dans la fenêtre.`;
     }
   }
 
   // ── Modèle de score : MOYENNE PONDÉRÉE de 5 sous-scores ∈ [0,100] ───────────
-  //  Corrélation 45 % (cœur de la dispersion) · IV-rank 20 % (coût d'achat de la
-  //  vol — BON SENS : IV basse dans son historique = favorable) · Risque event
-  //  15 % · Beta 10 % · Liquidité 10 % (proxy prix → poids volontairement modéré).
-  //  Remplace l'ancien « 50 + (IV−HV) + edgeρ + beta », où le terme IV−HV avait le
-  //  MAUVAIS signe pour la jambe LONGUE : on ACHÈTE la vol des composants, donc la
-  //  payer chère (IV ≫ HV) est un coût, pas un avantage.
+  //  Corrélation 45 % (cœur) · IV-rank 20 % (IV basse dans son historique =
+  //  favorable à l'achat, DÉCONTAMINÉE de la prime d'earnings) · catalyseur
+  //  earnings 15 % (gap idiosyncratique = décorrélation = FAVORABLE à la
+  //  dispersion) · vol idiosyncratique 10 % (HV·√(1−ρ²), le mouvement propre) ·
+  //  liquidité 10 % (spread bid/ask réel du straddle ATM).
   const clampS = v => Math.max(0, Math.min(100, v));
   const corrScore    = Math.round(clampS(50 + (rhoImpl - rho) * 130));  // ρ réal < ρ impl (RÉEL) = favorable
-  const ivRankScore  = Math.round(clampS(100 - ivRank));                      // IV basse dans son historique = favorable
+  // IV-rank décontaminé de la prime d'EARNINGS : si un résultat est dans la
+  // fenêtre, l'IV est gonflée pour une raison ATTENDUE (prime d'earnings, déjà
+  // valorisée par le catalyseur earnings) — pas une richesse structurelle. On
+  // n'autorise donc PAS cette IV gonflée à re-pénaliser le titre (plancher neutre) :
+  // sinon l'earnings serait compté DEUX fois (catalyseur + IV-rank).
+  let ivRankScore    = Math.round(clampS(100 - ivRank));                      // IV basse dans son historique = favorable
+  if (earningsInStrategy) ivRankScore = Math.max(ivRankScore, 50);
   // Vol IDIOSYNCRATIQUE : combien l'action bouge INDÉPENDAMMENT de l'indice
   // (σ_idio = HV·√(1−ρ²)). C'est le vrai moteur du straddle long — il faut que
   // ça bouge tout seul pour payer. Remplace l'ancien « beta vs 1.1 » (mesure
@@ -251,7 +262,7 @@ export default async (req) => {
   const subscores = {
     dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(rhoImpl * 100).toFixed(0)}% (${rho < rhoImpl - 0.1 ? 'sous l\'implicite = favorable' : rho > rhoImpl + 0.05 ? 'au-dessus = défavorable' : 'proche de l\'implicite'})` },
     vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}% (${ivRank <= 40 ? "vol bon marché à l'achat" : ivRank >= 65 ? "vol chère à l'achat" : 'vol moyenne'})` },
-    event_risk:         { score: evScore,      reason: evReason },
+    earnings_catalyst:  { score: evScore,      reason: evReason },
     idio_vol:           { score: idioScore,    reason: `Vol idio ${idioVol.toFixed(0)}% (HV ${hv.toFixed(0)}% × √(1−ρ²)) — mouvement propre, indépendant de l'indice` },
     liquidity:          { score: liqScore,     reason: atmSpreadPct != null ? `Spread straddle ATM ${atmSpreadPct.toFixed(1)}% (réel Cboe) — ${atmSpreadPct <= 3 ? 'liquide' : atmSpreadPct <= 8 ? 'moyen' : 'large / illiquide'}` : 'Options non cotées — liquidité incertaine' },
   };
