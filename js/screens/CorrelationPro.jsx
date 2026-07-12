@@ -204,8 +204,11 @@ function CorrelationBarometer({ index, compact, onNav }) {
 
           {/* Jauge (réplique Correlation Lab) + historique */}
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(230px, 270px) 1fr', gap: 16, alignItems: 'center' }}>
-            <div style={{ display: 'flex', justifyContent: 'center' }}>
-              <PrimeGauge implied={cur.impl} realized={cur.real} size={230} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <PrimeGauge implied={cur.impl_iv != null ? cur.impl_iv : cur.impl} realized={cur.real} size={230} />
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', textAlign: 'center', marginTop: 2 }}>
+                {cur.impl_iv != null ? 'ρ implicite = options Cboe (aujourd’hui)' : 'ρ implicite = estimée (HV)'}
+              </div>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -214,7 +217,7 @@ function CorrelationBarometer({ index, compact, onNav }) {
               </div>
               <BaroChart series={data.series} />
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.5 }}>
-                Une dispersion (long composants / short indice) profite quand la corrélation réalisée finit sous l'implicite. Plus le percentile est haut, plus la corrélation est chère à vendre. <em>Estimé — indicatif.</em>
+                Une dispersion (long composants / short indice) profite quand la corrélation réalisée finit sous l'implicite. Plus le percentile est haut, plus la corrélation est chère à vendre. <em>ρ implicite actuelle = options Cboe ; percentile = rang sur 2 ans (méthode HV, faute d'historique d'options). Estimé — indicatif.</em>
               </div>
             </div>
           </div>

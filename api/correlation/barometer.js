@@ -10,6 +10,8 @@ export const config = { runtime: 'edge' };
 import { allow, tooMany } from '../_lib/ratelimit.js';
 
 import { proxyEtf } from '../_lib/proxy-scale.js';
+import { cboeIvBundle } from '../_lib/cboe.js';
+import { impliedCorrelation, vegaWeights } from '../_lib/dispersion-math.js';
 
 async function fetchSeries(symbol) {
   const yh = symbol.replace(/\.([A-Z])$/, '-$1');
@@ -102,6 +104,33 @@ export default async (req) => {
   const percentile = Math.round((below / implVals.length) * 100);
   const prime = Number(((cur.impl - cur.real) * 100).toFixed(1));
 
+  // ── Valeur ACTUELLE en IV RÉELLE (options Cboe) : ρ_impl option-implied du
+  //    panier (formule CBOE, vega-pondérée), cohérente avec le score/finder/lab.
+  //    Le PERCENTILE, lui, reste calculé sur la série HV 2 ans (pas d'historique
+  //    d'options) — méthode cohérente pour un rang fiable. Fail-safe : null. ──
+  let implIv = null, primeIv = null, implIvSrc = 'hv_proxy';
+  try {
+    const bundles = await Promise.all([
+      cboeIvBundle(index, 30).catch(() => null),
+      ...valid.map(t => cboeIvBundle(t, 30).catch(() => null)),
+    ]);
+    const sI = bundles[0]?.iv > 0 ? bundles[0].iv / 100 : null;
+    const names = valid.map((t, i) => ({
+      ticker: t, w: 1,
+      sigma: bundles[i + 1]?.iv > 0 ? bundles[i + 1].iv / 100 : null,
+      vega: bundles[i + 1]?.greeks?.vega ?? null,
+    })).filter(n => n.sigma > 0);
+    if (sI && names.length >= 2) {
+      const vw = vegaWeights(names);
+      const r = impliedCorrelation(sI, vw || names);
+      if (r != null) {
+        implIv = Number(r.toFixed(3));
+        primeIv = Number(((implIv - cur.real) * 100).toFixed(1));
+        implIvSrc = vw ? 'cboe_vega' : 'cboe_notional';
+      }
+    }
+  } catch {}
+
   // Rang percentile élevé = corrélation implicite historiquement chère → une
   // dispersion (short corrélation) est attractive.
   let verdict, tone;
@@ -111,7 +140,7 @@ export default async (req) => {
 
   return Response.json({
     index, n_tickers: valid.length, skipped,
-    current: { impl: cur.impl, real: cur.real, prime, percentile, verdict, tone },
+    current: { impl: cur.impl, real: cur.real, prime, percentile, verdict, tone, impl_iv: implIv, prime_iv: primeIv, impl_source: implIvSrc },
     series,
     updated: new Date().toISOString(),
     approx: true,

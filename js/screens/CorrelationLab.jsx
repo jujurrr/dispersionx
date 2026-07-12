@@ -407,6 +407,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
   const { MetricCard, Badge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
+  const [implRho, setImplRho] = React.useState(null);   // ρ implicite RÉELLE (CBOE/IV) du panier
 
   // Contexte de module ou paramètre direct de navigation
   const listId    = listIdParam || moduleCtx?.listId || null;
@@ -419,9 +420,15 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
   // Hook de chargement liste — toujours appelé, garde conditionnelle à l'intérieur
   React.useEffect(() => {
     if (!listId) return;
+    setImplRho(null);
     const resolve = DXApi.getList(listId).then(list => {
       const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
       const index   = list?.index_symbol || ctx.listIndex || 'SPX';
+      // ρ implicite RÉELLE (formule CBOE sur IV, vega-pondérée) pour CETTE liste —
+      // cohérente avec le score et l'auto-chercheur. Repli sur C.rho_impl (VIX).
+      const useTk = tickers.length >= 2 ? tickers : DEMO_TICKERS;
+      DXApi.impliedCorrelation(index, useTk, null, 30)
+        .then(r => { if (r && r.rho_impl != null) setImplRho(r.rho_impl); }).catch(() => {});
       if (tickers.length < 2) return DXApi.getCorrelation(null, DEMO_TICKERS, index);
       return DXApi.getCorrelation(listId, tickers, index);
     });
@@ -468,7 +475,9 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
     : <div style={{ padding: 80, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>;
 
   const C = data || {};
-  const rhoImpl = C.rho_impl ?? 0.52;
+  // ρ implicite = vraie corrélation implicite CBOE (IV, vega-pondérée) si dispo,
+  // sinon proxy VIX de l'endpoint matrice, sinon défaut. Cohérent score/finder.
+  const rhoImpl = implRho != null ? implRho : (C.rho_impl ?? 0.52);
   const rhoReal = C.rho_real ?? 0.45;
   // Prime de corrélation = (ρ implicite − ρ̂ réalisée) en points.
   const prime = ((rhoImpl - rhoReal) * 100).toFixed(1);
@@ -509,7 +518,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
       {/* Métriques */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
         <MetricCard label="ρ implicite"         value={rhoImpl.toFixed(2)} accent="var(--accent)"
-          hint="Corrélation « attendue » par le marché, déduite du prix des options de l'indice. Plus elle est élevée, plus le marché parie que les actions bougeront ensemble." />
+          hint="Corrélation « attendue » par le marché, déduite des IV d'options (indice vs composants, formule CBOE, vega-pondérée). Plus elle est élevée, plus le marché parie que les actions bougeront ensemble." />
         <MetricCard label="ρ̂ réalisée"          value={rhoReal.toFixed(2)} accent="var(--info)"
           hint="Corrélation réellement observée entre les composants sur la période récente (mesurée sur les cours). C'est le comportement passé." />
         <MetricCard label="Prime de corrélation" value={(prime >= 0 ? '+' : '') + prime} unit="pts" delta={C.delta || ''} accent="var(--pos)"
