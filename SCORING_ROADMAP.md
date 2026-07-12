@@ -50,7 +50,7 @@ calculer corrélation/idio sur la **tranche 60 j**.
 
 ---
 
-## #2 — Score de confiance A/B/C  ·  ~0,25 j  ·  risque nul
+## #2 — Score de confiance A/B/C  ·  FAIT  ·  risque nul
 
 Les drapeaux existent déjà (`rho_impl_source`, `iv_source`, `iv_rank_method`,
 `cost_source`) → simple agrégation :

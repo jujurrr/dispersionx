@@ -131,6 +131,7 @@ create table if not exists public.signal_history (
   spread_pct numeric, price numeric,
   earnings_in_window boolean,
   rho_impl_source text, iv_source text, iv_rank_method text,
+  confidence_tier text,
   primary key (symbol, d, index_symbol, duration)
 );
 alter table public.signal_history enable row level security;

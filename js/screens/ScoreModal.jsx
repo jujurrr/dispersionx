@@ -98,6 +98,13 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                 <div>
                   <ScoreBadge score={scoring.score} label={scoring.signal} />
                   <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 8 }}>Score de dispersion / 100</div>
+                  {scoring.confidence && (
+                    <div title={(scoring.confidence.details || []).join(' · ')}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, padding: '3px 9px', borderRadius: 999, background: 'var(--bg-card)', border: `1px solid ${scoring.confidence.tier === 'A' ? 'var(--pos)' : scoring.confidence.tier === 'B' ? 'var(--warn)' : 'var(--neg)'}`, cursor: 'help' }}>
+                      <span style={{ font: '700 12px/1 var(--font-mono)', color: scoring.confidence.tier === 'A' ? 'var(--pos-bright)' : scoring.confidence.tier === 'B' ? 'var(--warn)' : 'var(--neg-bright)' }}>Confiance {scoring.confidence.tier}</span>
+                      <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}>{scoring.confidence.label}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 

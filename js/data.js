@@ -305,6 +305,7 @@
     return {
       scoring: {
         score, signal, signal_color,
+        confidence: { tier: 'C', label: 'Repli (estimé)', details: ['IV : estimée', 'ρ implicite : défaut', 'Spread : indisponible', 'IV Rank : estimé (HV)'] },
         weights: W,
         comp_correlation: Number((W.correlation * corrScore).toFixed(1)),
         comp_iv_rank:     Number((W.iv_rank * ivRankScore).toFixed(1)),

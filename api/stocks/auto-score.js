@@ -310,9 +310,28 @@ export default async (req) => {
   else if (score >= 55) rec = `Score modéré (${score}/100) : composant utilisable. ρ réalisée ${(rho * 100).toFixed(0)}% ; IV rank ${ivRank}%. Surveiller la liquidité et un éventuel résultat dans la fenêtre.`;
   else                  rec = `Score faible (${score}/100) : ${rho >= 0.7 ? `corrélation élevée avec l'indice (ρ=${(rho * 100).toFixed(0)}%) limite l'apport à la dispersion` : 'profil peu favorable à la dispersion'}${ivRank >= 65 ? " et IV chère à l'achat (IV rank élevé)" : ''}. Envisager un autre composant.`;
 
+  // ── #2 Score de CONFIANCE (qualité des données) : agrège les drapeaux déjà
+  //    présents. A = tout réel · B = IV réelle mais ≥ 1 proxy · C = IV estimée
+  //    (base fragile). Rend explicite qu'un score sur repli ≠ un score en données
+  //    réelles — au lieu de les présenter avec la même autorité. ──
+  const ivReal     = ivSrc === 'cboe_delayed' || ivSrc === 'marketdata';
+  const implReal   = rhoImplSrc === 'basket_cboe';
+  const spreadReal = atmSpreadPct != null;
+  const confTier   = !ivReal ? 'C' : (implReal && spreadReal ? 'A' : 'B');
+  const confidence = {
+    tier: confTier,
+    label: confTier === 'A' ? 'Données réelles' : confTier === 'B' ? 'Proxy partiel' : 'Repli (estimé)',
+    details: [
+      `IV : ${ivReal ? (ivSrc === 'cboe_delayed' ? 'réelle Cboe' : 'réelle MarketData') : 'estimée (HV×1.15)'}`,
+      `ρ implicite : ${implReal ? 'réelle du panier' : 'défaut 0.65'}`,
+      `Spread options : ${spreadReal ? 'réel (chaîne ATM)' : 'estimé'}`,
+      `IV Rank : ${ivRankMethod === 'true_iv' ? `réel (${ivHistoryDays} j)` : 'estimé (HV 1 an)'}`,
+    ],
+  };
+
   // ── #0 Dataset de validation : log opportuniste du vecteur de signaux (IV
   //    réelle uniquement, pour la qualité). Idempotent/jour. Non-bloquant. ──
-  if (ivSrc === 'cboe_delayed' || ivSrc === 'marketdata') {
+  if (ivReal) {
     recordSignal({
       symbol: sym, index_symbol: indexSym, duration,
       score, corr_score: corrScore, ivrank_score: ivRankScore, earnings_score: evScore,
@@ -321,12 +340,13 @@ export default async (req) => {
       spread_pct: atmSpreadPct, price: Number(price.toFixed(2)),
       earnings_in_window: earningsInStrategy,
       rho_impl_source: rhoImplSrc, iv_source: ivSrc, iv_rank_method: ivRankMethod,
+      confidence_tier: confTier,
     }).catch(() => {});
   }
 
   return Response.json({
     scoring: {
-      score, signal, signal_color,
+      score, signal, signal_color, confidence,
       weights: W,
       // Décomposition pondérée : contribution = poids × sous-score (∑ = score).
       comp_correlation: Number((W.correlation * corrScore).toFixed(1)),
