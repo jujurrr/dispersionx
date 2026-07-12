@@ -181,9 +181,20 @@ export function atmGreeks(spot, options, targetDte) {
   }
   const ref = call || put;
   if (!ref) return null;
-  const ivs = [call, put].filter(p => p && Math.abs(p.strike - ref.strike) < 1e-9).map(p => p.o.iv);
+  const atRef = [call, put].filter(p => p && Math.abs(p.strike - ref.strike) < 1e-9);
+  const ivs = atRef.map(p => p.o.iv);
   const iv = ivs.reduce((a, b) => a + b, 0) / ivs.length;
   const num = (x, d = 4) => (x != null && isFinite(x) ? Number(Number(x).toFixed(d)) : null);
+  // Spread bid/ask du straddle ATM (somme call+put au strike ATM) en % du mid —
+  // proxy DIRECT de la liquidité des OPTIONS, ce qu'on trade réellement. Serré =
+  // liquide. null si non coté (bid/ask absents/incohérents).
+  let bidSum = 0, askSum = 0, quoted = 0;
+  for (const p of atRef) {
+    const b = p.o.bid, a = p.o.ask;
+    if (b > 0 && a > 0 && a >= b) { bidSum += b; askSum += a; quoted++; }
+  }
+  const midSum = (bidSum + askSum) / 2;
+  const spreadPct = (quoted > 0 && midSum > 0) ? Number(((askSum - bidSum) / midSum * 100).toFixed(1)) : null;
   return {
     strike: ref.strike,
     expiry: ref.expIso,
@@ -192,6 +203,7 @@ export function atmGreeks(spot, options, targetDte) {
     delta: num(ref.o.delta), gamma: num(ref.o.gamma, 5),
     vega: num(ref.o.vega), theta: num(ref.o.theta),
     mid: ref.o.bid > 0 && ref.o.ask > 0 ? Number(((ref.o.bid + ref.o.ask) / 2).toFixed(2)) : null,
+    spreadPct,
   };
 }
 

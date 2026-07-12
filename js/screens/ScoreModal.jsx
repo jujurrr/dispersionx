@@ -107,7 +107,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                   { l: 'Corrélation · 45%', v: scoring.subscores?.dispersion_contrib?.score ?? '—', sub: `ρ impl ${(scoring.rho_implicit_final * 100)?.toFixed(0)}% → réal ${(scoring.rho_real_expected * 100)?.toFixed(0)}%`, color: 'var(--pos-bright)' },
                   { l: 'IV Rank · 20%', v: scoring.subscores?.vol_attractive?.score ?? '—', sub: `rank ${stock.iv_rank?.iv_rank ?? '—'}% · bas = favorable`, color: 'var(--accent-hover)' },
                   { l: 'Event · 15%', v: scoring.subscores?.event_risk?.score ?? '—', sub: stock.earnings_in_strategy ? `earnings dans ${stock.days_to_earnings}j` : 'hors fenêtre', color: 'var(--info)' },
-                  { l: 'Beta · 10%', v: scoring.subscores?.beta_fit?.score ?? '—', sub: `β ${stock.beta?.toFixed(2)} · cible ~1.1`, color: 'var(--info)' },
+                  { l: 'Vol idio · 10%', v: scoring.subscores?.idio_vol?.score ?? '—', sub: `mouvement propre · β ${stock.beta?.toFixed(2)}`, color: 'var(--info)' },
                 ].map(m => (
                   <div key={m.l} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 14px' }}>
                     <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 6 }}>{m.l}</div>
@@ -136,7 +136,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                     dispersion_contrib: 'Corrélation (45%)',
                     vol_attractive: 'IV Rank (20%)',
                     event_risk: 'Risque event (15%)',
-                    beta_fit: 'Beta (10%)',
+                    idio_vol: 'Vol idio (10%)',
                     liquidity: 'Liquidité (10%)',
                   }).map(([key, label]) => {
                     const s = scoring.subscores[key];
@@ -208,7 +208,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               {/* Beginner box */}
               {mode === 'Débutant' && (
                 <BeginnerExplanationBox>
-                  <strong>Pourquoi ce score ?</strong> Le score est une <strong>moyenne pondérée</strong> de cinq critères notés sur 100 : la <strong>corrélation</strong> (45 %, le cœur de la dispersion — on cherche des actions qui bougent indépendamment de l'indice), l'<strong>IV rank</strong> (20 % — sur une action on <strong>achète</strong> la volatilité, donc on la préfère <strong>BASSE dans son historique</strong> : la payer moins cher est un meilleur point d'entrée), le <strong>risque d'earnings</strong> (15 %), le <strong>beta</strong> (10 %) et la <strong>liquidité</strong> (10 %). Plus le score est élevé, meilleur est le composant pour la jambe longue de la stratégie.
+                  <strong>Pourquoi ce score ?</strong> Le score est une <strong>moyenne pondérée</strong> de cinq critères notés sur 100 : la <strong>corrélation</strong> (45 %, le cœur de la dispersion — on cherche des actions qui bougent indépendamment de l'indice), l'<strong>IV rank</strong> (20 % — sur une action on <strong>achète</strong> la volatilité, donc on la préfère <strong>BASSE dans son historique</strong> : la payer moins cher est un meilleur point d'entrée), le <strong>risque d'earnings</strong> (15 %), la <strong>vol idiosyncratique</strong> (10 % — combien l'action bouge indépendamment de l'indice, c'est ce qui fait payer le straddle) et la <strong>liquidité</strong> (10 % — spread réel des options) . Plus le score est élevé, meilleur est le composant pour la jambe longue de la stratégie.
                 </BeginnerExplanationBox>
               )}
 

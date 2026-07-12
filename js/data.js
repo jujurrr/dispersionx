@@ -295,10 +295,11 @@
     const corrScore    = Math.round(cl(50 + (RHO_IMPL - rho) * 130));   // ρ réal < ρ impl = favorable
     const ivRankScore  = Math.round(cl(100 - ivRank));                  // IV basse dans son historique = favorable
     const evScore      = comp?.earnings ? 45 : 85;
-    const betaFitScore = Math.round(cl(100 - Math.abs(beta - 1.1) * 60));
-    const liqScore     = 62;   // pas de prix en mode repli → proxy neutre
-    const W = { correlation: 0.45, iv_rank: 0.20, event: 0.15, beta: 0.10, liquidity: 0.10 };
-    const score = Math.round(cl(W.correlation * corrScore + W.iv_rank * ivRankScore + W.event * evScore + W.beta * betaFitScore + W.liquidity * liqScore));
+    const idioVol   = hv * Math.sqrt(Math.max(0, 1 - rho * rho));   // vol idiosyncratique (mouvement propre)
+    const idioScore = Math.round(cl(idioVol * 2.2));
+    const liqScore  = 55;   // pas de chaîne d'options en repli → neutre (spread ATM indisponible)
+    const W = { correlation: 0.45, iv_rank: 0.20, event: 0.15, idio: 0.10, liquidity: 0.10 };
+    const score = Math.round(cl(W.correlation * corrScore + W.iv_rank * ivRankScore + W.event * evScore + W.idio * idioScore + W.liquidity * liqScore));
     const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
     return {
       scoring: {
@@ -307,7 +308,7 @@
         comp_correlation: Number((W.correlation * corrScore).toFixed(1)),
         comp_iv_rank:     Number((W.iv_rank * ivRankScore).toFixed(1)),
         comp_event:       Number((W.event * evScore).toFixed(1)),
-        comp_beta:        Number((W.beta * betaFitScore).toFixed(1)),
+        comp_idio:        Number((W.idio * idioScore).toFixed(1)),
         comp_liquidity:   Number((W.liquidity * liqScore).toFixed(1)),
         iv_rank_used: ivRank,
         comp_a_edge: Number((W.correlation * corrScore).toFixed(1)),
@@ -319,7 +320,7 @@
           dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(RHO_IMPL * 100).toFixed(0)}%` },
           vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}%` },
           event_risk:         { score: evScore,      reason: comp?.earnings ? 'Earnings possibles dans la durée' : "Pas d'earnings dans la durée" },
-          beta_fit:           { score: betaFitScore, reason: `β ${beta.toFixed(2)} vs cible ~1.10` },
+          idio_vol:           { score: idioScore,    reason: `Vol idio ${idioVol.toFixed(0)}% (HV × √(1−ρ²)) — mouvement propre` },
           liquidity:          { score: liqScore,     reason: 'Liquidité estimée (repli hors-ligne)' },
         },
         composite_score: { score, missing: [] },

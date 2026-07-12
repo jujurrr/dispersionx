@@ -227,20 +227,33 @@ export default async (req) => {
   const clampS = v => Math.max(0, Math.min(100, v));
   const corrScore    = Math.round(clampS(50 + (rhoImpl - rho) * 130));  // ρ réal < ρ impl (RÉEL) = favorable
   const ivRankScore  = Math.round(clampS(100 - ivRank));                      // IV basse dans son historique = favorable
-  const betaFitScore = Math.round(clampS(100 - Math.abs(beta - 1.1) * 60));   // β proche de ~1.1 = exposition correcte
-  const liqScore     = Math.round(Math.min(99, 50 + Math.log(Math.max(1, price)) * 5));
-  const W = { correlation: 0.45, iv_rank: 0.20, event: 0.15, beta: 0.10, liquidity: 0.10 };
+  // Vol IDIOSYNCRATIQUE : combien l'action bouge INDÉPENDAMMENT de l'indice
+  // (σ_idio = HV·√(1−ρ²)). C'est le vrai moteur du straddle long — il faut que
+  // ça bouge tout seul pour payer. Remplace l'ancien « beta vs 1.1 » (mesure
+  // directionnelle, cible arbitraire, redondante avec ρ). Orthogonal aux autres :
+  // l'IV-rank dit si c'est CHER à acheter, la vol idio dit si ça BOUGE assez.
+  const idioVol   = hv * Math.sqrt(Math.max(0, 1 - rho * rho));               // points de vol annualisés
+  const idioScore = Math.round(clampS(idioVol * 2.2));                        // ~25 %→55, ~45 %→99
+
+  // Liquidité RÉELLE des options : spread bid/ask du straddle ATM (chaîne Cboe),
+  // en % du mid. Serré = liquide. Le PRIX n'est PAS un proxy de liquidité (les
+  // noms illiquides ont souvent un prix élevé) → on ne l'utilise plus. Repli
+  // neutre-bas si options non cotées (nom peu tradeable).
+  const atmSpreadPct = (ivCboe?.greeks?.spreadPct != null && ivCboe.greeks.spreadPct > 0) ? ivCboe.greeks.spreadPct : null;
+  const liqScore     = atmSpreadPct != null ? Math.round(clampS(100 - atmSpreadPct * 3.5)) : 45;
+
+  const W = { correlation: 0.45, iv_rank: 0.20, event: 0.15, idio: 0.10, liquidity: 0.10 };
   const score = Math.round(clampS(
     W.correlation * corrScore + W.iv_rank * ivRankScore + W.event * evScore +
-    W.beta * betaFitScore + W.liquidity * liqScore));
+    W.idio * idioScore + W.liquidity * liqScore));
   const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
 
   const subscores = {
     dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(rhoImpl * 100).toFixed(0)}% (${rho < rhoImpl - 0.1 ? 'sous l\'implicite = favorable' : rho > rhoImpl + 0.05 ? 'au-dessus = défavorable' : 'proche de l\'implicite'})` },
     vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}% (${ivRank <= 40 ? "vol bon marché à l'achat" : ivRank >= 65 ? "vol chère à l'achat" : 'vol moyenne'})` },
     event_risk:         { score: evScore,      reason: evReason },
-    beta_fit:           { score: betaFitScore, reason: `β ${beta.toFixed(2)} vs cible ~1.10 (exposition indicielle)` },
-    liquidity:          { score: liqScore,     reason: `Prix ${price.toFixed(2)}$ — proxy liquidité` },
+    idio_vol:           { score: idioScore,    reason: `Vol idio ${idioVol.toFixed(0)}% (HV ${hv.toFixed(0)}% × √(1−ρ²)) — mouvement propre, indépendant de l'indice` },
+    liquidity:          { score: liqScore,     reason: atmSpreadPct != null ? `Spread straddle ATM ${atmSpreadPct.toFixed(1)}% (réel Cboe) — ${atmSpreadPct <= 3 ? 'liquide' : atmSpreadPct <= 8 ? 'moyen' : 'large / illiquide'}` : 'Options non cotées — liquidité incertaine' },
   };
 
   // Coût d'exécution ESTIMÉ, spécifique à chaque action (pas de vraie chaîne
@@ -270,7 +283,7 @@ export default async (req) => {
       comp_correlation: Number((W.correlation * corrScore).toFixed(1)),
       comp_iv_rank:     Number((W.iv_rank * ivRankScore).toFixed(1)),
       comp_event:       Number((W.event * evScore).toFixed(1)),
-      comp_beta:        Number((W.beta * betaFitScore).toFixed(1)),
+      comp_idio:        Number((W.idio * idioScore).toFixed(1)),
       comp_liquidity:   Number((W.liquidity * liqScore).toFixed(1)),
       iv_rank_used: ivRank,
       // rétro-compat (anciens noms) — dérivés du nouveau modèle :
@@ -278,7 +291,7 @@ export default async (req) => {
       comp_b_vol_premium: Number(volPrem.toFixed(1)),   // info IV−HV (hors score)
       comp_c_costs: compCcosts,
       rho_implicit_final: rhoImpl, rho_impl_source: rhoImplSrc, corr_risk_premium: Number((rhoImpl - rho).toFixed(3)), rho_real_expected: rho,
-      cost_source: 'estimated', spread_pct_real: Number(spreadPctEst.toFixed(2)), cost_spread: costSpread, cost_earnings: costEarnings,
+      cost_source: atmSpreadPct != null ? 'real_bidask' : 'estimated', spread_pct_real: atmSpreadPct != null ? atmSpreadPct : Number(spreadPctEst.toFixed(2)), cost_spread: costSpread, cost_earnings: costEarnings,
       subscores, composite_score: { score },
       pipeline: { rho_per_window: { 20: Number((rho + 0.02).toFixed(3)), 60: rho, 120: Number((rho - 0.01).toFixed(3)) }, weights_normalized: { 20: 0.25, 60: 0.50, 120: 0.25 }, blend: rho, regime_factor: 1.0, rho_hat_final: rho },
       recommendation: rec,
