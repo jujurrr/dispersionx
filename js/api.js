@@ -129,23 +129,54 @@
   const _scoreInflight = {};  // key -> promesse en cours (dédoublonnage)
   function _scoreKey(i, s, d, x) { return [i, s, d, x ? 1 : 0].join('|'); }
 
-  async function autoScore(index_symbol, stock_symbol, duration_days, use_ex_action = false) {
+  // rho_impl (optionnel) : corrélation implicite RÉELLE du panier, calculée une
+  // fois par indice/durée et passée à chaque score → ancre du terme de
+  // corrélation à la place de la constante 0.65. La clé de cache n'inclut PAS
+  // rho_impl : il découle de (indice, durée) déjà dans la clé, donc cohérent.
+  async function autoScore(index_symbol, stock_symbol, duration_days, use_ex_action = false, rho_impl = null) {
     const key = _scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action);
     if (_scoreCache[key]) return _scoreCache[key];
     if (_scoreInflight[key]) return _scoreInflight[key];
     const p = (async () => {
       try {
-        return await _postRetry('/stocks/auto-score', { index_symbol, stock_symbol, duration_days, use_ex_action });
+        const b = { index_symbol, stock_symbol, duration_days, use_ex_action };
+        if (rho_impl > 0 && rho_impl < 1) b.rho_impl = rho_impl;
+        return await _postRetry('/stocks/auto-score', b);
       } catch {
         // Repli HONNÊTE : score de démo marqué comme tel, pour ne jamais faire
         // passer un chiffre inventé pour un vrai calcul. L'UI affiche un badge.
-        const m = window.DXMock.autoScore(stock_symbol);
+        const m = window.DXMock.autoScore(stock_symbol, rho_impl);
         if (m && m.scoring) m.scoring.is_fallback = true;
         return m;
       }
     })().then(r => { _scoreCache[key] = r; delete _scoreInflight[key]; return r; },
             e => { delete _scoreInflight[key]; throw e; });
     _scoreInflight[key] = p;
+    return p;
+  }
+
+  // Corrélation implicite d'un panier (formule CBOE, IV indice vs IV composants).
+  // Mémoïsée par (indice, durée, set de tickers). Retourne l'objet endpoint
+  // ({ rho_impl, rho_impl_vega, coverage, per_name, … }) ou null (→ score
+  // retombe sur 0.65). Non-bloquant : jamais d'exception propagée.
+  const _implCache = {};
+  const _implInflight = {};
+  function _implKey(index, tickers, dur) { return [index, dur, (tickers || []).slice().sort().join(',')].join('|'); }
+  async function impliedCorrelation(index, tickers, weights, duration) {
+    if (!Array.isArray(tickers) || tickers.length < 2) return null;
+    const key = _implKey(index, tickers, duration);
+    if (_implCache[key] !== undefined) return _implCache[key];
+    if (_implInflight[key]) return _implInflight[key];
+    const p = (async () => {
+      try {
+        const r = await _post('/correlation/implied', { index, tickers, weights, duration });
+        if (r) return r;
+      } catch {}
+      // Repli hors-ligne/local : corrélation implicite mock (même formule).
+      return (window.DXMock && window.DXMock.impliedCorrelation) ? window.DXMock.impliedCorrelation(index, tickers, weights, duration) : null;
+    })().then(r => { _implCache[key] = r; delete _implInflight[key]; return r; },
+            e => { delete _implInflight[key]; return null; });
+    _implInflight[key] = p;
     return p;
   }
   // Lecture synchrone du score déjà calculé (null si pas encore en cache).
@@ -702,7 +733,7 @@
     checkHealth, isConnected,
     getIndices, getIndex, getSnapshot, getComponents, getSources,
     batchQuotes, getMarketCaps,
-    autoScore, getCachedScore, clearScoreCache, getOptionAtm,
+    autoScore, getCachedScore, clearScoreCache, getOptionAtm, impliedCorrelation,
     getLists, createList, getList, updateList, deleteList, setListGroup,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,

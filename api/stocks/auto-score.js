@@ -150,6 +150,14 @@ export default async (req) => {
   const duration = Math.max(7, Math.min(Number(body.duration_days) || 30, 120));
   if (!sym) return Response.json({ error: 'no_symbol' }, { status: 400 });
 
+  // Ancre de corrélation implicite : ρ_impl RÉEL du panier fourni par l'appelant
+  // (calculé par /api/correlation/implied depuis l'IV de l'indice vs les IV des
+  // composants — le vrai edge de dispersion). À défaut, repli sur la constante
+  // RHO_IMPL_EST (fail-safe non-cassant : ancienne behavior conservée).
+  const rhoImplIn  = Number(body.rho_impl);
+  const rhoImpl    = rhoImplIn > 0 && rhoImplIn < 1 ? rhoImplIn : RHO_IMPL_EST;
+  const rhoImplSrc = rhoImplIn > 0 && rhoImplIn < 1 ? 'basket_cboe' : 'default';
+
   const idxEtf = proxyEtf(indexSym);
   const mdTok  = process.env.MARKETDATA_API_TOKEN;
   const T = duration / 365;
@@ -217,7 +225,7 @@ export default async (req) => {
   //  MAUVAIS signe pour la jambe LONGUE : on ACHÈTE la vol des composants, donc la
   //  payer chère (IV ≫ HV) est un coût, pas un avantage.
   const clampS = v => Math.max(0, Math.min(100, v));
-  const corrScore    = Math.round(clampS(50 + (RHO_IMPL_EST - rho) * 130));  // ρ réal < ρ impl = favorable
+  const corrScore    = Math.round(clampS(50 + (rhoImpl - rho) * 130));  // ρ réal < ρ impl (RÉEL) = favorable
   const ivRankScore  = Math.round(clampS(100 - ivRank));                      // IV basse dans son historique = favorable
   const betaFitScore = Math.round(clampS(100 - Math.abs(beta - 1.1) * 60));   // β proche de ~1.1 = exposition correcte
   const liqScore     = Math.round(Math.min(99, 50 + Math.log(Math.max(1, price)) * 5));
@@ -228,7 +236,7 @@ export default async (req) => {
   const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
 
   const subscores = {
-    dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(RHO_IMPL_EST * 100).toFixed(0)}% (${rho < 0.5 ? 'faible = favorable' : rho < 0.7 ? 'modérée' : 'élevée = défavorable'})` },
+    dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(rhoImpl * 100).toFixed(0)}% (${rho < rhoImpl - 0.1 ? 'sous l\'implicite = favorable' : rho > rhoImpl + 0.05 ? 'au-dessus = défavorable' : 'proche de l\'implicite'})` },
     vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}% (${ivRank <= 40 ? "vol bon marché à l'achat" : ivRank >= 65 ? "vol chère à l'achat" : 'vol moyenne'})` },
     event_risk:         { score: evScore,      reason: evReason },
     beta_fit:           { score: betaFitScore, reason: `β ${beta.toFixed(2)} vs cible ~1.10 (exposition indicielle)` },
@@ -250,7 +258,7 @@ export default async (req) => {
   const expiryDate = new Date(Date.now() + duration * 86400000).toISOString().slice(0, 10);
 
   let rec;
-  if (score >= 75)     rec = `Score favorable (${score}/100) : prime de corrélation présente (ρ réal. ${(rho * 100).toFixed(0)}% < ρ impl. ${(RHO_IMPL_EST * 100).toFixed(0)}%) et volatilité ${ivRank <= 45 ? "bon marché à l'achat" : 'correcte'} (IV rank ${ivRank}%). Bon candidat pour la jambe longue d'une dispersion.`;
+  if (score >= 75)     rec = `Score favorable (${score}/100) : prime de corrélation présente (ρ réal. ${(rho * 100).toFixed(0)}% < ρ impl. ${(rhoImpl * 100).toFixed(0)}%${rhoImplSrc === 'basket_cboe' ? ' réelle' : ''}) et volatilité ${ivRank <= 45 ? "bon marché à l'achat" : 'correcte'} (IV rank ${ivRank}%). Bon candidat pour la jambe longue d'une dispersion.`;
   else if (score >= 55) rec = `Score modéré (${score}/100) : composant utilisable. ρ réalisée ${(rho * 100).toFixed(0)}% ; IV rank ${ivRank}%. Surveiller la liquidité et un éventuel résultat dans la fenêtre.`;
   else                  rec = `Score faible (${score}/100) : ${rho >= 0.7 ? `corrélation élevée avec l'indice (ρ=${(rho * 100).toFixed(0)}%) limite l'apport à la dispersion` : 'profil peu favorable à la dispersion'}${ivRank >= 65 ? " et IV chère à l'achat (IV rank élevé)" : ''}. Envisager un autre composant.`;
 
@@ -269,7 +277,7 @@ export default async (req) => {
       comp_a_edge: Number((W.correlation * corrScore).toFixed(1)),
       comp_b_vol_premium: Number(volPrem.toFixed(1)),   // info IV−HV (hors score)
       comp_c_costs: compCcosts,
-      rho_implicit_final: RHO_IMPL_EST, rho_real_expected: rho,
+      rho_implicit_final: rhoImpl, rho_impl_source: rhoImplSrc, corr_risk_premium: Number((rhoImpl - rho).toFixed(3)), rho_real_expected: rho,
       cost_source: 'estimated', spread_pct_real: Number(spreadPctEst.toFixed(2)), cost_spread: costSpread, cost_earnings: costEarnings,
       subscores, composite_score: { score },
       pipeline: { rho_per_window: { 20: Number((rho + 0.02).toFixed(3)), 60: rho, 120: Number((rho - 0.01).toFixed(3)) }, weights_normalized: { 20: 0.25, 60: 0.50, 120: 0.25 }, blend: rho, regime_factor: 1.0, rho_hat_final: rho },

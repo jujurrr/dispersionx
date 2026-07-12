@@ -279,14 +279,15 @@
     l.updated_at = new Date().toISOString().slice(0, 10);
   }
 
-  const MOCK_SCORE = (ticker) => {
+  const MOCK_SCORE = (ticker, rhoImplIn) => {
     // Miroir HORS-LIGNE du modèle serveur (api/stocks/auto-score.js) : même moyenne
     // pondérée de 5 sous-scores 0-100 (corrélation 45 % · IV-rank 20 % · event 15 %
     // · beta 10 % · liquidité 10 %), pour que le repli affiche la MÊME logique que
     // l'API. Repli marqué is_fallback en amont (api.js).
     const comp = compOf(ticker);
     const iv = comp?.iv ?? 30, hv = comp?.hv ?? 27, beta = comp?.beta ?? 1.1, weight = comp?.weight ?? 2.0, rho = comp?.rho ?? 0.5;
-    const RHO_IMPL = 0.65;
+    // Ancre : ρ_impl RÉEL du panier si fourni, sinon 0.65 (fail-safe, comme le serveur).
+    const RHO_IMPL = (rhoImplIn > 0 && rhoImplIn < 1) ? rhoImplIn : 0.65;
     const cl = v => Math.max(0, Math.min(100, v));
     // IV rank estimé depuis un range HV (miroir du repli serveur : ivMin=hv*0.6, ivMax=hv*2).
     const ivMin = Math.max(5, +(hv * 0.6).toFixed(1)), ivMax = +(hv * 2.0).toFixed(1);
@@ -356,13 +357,34 @@
     return { ticker, price: price.toFixed(2), day: day.toFixed(2), week: week.toFixed(2) };
   }
 
+  // Corrélation implicite mock (formule CBOE) depuis l'IV de l'indice (SNAPSHOTS)
+  // et les IV des composants connus — pour que le repli hors-ligne/local montre
+  // la même logique que l'endpoint /api/correlation/implied. null si non calculable.
+  function mockImpliedCorrelation(index, tickers, weights) {
+    const snap = SNAPSHOTS[index] || SNAPSHOTS.SPX;
+    const sigmaI = (snap?.iv_est ?? 18) / 100;
+    const names = (tickers || []).map((t, i) => {
+      const c = compOf(t); const iv = c?.iv;
+      return iv > 0 ? { w: (weights && weights[i] > 0) ? weights[i] : 1, sigma: iv / 100 } : null;
+    }).filter(Boolean);
+    if (names.length < 2 || !(sigmaI > 0)) return null;
+    const wsum = names.reduce((s, n) => s + n.w, 0) || 1;
+    let A = 0, B = 0;
+    for (const n of names) { const w = n.w / wsum; A += w * n.sigma; B += w * w * n.sigma * n.sigma; }
+    const denom = A * A - B;
+    if (denom <= 1e-9) return null;
+    const rho = Math.max(0.05, Math.min(0.95, (sigmaI * sigmaI - B) / denom));
+    return { rho_impl: rho, rho_impl_notional: rho, rho_impl_vega: null, method: 'mock', coverage: 1, n_covered: names.length, sigma_index: Number((sigmaI * 100).toFixed(1)) };
+  }
+
   window.DXMock = {
     indices: INDICES,
     sources: { yfinance: true, fmp: true, ibkr: false },
     getSnapshot: (s) => SNAPSHOTS[s] || SNAPSHOTS.SPX,
     getComponents: (s) => (COMPONENTS[s] || COMPONENTS.SPX).map(c => ({ ...c })),
     batchQuotes: (symbols) => symbols.map(fakeQuote),
-    autoScore: (ticker) => ({ ...MOCK_SCORE(ticker), stock: { ...MOCK_SCORE(ticker).stock, symbol: ticker } }),
+    autoScore: (ticker, rhoImpl) => ({ ...MOCK_SCORE(ticker, rhoImpl), stock: { ...MOCK_SCORE(ticker, rhoImpl).stock, symbol: ticker } }),
+    impliedCorrelation: mockImpliedCorrelation,
     get lists() { return LISTS; },
     scoreFor,
     synthVol,

@@ -118,11 +118,32 @@
     if (!tickers.length) { d.scoring[dur] = false; emitIndex(symbol); return; }
 
     d.scoring[dur] = true;
+
+    // Corrélation implicite RÉELLE du panier (formule CBOE, IV indice vs IV
+    // composants) — calculée UNE fois sur tous les composants + poids, puis
+    // passée comme ANCRE à chaque score (remplace la constante 0.65). Ce calcul
+    // réchauffe aussi le cache IV du panier. Non-bloquant : garde-fou timeout +
+    // repli null → les scores retombent proprement sur 0.65.
+    if (!d.rhoImpl) { d.rhoImpl = {}; d.rhoImplMeta = {}; }
+    if (d.rhoImpl[dur] === undefined) {
+      d.rhoImpl[dur] = null;
+      try {
+        const allT = d.components.map(c => c.ticker).filter(Boolean);
+        const allW = d.components.map(c => (c.weight != null ? c.weight : null));
+        const impl = await Promise.race([
+          DXApi.impliedCorrelation(symbol, allT, allW, dur),
+          new Promise(res => setTimeout(() => res(null), 12000)),
+        ]);
+        if (impl && impl.rho_impl != null) { d.rhoImpl[dur] = impl.rho_impl; d.rhoImplMeta[dur] = impl; }
+      } catch {}
+    }
+    const rhoImpl = d.rhoImpl[dur];
+
     queue(tickers.length);
     for (let i = 0; i < tickers.length; i += SCORE_BATCH) {
       await Promise.allSettled(tickers.slice(i, i + SCORE_BATCH).map(async t => {
         try {
-          const r = await DXApi.autoScore(symbol, t, dur);
+          const r = await DXApi.autoScore(symbol, t, dur, false, rhoImpl);
           const sc = r?.scoring?.score;
           if (sc != null) scores[t] = sc;
         } catch {}

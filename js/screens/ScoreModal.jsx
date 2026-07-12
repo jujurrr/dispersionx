@@ -104,7 +104,7 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               {/* Components A/B/C */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 {[
-                  { l: 'Corrélation · 45%', v: scoring.subscores?.dispersion_contrib?.score ?? '—', sub: `ρ ${(scoring.rho_implicit_final * 100)?.toFixed(0)}%→${(scoring.rho_real_expected * 100)?.toFixed(0)}%`, color: 'var(--pos-bright)' },
+                  { l: 'Corrélation · 45%', v: scoring.subscores?.dispersion_contrib?.score ?? '—', sub: `ρ impl ${(scoring.rho_implicit_final * 100)?.toFixed(0)}% → réal ${(scoring.rho_real_expected * 100)?.toFixed(0)}%`, color: 'var(--pos-bright)' },
                   { l: 'IV Rank · 20%', v: scoring.subscores?.vol_attractive?.score ?? '—', sub: `rank ${stock.iv_rank?.iv_rank ?? '—'}% · bas = favorable`, color: 'var(--accent-hover)' },
                   { l: 'Event · 15%', v: scoring.subscores?.event_risk?.score ?? '—', sub: stock.earnings_in_strategy ? `earnings dans ${stock.days_to_earnings}j` : 'hors fenêtre', color: 'var(--info)' },
                   { l: 'Beta · 10%', v: scoring.subscores?.beta_fit?.score ?? '—', sub: `β ${stock.beta?.toFixed(2)} · cible ~1.1`, color: 'var(--info)' },
@@ -116,6 +116,17 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                   </div>
                 ))}
               </div>
+
+              {/* Prime de corrélation (signal desk) — ρ implicite RÉELLE du panier vs ρ réalisée */}
+              {scoring.corr_risk_premium != null && (
+                <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', textAlign: 'center', marginTop: -8 }}>
+                  Prime de corrélation :{' '}
+                  <strong style={{ color: scoring.corr_risk_premium > 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
+                    {scoring.corr_risk_premium > 0 ? '+' : ''}{(scoring.corr_risk_premium * 100).toFixed(0)} pts
+                  </strong>{' '}
+                  (ρ implicite {scoring.rho_impl_source === 'basket_cboe' ? 'réelle Cboe' : 'défaut'} {(scoring.rho_implicit_final * 100).toFixed(0)}% − ρ réalisée {(scoring.rho_real_expected * 100).toFixed(0)}%)
+                </div>
+              )}
 
               {/* Sub-scores */}
               <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', padding: '14px 16px', border: '1px solid var(--border)' }}>
