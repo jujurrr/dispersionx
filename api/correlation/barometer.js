@@ -11,7 +11,7 @@ import { allow, tooMany } from '../_lib/ratelimit.js';
 
 import { proxyEtf } from '../_lib/proxy-scale.js';
 import { cboeIvBundle } from '../_lib/cboe.js';
-import { impliedCorrelation, vegaWeights } from '../_lib/dispersion-math.js';
+import { impliedCorrelation, vegaWeights, pearson } from '../_lib/dispersion-math.js';
 
 async function fetchSeries(symbol) {
   const yh = symbol.replace(/\.([A-Z])$/, '-$1');
@@ -31,25 +31,15 @@ async function fetchSeries(symbol) {
   } catch { return null; }
 }
 function logRets(s) { const r = []; for (let i = 1; i < s.length; i++) r.push(Math.log(s[i].c / s[i - 1].c)); return r; }
-function pearson(x, y) {
-  const n = Math.min(x.length, y.length);
-  if (n < 4) return null;
-  const xi = x.slice(-n), yi = y.slice(-n);
-  const mx = xi.reduce((a, b) => a + b, 0) / n, my = yi.reduce((a, b) => a + b, 0) / n;
-  let cov = 0, vx = 0, vy = 0;
-  for (let i = 0; i < n; i++) { cov += (xi[i] - mx) * (yi[i] - my); vx += (xi[i] - mx) ** 2; vy += (yi[i] - my) ** 2; }
-  return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
-}
+// pearson : corrélation réalisée canonique (importée de dispersion-math.js).
 function hvAnnual(rets) {
   if (!rets || rets.length < 3) return null;
   const m = rets.reduce((a, b) => a + b, 0) / rets.length;
   const v = rets.reduce((a, b) => a + (b - m) ** 2, 0) / (rets.length - 1);
   return Math.sqrt(v * 252);
 }
-function rhoImpl(sigIdx, avgHv) {
-  if (!sigIdx || !avgHv || avgHv <= 0) return null;
-  return Math.min(0.95, Math.max(0.05, (sigIdx / (avgHv * 1.08)) ** 2));
-}
+// ρ implicite : formule CBOE canonique (impliedCorrelation) sur les HV des
+// composants — remplace l'ancien raccourci (σ_indice/σ̄_comp)².
 
 export default async (req) => {
   if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
@@ -84,8 +74,8 @@ export default async (req) => {
   for (let t = LB; t <= minLen; t += STEP) {
     const sigIdx = (hvAnnual(idx.slice(t - LB, t)) || 0) * 1.30;
     const hvs = comp.map(a => hvAnnual(a.slice(t - LB, t))).filter(v => v != null);
-    const avgHv = hvs.length ? hvs.reduce((a, b) => a + b, 0) / hvs.length : null;
-    const impl = rhoImpl(sigIdx, avgHv);
+    // σ composants ≈ HV × 1.08 (proxy implicite, cohérent avec σ_indice = HV×1.30).
+    const impl = impliedCorrelation(sigIdx, hvs.map(s => ({ w: 1, sigma: s * 1.08 })));   // formule CBOE canonique
     let rsum = 0, rcnt = 0;
     for (let i = 0; i < comp.length; i++) for (let j = i + 1; j < comp.length; j++) {
       const c = pearson(comp[i].slice(t - LB, t), comp[j].slice(t - LB, t));

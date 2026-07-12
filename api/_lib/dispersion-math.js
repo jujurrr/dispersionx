@@ -47,6 +47,21 @@ export function vegaWeights(names) {
   return raw.map(n => ({ ticker: n.ticker, sigma: n.sigma, vega: n.vega, w: n._vw / s }));
 }
 
+// ── Corrélation RÉALISÉE canonique (Pearson) ────────────────────────────────
+// Une seule implémentation partagée (score, matrice, baromètre) au lieu de
+// copies dupliquées. x, y = séries de rendements alignées. Retour ∈ [−1,1],
+// null si trop court (< 5 points). L'appelant choisit la FENÊTRE (via slice).
+export function pearson(x, y) {
+  const n = Math.min((x && x.length) || 0, (y && y.length) || 0);
+  if (n < 5) return null;
+  const xi = x.slice(-n), yi = y.slice(-n);
+  const mx = xi.reduce((a, b) => a + b, 0) / n;
+  const my = yi.reduce((a, b) => a + b, 0) / n;
+  let cov = 0, vx = 0, vy = 0;
+  for (let i = 0; i < n; i++) { cov += (xi[i] - mx) * (yi[i] - my); vx += (xi[i] - mx) ** 2; vy += (yi[i] - my) ** 2; }
+  return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
+}
+
 // Part de vega de chaque nom dans le panier (∝ poids marché × vega), normalisée.
 // Sert à pondérer la CONTRIBUTION de dispersion d'un composant (UI / finder).
 export function vegaShares(names) {

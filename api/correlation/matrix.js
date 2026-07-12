@@ -6,6 +6,7 @@ export const config = { runtime: 'edge' };
 import { allow, tooMany } from '../_lib/ratelimit.js';
 
 import { proxyEtf } from '../_lib/proxy-scale.js';
+import { impliedCorrelation, pearson } from '../_lib/dispersion-math.js';
 
 async function fetchCloses(symbol, days) {
   // Actions à classes US : Yahoo veut un tiret (BRK.B → BRK-B). Les suffixes
@@ -27,20 +28,7 @@ function logReturns(closes) {
   return r;
 }
 
-function pearson(x, y) {
-  const n = Math.min(x.length, y.length);
-  if (n < 5) return null;
-  const xi = x.slice(-n), yi = y.slice(-n);
-  const mx = xi.reduce((a, b) => a + b, 0) / n;
-  const my = yi.reduce((a, b) => a + b, 0) / n;
-  let cov = 0, vx = 0, vy = 0;
-  for (let i = 0; i < n; i++) {
-    cov += (xi[i] - mx) * (yi[i] - my);
-    vx  += (xi[i] - mx) ** 2;
-    vy  += (yi[i] - my) ** 2;
-  }
-  return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
-}
+// pearson : corrélation réalisée canonique (importée de dispersion-math.js).
 
 // Volatilité historique annualisée (décimal, ex: 0.25 = 25%)
 function computeHV(rets, window = 30) {
@@ -51,15 +39,9 @@ function computeHV(rets, window = 30) {
   return Math.sqrt(v * 252);
 }
 
-// ρ_impl = (σ_indice_impl / σ̄_composants_impl)²
-// Formule fondamentale : corrélation implicite = ratio des volatilités au carré.
-// σ_indice_impl = VIX/100 (données options réelles) ou HV_indice × 1.30 (proxy)
-// σ̄_comp_impl  = moyenne HV composants × 1.08
-function computeRhoImpl(sigmaIdxImpl, avgHvComp) {
-  if (!sigmaIdxImpl || !avgHvComp || avgHvComp <= 0) return null;
-  const sigmaCompImpl = avgHvComp * 1.08;
-  return Math.min(0.95, Math.max(0.05, (sigmaIdxImpl / sigmaCompImpl) ** 2));
-}
+// ρ implicite : formule CBOE canonique (impliedCorrelation de dispersion-math.js)
+// à partir de σ_indice (VIX ou HV×1.30) et des HV de chaque composant. Remplace
+// l'ancien raccourci (σ_indice/σ̄_comp)² qui ignorait le nombre d'actions.
 
 export default async (req) => {
   if (!allow(req, { limit: 120, windowMs: 10000 })) return tooMany();
@@ -117,9 +99,8 @@ export default async (req) => {
   const sigmaIdxImpl = lastVix ?? (hvIdx ? hvIdx * 1.30 : null);
 
   const hvComps = valid.map(t => computeHV(rets[t])).filter(v => v != null);
-  const avgHvComp = hvComps.length > 0 ? hvComps.reduce((a, b) => a + b, 0) / hvComps.length : null;
-
-  const rhoImpl = computeRhoImpl(sigmaIdxImpl, avgHvComp)
+  // σ composants ≈ HV × 1.08 (proxy implicite, cohérent avec σ_indice implicite).
+  const rhoImpl = impliedCorrelation(sigmaIdxImpl, hvComps.map(s => ({ w: 1, sigma: s * 1.08 })))
     ?? Math.min(0.92, rhoReal + 0.08);
 
   // ── Historique rolling : 8 fenêtres de ~12j ──────────────────────
@@ -147,9 +128,7 @@ export default async (req) => {
     const wSigmaIdx = wVixAvg ?? (wHvIdx ? wHvIdx * 1.30 : null);
 
     const wHvComps   = valid.map(t => computeHV(rets[t].slice(start, end), end - start)).filter(v => v != null);
-    const wAvgHvComp = wHvComps.length > 0 ? wHvComps.reduce((a, b) => a + b, 0) / wHvComps.length : null;
-
-    const wRhoImpl = computeRhoImpl(wSigmaIdx, wAvgHvComp) ?? Number(Math.min(0.92, wRho + 0.06).toFixed(3));
+    const wRhoImpl = Number((impliedCorrelation(wSigmaIdx, wHvComps.map(s => ({ w: 1, sigma: s * 1.08 }))) ?? Math.min(0.92, wRho + 0.06)).toFixed(3));
 
     return { d: label, real: Number(wRho.toFixed(3)), impl: Number(wRhoImpl.toFixed(3)) };
   });

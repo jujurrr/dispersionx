@@ -14,14 +14,17 @@ import { proxyEtf } from '../_lib/proxy-scale.js';
 import { kvCacheGet, kvCacheSet } from '../_lib/iv-cache.js';
 import { recordIv, ivRankFromHistory } from '../_lib/iv-history.js';
 import { recordSignal } from '../_lib/signal-history.js';
+import { pearson } from '../_lib/dispersion-math.js';
 
 const R = 0.043;
 const RHO_IMPL_EST = 0.65;
-// Fenêtre de HV réalisée (jours de bourse) pour la prime de vol du score.
-// 45 j ≈ convention des brokers : assez long pour qu'un earnings isolé ne fasse
-// pas exploser la HV, assez court pour rester réactif. (30 j y était trop
-// sensible : ex. ZS 128 % vs ~110 % broker.)
-const HV_WINDOW = 45;
+// ── Fenêtres SÉPARÉES par horizon (feuille de route #1) ──────────────────────
+// La corrélation réalisée et la HV « idiosyncratique » sont des signaux du
+// TRADE (échéance ~15-60 j) → fenêtre courte (~60 j). L'IV-rank suit la
+// convention broker → 1 an (géré séparément via windowedHVs sur 252 clôtures).
+// Avant : la corrélation utilisait par accident ~1 an (couplée à l'IV-rank).
+const CORR_WINDOW = 60;   // corrélation réalisée & beta au score : horizon du trade
+const HV_WINDOW   = 60;   // HV « courante » (vol idio, affichage) : même horizon
 
 function normPDF(x) { return Math.exp(-0.5 * x * x) / Math.sqrt(2 * Math.PI); }
 function normCDF(x) {
@@ -75,16 +78,7 @@ async function fetchBarsData(sym) {
   } catch { return null; }
 }
 
-function pearson(x, y) {
-  const n = Math.min(x.length, y.length);
-  if (n < 5) return null;
-  const xi = x.slice(-n), yi = y.slice(-n);
-  const mx = xi.reduce((a, b) => a + b, 0) / n;
-  const my = yi.reduce((a, b) => a + b, 0) / n;
-  let cov = 0, vx = 0, vy = 0;
-  for (let i = 0; i < n; i++) { cov += (xi[i] - mx) * (yi[i] - my); vx += (xi[i] - mx) ** 2; vy += (yi[i] - my) ** 2; }
-  return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
-}
+// pearson : corrélation réalisée canonique (importée de dispersion-math.js).
 
 function computeBeta(stockRets, idxRets) {
   const n = Math.min(stockRets.length, idxRets.length);
@@ -185,7 +179,9 @@ export default async (req) => {
   const iv    = ivCboe?.iv ?? ivMD ?? Number((hv * 1.15).toFixed(1));
   const ivSrc = ivCboe?.iv != null ? 'cboe_delayed' : (ivMD != null ? 'marketdata' : 'estimated_from_hv');
 
-  const rho  = idxData?.rets ? Number((pearson(stockData.rets, idxData.rets) ?? 0.55).toFixed(3)) : 0.55;
+  // Corrélation réalisée sur la fenêtre COURTE (horizon du trade), pas sur 1 an.
+  const rho  = idxData?.rets ? Number((pearson(stockData.rets.slice(-CORR_WINDOW), idxData.rets.slice(-CORR_WINDOW)) ?? 0.55).toFixed(3)) : 0.55;
+  // Beta : série complète (~1 an) — mesure de régime, affichage seulement.
   const beta = idxData?.rets ? (computeBeta(stockData.rets, idxData.rets) ?? 1.0) : 1.0;
 
   // ── IV RANK — deux indicateurs (période de transition) ──────────────────────

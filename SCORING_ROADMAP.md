@@ -22,7 +22,7 @@ Suivi : `/api/iv-status` → `signal_history_rows`.
 
 ---
 
-## #1 — Fonctions canoniques + fenêtres séparées  ·  ~1 j  ·  risque faible
+## #1 — Fonctions canoniques + fenêtres séparées  ·  FAIT  ·  risque faible
 
 **Problème** : 3 formules de corrélation implicite (CBOE / VIX / ratio² HV) et 2
 fenêtres de réalisé (252 vs 60) coexistent. Le correctif IV-rank a couplé par
