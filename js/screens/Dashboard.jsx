@@ -1,47 +1,70 @@
-/* ─── Feu de régime de dispersion (live : vol du marché + prime) ─────
-   Le régime FAVORABLE = marché calme + prime positive (les actions bougent
-   chacune de leur côté). PRUDENCE = vol qui spike (en stress tout se corrèle,
-   la dispersion perd) ou prime négative. Seuils IV ATM = standards VIX,
-   indépendants du panier. */
-function RegimeFeu({ ivAtm, prime, mode }) {
-  let tone, verdict, msg;
-  if (ivAtm == null || prime == null) {
-    tone = 'var(--text-muted)'; verdict = 'En cours'; msg = 'Chargement des données de marché…';
-  } else if (ivAtm > 30 || prime < 0) {
-    tone = 'var(--neg)'; verdict = 'Prudence';
-    msg = ivAtm > 30
-      ? `Volatilité élevée (IV ${ivAtm.toFixed(0)} %) : en régime de stress la corrélation grimpe et la dispersion perd. Contexte à éviter.`
-      : `Prime de corrélation négative (${prime} pts) : le marché price moins de synchronisation que celle observée. Peu favorable.`;
-  } else if (ivAtm < 22 && prime > 3) {
-    tone = 'var(--pos)'; verdict = 'Favorable';
-    msg = `Marché calme (IV ${ivAtm.toFixed(0)} %) et prime généreuse (+${prime} pts) : les actions bougent chacune de leur côté — le contexte où la dispersion tend à payer.`;
-  } else {
-    tone = 'var(--warn)'; verdict = 'Mitigé';
-    msg = `Contexte intermédiaire (IV ${ivAtm.toFixed(0)} %, prime ${prime >= 0 ? '+' : ''}${prime} pts) : ni franchement calme, ni en stress.`;
-  }
+/* ─── Régime de dispersion : carrousel multi-indices (live) ──────────
+   FAVORABLE = marché calme + prime positive ; PRUDENCE = vol qui spike (stress →
+   tout se corrèle → la dispersion perd) ou prime négative ; MITIGÉ entre. Seuils
+   IV = standards VIX. Le carrousel fait défiler le profil de chaque indice avec
+   une animation latérale (‹ ›). */
+const INDEX_LABELS = { SPX: 'S&P 500', NDX: 'Nasdaq 100', DJI: 'Dow Jones', CAC: 'CAC 40', DAX: 'DAX' };
+
+function regimeOf(iv, prime) {
+  if (iv == null || prime == null) return { tone: 'var(--text-muted)', verdict: 'En cours', msg: 'Données de marché en cours de chargement…' };
+  if (iv > 30 || prime < 0) return {
+    tone: 'var(--neg)', verdict: 'Prudence',
+    msg: iv > 30
+      ? `Volatilité élevée (IV ${iv.toFixed(0)} %) : en régime de stress la corrélation grimpe et la dispersion perd. À éviter.`
+      : `Prime négative (${prime} pts) : le marché price moins de synchronisation que celle observée. Peu favorable.`,
+  };
+  if (iv < 22 && prime > 3) return { tone: 'var(--pos)', verdict: 'Favorable', msg: `Marché calme (IV ${iv.toFixed(0)} %) et prime généreuse (+${prime} pts) : les actions bougent chacune de leur côté — le contexte où la dispersion tend à payer.` };
+  return { tone: 'var(--warn)', verdict: 'Mitigé', msg: `Contexte intermédiaire (IV ${iv.toFixed(0)} %, prime ${prime >= 0 ? '+' : ''}${prime} pts) : ni franchement calme, ni en stress.` };
+}
+
+function RegimeCarousel({ regimes, mode }) {
+  const [i, setI] = React.useState(0);
+  const n = regimes.length;
+  if (!n) return null;
+  const cur = ((i % n) + n) % n;
+  const active = regimeOf(regimes[cur].iv, regimes[cur].prime);
+  const navBtn = { width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'var(--bg-elevated)', color: 'var(--text-soft)', cursor: 'pointer', font: '600 15px/1 var(--font-sans)' };
   return (
-    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: `3px solid ${tone}`, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', paddingTop: 3 }}>
-        {['var(--neg)', 'var(--warn)', 'var(--pos)'].map(c => {
-          const on = c === tone;
-          return <span key={c} style={{ width: 11, height: 11, borderRadius: '50%', background: on ? c : 'var(--bg-elevated)', boxShadow: on ? `0 0 8px ${c}` : 'none', border: on ? 'none' : '1px solid var(--border)' }} />;
-        })}
-      </div>
-      <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
-          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Régime de dispersion</h3>
-          <span style={{ font: '700 12px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: tone }}>{verdict}</span>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: `3px solid ${active.tone}`, borderRadius: 'var(--radius-lg)', padding: '16px 18px', overflow: 'hidden', transition: 'border-color 0.4s' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Régime de dispersion</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <button onClick={() => setI(cur - 1)} aria-label="Indice précédent" style={navBtn}>‹</button>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {regimes.map((r, k) => <span key={r.symbol} onClick={() => setI(k)} title={r.label} style={{ width: 6, height: 6, borderRadius: '50%', background: k === cur ? 'var(--accent-hover)' : 'var(--border-strong)', cursor: 'pointer', transition: 'background 0.25s' }} />)}
+          </div>
+          <button onClick={() => setI(cur + 1)} aria-label="Indice suivant" style={navBtn}>›</button>
         </div>
-        <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '3px 0 0' }}>
-          Marché de référence : <strong style={{ color: 'var(--text-muted)' }}>S&amp;P 500</strong> · d'après la volatilité du marché{ivAtm != null ? ` (IV ${ivAtm.toFixed(0)} %)` : ''} et la prime de corrélation{prime != null ? ` (${prime >= 0 ? '+' : ''}${prime} pts)` : ''} du jour.
-        </div>
-        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '8px 0 0' }}>{msg}</p>
-        {mode === 'Débutant' && (
-          <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '8px 0 0' }}>
-            La dispersion parie que les actions se décorrèlent : elle profite en marché calme et perd quand tout tombe ensemble. Ce feu résume la volatilité du marché et la prime — un repère de contexte, pas un signal d'entrée.
-          </p>
-        )}
       </div>
+      <div style={{ overflow: 'hidden' }}>
+        <div style={{ display: 'flex', transform: `translateX(-${cur * 100}%)`, transition: 'transform 0.42s cubic-bezier(0.22,1,0.36,1)' }}>
+          {regimes.map(r => {
+            const g = regimeOf(r.iv, r.prime);
+            return (
+              <div key={r.symbol} style={{ flex: '0 0 100%', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', paddingTop: 3 }}>
+                  {['var(--neg)', 'var(--warn)', 'var(--pos)'].map(c => { const on = c === g.tone; return <span key={c} style={{ width: 11, height: 11, borderRadius: '50%', background: on ? c : 'var(--bg-elevated)', boxShadow: on ? `0 0 8px ${c}` : 'none', border: on ? 'none' : '1px solid var(--border)' }} />; })}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+                    <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{r.label}</span>
+                    <span style={{ font: '700 12px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: g.tone }}>{g.verdict}</span>
+                  </div>
+                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '3px 0 0' }}>
+                    {r.iv != null ? `IV ${r.iv.toFixed(0)} %` : 'IV —'} · prime {r.prime != null ? (r.prime >= 0 ? '+' : '') + r.prime + ' pts' : '—'}
+                  </div>
+                  <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '8px 0 0' }}>{g.msg}</p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {mode === 'Débutant' && (
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '10px 0 0' }}>
+          La dispersion parie que les actions se décorrèlent : elle profite en marché calme et perd quand tout tombe ensemble. Faites défiler ‹ › pour comparer les indices — un repère de contexte, pas un signal d'entrée.
+        </p>
+      )}
     </div>
   );
 }
@@ -157,6 +180,13 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   // Statut marché = même logique que l'en-tête (window.DXMarket, réf. NYSE)
   const _nyse = window.DXMarket && (window.DXMarket.EXCHANGES || []).find(e => e.key === 'nyse');
   const marketOpen = _nyse ? window.DXMarket.isExchangeOpen(_nyse, now) : true;
+  // Profil de régime par indice (carrousel) : IV + prime par indice
+  const regimeData = (window.DXMock?.indices || []).map(ix => {
+    const snap = (window.DXStore?.getIndexData(ix.symbol) || {}).snap || (window.DXMock?.getSnapshot ? window.DXMock.getSnapshot(ix.symbol) : null);
+    const iv = (ix.symbol === 'SPX' && ivAtm != null) ? ivAtm : (snap?.iv_est ?? null);
+    const pr = oppPrime[ix.symbol] != null ? oppPrime[ix.symbol] : (ix.symbol === 'SPX' && prime != null ? prime : null);
+    return { symbol: ix.symbol, label: INDEX_LABELS[ix.symbol] || ix.symbol, iv, prime: pr };
+  });
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
@@ -180,8 +210,8 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
         </p>
       </div>
 
-      {/* Feu de régime de dispersion (live) */}
-      <RegimeFeu ivAtm={ivAtm} prime={prime} mode={mode} />
+      {/* Régime de dispersion — carrousel multi-indices (live) */}
+      <RegimeCarousel regimes={regimeData} mode={mode} />
 
       {/* Market Overview */}
       <section>

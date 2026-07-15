@@ -839,12 +839,17 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
         )}
       </div>
 
-      <WarningPanel tone="neg" title="Le risque à garder en tête">
-        Si la corrélation réalisée rejoint brutalement l'implicite — typiquement lors d'un sell-off corrélé — la prime se referme et la dispersion perd. La prime positive est un point d'entrée potentiel, jamais une garantie.
-      </WarningPanel>
-
-      {/* Structure de la corrélation (skew + terme) — ajustée à la liste, tout en bas */}
+      {/* Structure de la corrélation (skew + terme) — ajustée à la liste */}
       <CorrMap index={ctx.listIndex || C.index} mode={mode} tickers={matrixTickers} liveRho={rhoImpl} />
+
+      {/* Le risque à garder en tête — tout en bas */}
+      <WarningPanel tone="neg" title="Le risque à garder en tête">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+          <div>Faire de la dispersion, c'est <strong>vendre de la corrélation</strong> : on parie que les actions bougent chacune de leur côté. Tant que le marché est calme, la prime se collecte tranquillement.</div>
+          <div>Mais lors d'un <strong>sell-off corrélé</strong> (krach, panique), les actions chutent toutes ensemble : la corrélation <em>réalisée</em> bondit vers l'<em>implicite</em>, la prime se referme d'un coup, et la dispersion <strong>perd — parfois lourdement</strong>.</div>
+          <div>C'est exactement ce que montre le <strong>skew</strong> juste au-dessus (la courbe « selon le scénario ») : le marché price déjà <strong>bien plus de corrélation sur la baisse</strong> (les puts, à −10 %) qu'à la monnaie. En vendant de la dispersion, vous êtes donc <strong>short ce risque de krach corrélé</strong> — vous touchez une prime pour porter précisément ce danger. Une prime positive est un point d'entrée potentiel, <strong>jamais une garantie</strong>.</div>
+        </div>
+      </WarningPanel>
     </div>
   );
 }
