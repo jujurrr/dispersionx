@@ -79,7 +79,17 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const oppFetching = React.useRef({});                // garde : 1 calcul de prime par indice
   const [activity, setActivity] = React.useState(null); // { account, shared, nameMap } — activité récente
   const [now, setNow] = React.useState(() => new Date());   // statut marché (même source que l'en-tête)
+  const [ivByIndex, setIvByIndex] = React.useState({});     // IV ATM RÉELLE par indice (Cboe, /api/iv/:index)
   React.useEffect(() => { const id = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(id); }, []);
+  React.useEffect(() => {
+    // IV réelle Cboe pour CHAQUE indice (mapping ETF pour CAC/DAX géré côté API). Caché 15 min par le CDN.
+    (window.DXMock?.indices || []).forEach(ix => {
+      fetch(`/api/iv/${ix.symbol}?dte=30`).then(r => r.ok ? r.json() : null).then(d => {
+        const iv = d && (d.iv ?? d.iv_atm);
+        if (iv != null && isFinite(iv)) setIvByIndex(prev => ({ ...prev, [ix.symbol]: Number(iv) }));
+      }).catch(() => {});
+    });
+  }, []);
 
   // Activité récente : global (RLS) partitionné en « compte » (mes listes) et
   // « partagé » (listes partagées avec moi). Rafraîchi sur les mutations.
@@ -183,7 +193,8 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   // Profil de régime par indice (carrousel) : IV + prime par indice
   const regimeData = (window.DXMock?.indices || []).map(ix => {
     const snap = (window.DXStore?.getIndexData(ix.symbol) || {}).snap || (window.DXMock?.getSnapshot ? window.DXMock.getSnapshot(ix.symbol) : null);
-    const iv = (ix.symbol === 'SPX' && ivAtm != null) ? ivAtm : (snap?.iv_est ?? null);
+    const iv = ivByIndex[ix.symbol] != null ? ivByIndex[ix.symbol]
+      : ((ix.symbol === 'SPX' && ivAtm != null) ? ivAtm : (snap?.iv_est ?? null));
     const pr = oppPrime[ix.symbol] != null ? oppPrime[ix.symbol] : (ix.symbol === 'SPX' && prime != null ? prime : null);
     return { symbol: ix.symbol, label: INDEX_LABELS[ix.symbol] || ix.symbol, iv, prime: pr };
   });
