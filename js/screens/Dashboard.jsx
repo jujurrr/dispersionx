@@ -52,6 +52,8 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const [tick, setTick] = React.useState(0);           // re-render quand le store avance
   const oppFetching = React.useRef({});                // garde : 1 calcul de prime par indice
   const [activity, setActivity] = React.useState(null); // { account, shared, nameMap } — activité récente
+  const [now, setNow] = React.useState(() => new Date());   // statut marché (même source que l'en-tête)
+  React.useEffect(() => { const id = setInterval(() => setNow(new Date()), 30000); return () => clearInterval(id); }, []);
 
   // Activité récente : global (RLS) partitionné en « compte » (mes listes) et
   // « partagé » (listes partagées avec moi). Rafraîchi sur les mutations.
@@ -149,6 +151,9 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const fmtS = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
   const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   const ctx = moduleCtx || {};
+  // Statut marché = même logique que l'en-tête (window.DXMarket, réf. NYSE)
+  const _nyse = window.DXMarket && (window.DXMarket.EXCHANGES || []).find(e => e.key === 'nyse');
+  const marketOpen = _nyse ? window.DXMarket.isExchangeOpen(_nyse, now) : true;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
@@ -165,7 +170,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
       <div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
           <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Aujourd'hui</h1>
-          <Badge tone="accent" dot>Marché ouvert</Badge>
+          <Badge tone={marketOpen ? 'accent' : 'neutral'} dot={marketOpen}>{marketOpen ? 'Marché ouvert' : 'Marché fermé'}</Badge>
         </div>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 640 }}>
           Lecture du jour : la prime de corrélation reste positive sur le SPX. Un signal à analyser, pas une recommandation.

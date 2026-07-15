@@ -137,7 +137,7 @@ function pctRank(v, q) {
 /* valeur du quantile à un percentile donné (interpolée). */
 function qVal(q, pct) { const idx = pct / 5, lo = Math.floor(idx), hi = Math.ceil(idx); return q[lo] + (q[hi] - q[lo]) * (idx - lo); }
 
-function CorrRegime({ premium, index, mode }) {
+function CorrRegime({ premium, index, mode, onNav }) {
   const base = CORR_BASELINE[(index || 'SPX').toUpperCase()];
   if (!base || premium == null || !isFinite(premium)) return null;   // pas de baseline → panneau masqué (honnête)
   const q = base.premiumPts;
@@ -189,6 +189,17 @@ function CorrRegime({ premium, index, mode }) {
       <p style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', margin: 0 }}>
         La prime actuelle est {msg}
       </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', flex: 1 }}>
+          Ce repère porte sur <strong style={{ color: 'var(--text-soft)' }}>votre liste</strong> vs un historique figé.
+        </span>
+        {onNav && (
+          <button onClick={() => onNav('market-pro')}
+            style={{ font: '600 12px/1 var(--font-sans)', background: 'transparent', border: '1px solid var(--border)', color: 'var(--accent-hover)', cursor: 'pointer', padding: '6px 11px', borderRadius: 'var(--radius)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+            Baromètre live du marché · Pro →
+          </button>
+        )}
+      </div>
       {mode === 'Débutant' && (
         <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '10px 0 0' }}>
           <strong>Percentile</strong> = le rang d'aujourd'hui dans l'historique. 80ᵉ percentile = plus élevé que 80 % des jours passés. Un repère de contexte, jamais une garantie — une prime large peut se refermer d'un coup lors d'un krach corrélé.
@@ -238,41 +249,53 @@ function MiniCurve({ values, labels, color }) {
   );
 }
 
+const SKEW_M = [90, 95, 100, 105, 110], TERM_T = [30, 60, 90, 180, 365];
+const SKEW_XL = { 90: '−10 %', 95: '−5 %', 100: 'ATM', 105: '+5 %', 110: '+10 %' };
+const TERM_XL = { 30: '1 m', 60: '2 m', 90: '3 m', 180: '6 m', 365: '1 an' };
+
+// une courbe : DXChart interactif si dispo (croix de visée, valeurs, infobulle), sinon MiniCurve.
+function CorrCurve({ data, xKey, xl, color }) {
+  if (window.DXChart) return (
+    <window.DXChart data={data} xKey={xKey}
+      lines={[{ key: 'rho', color, label: 'ρ implicite', fill: true }]}
+      height={132} ticksY={3} yAxisWidth={38} padFrac={0.22}
+      yFmt={v => v.toFixed(2)} xFmt={x => xl[x] || String(x)} />
+  );
+  return <MiniCurve values={data.map(d => d.rho)} labels={data.map(d => xl[d[xKey]])} color={color} />;
+}
+
 function CorrMap({ index, mode }) {
   const key = (index || 'SPX').toUpperCase();
   const m = CORR_MAP[key];
   if (!m) return null;   // pas de carte pour cet indice → masqué
   const lbl = (CORR_BASELINE[key] || {}).label || key;
+  const skewData = m.skew.map((rho, i) => ({ m: SKEW_M[i], rho }));
+  const termData = m.term.map((rho, i) => ({ t: TERM_T[i], rho }));
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
-        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Carte de la corrélation</h3>
-        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Structure moyenne · {lbl} · 2022–2026</span>
+        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Structure de la corrélation</h3>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{lbl} · repère du marché · 2022–2026</span>
       </div>
-      <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '4px 0 16px' }}>
-        Comment le marché price la corrélation selon le <strong style={{ color: 'var(--text-soft)' }}>scénario</strong> (hausse/baisse) et l'<strong style={{ color: 'var(--text-soft)' }}>échéance</strong>. Repère de structure, pas du temps réel.
+      <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '4px 0 14px' }}>
+        Comment l'<strong style={{ color: 'var(--text-soft)' }}>indice</strong> price la corrélation selon le scénario et l'échéance — c'est une propriété du marché, <strong style={{ color: 'var(--text-soft)' }}>identique quelle que soit votre liste</strong>. Survolez les courbes pour lire les valeurs.
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 18 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
         <div>
-          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 2 }}>Selon le scénario (skew)</div>
-          <MiniCurve values={m.skew} labels={SKEW_LABELS} color="var(--neg-bright)" />
+          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 4 }}>Selon le scénario (skew)</div>
+          <CorrCurve data={skewData} xKey="m" xl={SKEW_XL} color="var(--neg-bright)" />
           <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
-            Le marché price <strong style={{ color: 'var(--neg-bright)' }}>{m.skew[0].toFixed(2)}</strong> de corrélation pour une <strong>baisse de 10 %</strong>, contre {m.skew[2].toFixed(2)} à la monnaie : il price le <strong>risque de krach corrélé</strong>.
+            Bien plus haute à la baisse (<strong style={{ color: 'var(--neg-bright)' }}>{m.skew[0].toFixed(2)}</strong> à −10 %) qu'à la monnaie ({m.skew[2].toFixed(2)}) : le marché price le <strong>krach corrélé</strong>.
           </p>
         </div>
         <div>
-          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 2 }}>Selon l'échéance (structure par terme)</div>
-          <MiniCurve values={m.term} labels={TERM_LABELS} color="var(--accent-hover)" />
+          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 4 }}>Selon l'échéance (terme)</div>
+          <CorrCurve data={termData} xKey="t" xl={TERM_XL} color="var(--accent-hover)" />
           <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
-            Plus l'horizon est long, plus la corrélation implicite est haute ({m.term[0].toFixed(2)} à 1 mois → <strong style={{ color: 'var(--accent-hover)' }}>{m.term[4].toFixed(2)}</strong> à 1 an).
+            Montante : {m.term[0].toFixed(2)} à 1 mois → <strong style={{ color: 'var(--accent-hover)' }}>{m.term[4].toFixed(2)}</strong> à 1 an.
           </p>
         </div>
       </div>
-      {mode === 'Débutant' && (
-        <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '12px 0 0' }}>
-          Pourquoi ça compte : faire de la dispersion, c'est « vendre » de la corrélation. Le marché en price le plus là où le risque est le plus grand — sur les baisses et le long terme. C'est là que la prime est la plus riche… et le risque aussi.
-        </p>
-      )}
     </div>
   );
 }
@@ -703,10 +726,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
       </div>
 
       {/* Régime : la prime du jour située dans son historique (repère de contexte) */}
-      <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} />
-
-      {/* Carte : structure de la corrélation (skew + terme), statique 2022-2026 */}
-      <CorrMap index={ctx.listIndex || C.index} mode={mode} />
+      <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} onNav={onNav} />
 
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
@@ -788,6 +808,9 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
       <WarningPanel tone="neg" title="Le risque à garder en tête">
         Si la corrélation réalisée rejoint brutalement l'implicite — typiquement lors d'un sell-off corrélé — la prime se referme et la dispersion perd. La prime positive est un point d'entrée potentiel, jamais une garantie.
       </WarningPanel>
+
+      {/* Structure de la corrélation (skew + terme, niveau indice) — tout en bas */}
+      <CorrMap index={ctx.listIndex || C.index} mode={mode} />
     </div>
   );
 }
