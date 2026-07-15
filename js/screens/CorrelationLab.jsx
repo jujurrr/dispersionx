@@ -252,48 +252,82 @@ function MiniCurve({ values, labels, color }) {
 const SKEW_M = [90, 95, 100, 105, 110], TERM_T = [30, 60, 90, 180, 365];
 const SKEW_XL = { 90: '−10 %', 95: '−5 %', 100: 'ATM', 105: '+5 %', 110: '+10 %' };
 const TERM_XL = { 30: '1 m', 60: '2 m', 90: '3 m', 180: '6 m', 365: '1 an' };
+const IDX_PROXY = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA' };
 
-// une courbe : DXChart interactif si dispo (croix de visée, valeurs, infobulle), sinon MiniCurve.
+// ρ_impl (équipondéré) à partir d'un σ indice + des σ composants à un même point de surface.
+function rhoImplAt(sigI, sigs) { const n = sigs.length; if (!(sigI > 0) || n < 2) return null; let A = 0, B = 0; for (const s of sigs) { A += s / n; B += (s * s) / (n * n); } const den = A * A - B; return Math.abs(den) < 1e-9 ? null : (sigI * sigI - B) / den; }
+
+// Skew de corrélation AJUSTÉ À LA LISTE : forme historique (skew par composant, window.DXSkewComp)
+// ANCRÉE au niveau de corrélation du jour (liveRho). Repli null → carte niveau indice.
+function listCorrMap(tickers, indexKey, liveRho) {
+  const T = window.DXSkewComp, I = T && T[IDX_PROXY[indexKey]];
+  if (!T || !I) return null;
+  const comps = (tickers || []).map(t => T[t]).filter(Boolean);
+  if (comps.length < 3) return null;
+  const skew = I.sk.map((sI, i) => rhoImplAt(sI, comps.map(c => c.sk[i]).filter(v => v > 0)));
+  const term = I.tm.map((sI, i) => rhoImplAt(sI, comps.map(c => c.tm[i]).filter(v => v > 0)));
+  const anch = liveRho != null && isFinite(liveRho);
+  const shift = (arr, ref) => arr.map(v => v == null ? null : +((anch && ref != null ? v + (liveRho - ref) : v)).toFixed(3));
+  return { skew: shift(skew, skew[2]), term: shift(term, term[0]), n: comps.length, anchored: anch };
+}
+
+// une courbe interactive (DXChart : croix de visée, valeurs, infobulle) ou repli MiniCurve.
 function CorrCurve({ data, xKey, xl, color }) {
   if (window.DXChart) return (
     <window.DXChart data={data} xKey={xKey}
       lines={[{ key: 'rho', color, label: 'ρ implicite', fill: true }]}
-      height={132} ticksY={3} yAxisWidth={38} padFrac={0.22}
+      height={172} ticksY={3} yAxisWidth={40} padFrac={0.24}
       yFmt={v => v.toFixed(2)} xFmt={x => xl[x] || String(x)} />
   );
   return <MiniCurve values={data.map(d => d.rho)} labels={data.map(d => xl[d[xKey]])} color={color} />;
 }
 
-function CorrMap({ index, mode }) {
+function CorrMap({ index, mode, tickers, liveRho }) {
   const key = (index || 'SPX').toUpperCase();
-  const m = CORR_MAP[key];
-  if (!m) return null;   // pas de carte pour cet indice → masqué
+  const listMap = listCorrMap(tickers, key, liveRho);
+  const m = listMap || CORR_MAP[key];
+  if (!m) return null;   // ni liste ni indice → masqué
   const lbl = (CORR_BASELINE[key] || {}).label || key;
-  const skewData = m.skew.map((rho, i) => ({ m: SKEW_M[i], rho }));
-  const termData = m.term.map((rho, i) => ({ t: TERM_T[i], rho }));
+  const listed = !!listMap;
+  const skewData = SKEW_M.map((mn, i) => ({ m: mn, rho: m.skew[i] })).filter(d => d.rho != null);
+  const termData = TERM_T.map((t, i) => ({ t, rho: m.term[i] })).filter(d => d.rho != null);
+  const sDown = skewData[0]?.rho, sAtm = skewData.find(d => d.m === 100)?.rho;
+  const t0 = termData[0]?.rho, t1 = termData[termData.length - 1]?.rho;
   return (
-    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
         <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Structure de la corrélation</h3>
-        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{lbl} · repère du marché · 2022–2026</span>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
+          {listed ? `Ajustée à votre liste${m.anchored ? ' · niveau du jour' : ''}` : `${lbl} · niveau indice`} · forme 2022–2026
+        </span>
       </div>
-      <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '4px 0 14px' }}>
-        Comment l'<strong style={{ color: 'var(--text-soft)' }}>indice</strong> price la corrélation selon le scénario et l'échéance — c'est une propriété du marché, <strong style={{ color: 'var(--text-soft)' }}>identique quelle que soit votre liste</strong>. Survolez les courbes pour lire les valeurs.
+      <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '4px 0 20px' }}>
+        {listed
+          ? <>Comment la corrélation de <strong style={{ color: 'var(--text-soft)' }}>votre panier</strong> se comporte selon le scénario et l'échéance{m.anchored ? ', ancrée au niveau de corrélation actuel' : ''}. Survolez les courbes pour lire les valeurs.</>
+          : <>Comment l'<strong style={{ color: 'var(--text-soft)' }}>indice</strong> price la corrélation (repère du marché, identique quelle que soit la liste). Survolez pour lire les valeurs.</>}
       </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
         <div>
-          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 4 }}>Selon le scénario (skew)</div>
+          <div style={{ font: '600 12px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 12 }}>Selon le scénario (skew)</div>
           <CorrCurve data={skewData} xKey="m" xl={SKEW_XL} color="var(--neg-bright)" />
-          <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
-            Bien plus haute à la baisse (<strong style={{ color: 'var(--neg-bright)' }}>{m.skew[0].toFixed(2)}</strong> à −10 %) qu'à la monnaie ({m.skew[2].toFixed(2)}) : le marché price le <strong>krach corrélé</strong>.
-          </p>
+          {sDown != null && sAtm != null && (
+            <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '10px 0 0' }}>
+              {sDown > sAtm + 0.03
+                ? <>Plus haute à la baisse (<strong style={{ color: 'var(--neg-bright)' }}>{sDown.toFixed(2)}</strong> à −10 %) qu'à la monnaie ({sAtm.toFixed(2)}) : le krach est corrélé.</>
+                : <>Corrélation {sAtm.toFixed(2)} à la monnaie, {sDown.toFixed(2)} à la baisse — assez plate.</>}
+            </p>
+          )}
         </div>
         <div>
-          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 4 }}>Selon l'échéance (terme)</div>
+          <div style={{ font: '600 12px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 12 }}>Selon l'échéance (terme)</div>
           <CorrCurve data={termData} xKey="t" xl={TERM_XL} color="var(--accent-hover)" />
-          <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
-            Montante : {m.term[0].toFixed(2)} à 1 mois → <strong style={{ color: 'var(--accent-hover)' }}>{m.term[4].toFixed(2)}</strong> à 1 an.
-          </p>
+          {t0 != null && t1 != null && (
+            <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '10px 0 0' }}>
+              {t1 > t0 + 0.02
+                ? <>Montante : {t0.toFixed(2)} à 1 mois → <strong style={{ color: 'var(--accent-hover)' }}>{t1.toFixed(2)}</strong> à 1 an.</>
+                : <>{t0.toFixed(2)} à 1 mois → {t1.toFixed(2)} à 1 an.</>}
+            </p>
+          )}
         </div>
       </div>
     </div>
@@ -809,8 +843,8 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
         Si la corrélation réalisée rejoint brutalement l'implicite — typiquement lors d'un sell-off corrélé — la prime se referme et la dispersion perd. La prime positive est un point d'entrée potentiel, jamais une garantie.
       </WarningPanel>
 
-      {/* Structure de la corrélation (skew + terme, niveau indice) — tout en bas */}
-      <CorrMap index={ctx.listIndex || C.index} mode={mode} />
+      {/* Structure de la corrélation (skew + terme) — ajustée à la liste, tout en bas */}
+      <CorrMap index={ctx.listIndex || C.index} mode={mode} tickers={matrixTickers} liveRho={rhoImpl} />
     </div>
   );
 }

@@ -46,6 +46,7 @@ import '../js/api.js';
 import '../js/store.js';
 import '../js/notif-store.js';   // window.DXNotifStore (store partagé des notifications, cloud)
 import '../js/lib/market-hours.js';
+import '../js/lib/corr-skew-data.js';   // window.DXSkewComp : skew moyen par composant → skew de corrélation ajusté à la liste
 import '../js/lib/ibkr-export.js';   // window.DXIbkr (CSV Risk Navigator/What-If à partir d'une stratégie)
 
 // 5) Écrans (ordre identique à index.html — dépendances de globals au top-level).

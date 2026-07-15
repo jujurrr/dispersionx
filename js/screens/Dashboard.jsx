@@ -32,7 +32,10 @@ function RegimeFeu({ ivAtm, prime, mode }) {
           <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Régime de dispersion</h3>
           <span style={{ font: '700 12px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: tone }}>{verdict}</span>
         </div>
-        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '6px 0 0' }}>{msg}</p>
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '3px 0 0' }}>
+          Marché de référence : <strong style={{ color: 'var(--text-muted)' }}>S&amp;P 500</strong> · d'après la volatilité du marché{ivAtm != null ? ` (IV ${ivAtm.toFixed(0)} %)` : ''} et la prime de corrélation{prime != null ? ` (${prime >= 0 ? '+' : ''}${prime} pts)` : ''} du jour.
+        </div>
+        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '8px 0 0' }}>{msg}</p>
         {mode === 'Débutant' && (
           <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '8px 0 0' }}>
             La dispersion parie que les actions se décorrèlent : elle profite en marché calme et perd quand tout tombe ensemble. Ce feu résume la volatilité du marché et la prime — un repère de contexte, pas un signal d'entrée.
