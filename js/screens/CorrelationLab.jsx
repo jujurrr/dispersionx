@@ -103,6 +103,101 @@ function PrimeGauge({ implied, realized, size = 240 }) {
    du panier dans les calculs de contribution / décomposition. */
 const INDEX_SYMS = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
 
+/* ─── Régime : situer la prime du jour vs son historique ─────────────
+   Baseline calculée sur 2022–2026 EXACTEMENT comme l'app (ρ_impl 30j CBOE
+   cap ≈ indice · réalisée trailing 60j · prime = impl − réalisée en points).
+   Repère de RÉGIME au niveau indice. Quantiles p0,5,…,100. */
+const CORR_BASELINE = {
+  SPX: {
+    label: 'S&P 500', window: '2022–2026', n: 224,
+    premiumPts: [-36.3, -12.1, -9.3, -7.0, -5.2, -3.7, -2.5, -1.5, 0.1, 1.9, 2.7, 3.3, 4.2, 5.7, 6.9, 7.8, 9.3, 10.7, 12.8, 20.7, 39.4],
+  },
+  NDX: {
+    label: 'Nasdaq 100', window: '2022–2026', n: 224,
+    premiumPts: [-31.3, -14.4, -7.9, -6.1, -3.1, -2.2, -0.7, 0.7, 1.5, 2.8, 3.8, 4.3, 5.1, 6.3, 7.7, 9.5, 11.4, 13.3, 14.1, 17.0, 31.4],
+  },
+  DJI: {
+    label: 'Dow Jones', window: '2022–2026', n: 224,
+    premiumPts: [-30.4, -8.8, -6.9, -4.4, -3.5, -1.4, -0.6, 0.5, 1.9, 2.7, 3.4, 4.2, 5.1, 5.8, 7.4, 8.3, 10.4, 12.3, 15.1, 19.0, 34.9],
+  },
+};
+/* percentile (0–100) d'une valeur dans un tableau de quantiles régulier (pas de 5). */
+function pctRank(v, q) {
+  if (!q || !q.length || v == null || !isFinite(v)) return null;
+  if (v <= q[0]) return 0;
+  if (v >= q[q.length - 1]) return 100;
+  for (let i = 0; i < q.length - 1; i++) {
+    if (v >= q[i] && v <= q[i + 1]) {
+      const span = q[i + 1] - q[i];
+      return (i + (span > 0 ? (v - q[i]) / span : 0)) * 5;
+    }
+  }
+  return 100;
+}
+/* valeur du quantile à un percentile donné (interpolée). */
+function qVal(q, pct) { const idx = pct / 5, lo = Math.floor(idx), hi = Math.ceil(idx); return q[lo] + (q[hi] - q[lo]) * (idx - lo); }
+
+function CorrRegime({ premium, index, mode }) {
+  const base = CORR_BASELINE[(index || 'SPX').toUpperCase()];
+  if (!base || premium == null || !isFinite(premium)) return null;   // pas de baseline → panneau masqué (honnête)
+  const q = base.premiumPts;
+  const pct = pctRank(premium, q);
+  const pctR = Math.round(pct);
+  const markerL = Math.max(3, Math.min(97, pct));   // clamp visuel aux bords
+
+  let tone, verdict, msg;
+  if (pct >= 66)      { tone = 'var(--pos-bright)'; verdict = 'Prime large';        msg = `plus élevée que ~${pctR} % du temps depuis ${base.window}. La prime de corrélation est historiquement généreuse — plus de prime à encaisser en faisant de la dispersion.`; }
+  else if (pct >= 33) { tone = 'var(--warn)';       verdict = 'Prime dans sa norme'; msg = `au ~${pctR}ᵉ percentile de son historique ${base.window} — ni chère, ni bon marché.`; }
+  else                { tone = 'var(--neg-bright)'; verdict = 'Prime serrée';        msg = `plus faible que ~${100 - pctR} % du temps depuis ${base.window} — peu de prime à encaisser, contexte historiquement peu favorable.`; }
+
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Régime de corrélation</h3>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Repère · {base.label} · {base.window}</span>
+      </div>
+      <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '4px 0 16px' }}>
+        Où se situe la prime d'aujourd'hui vs son histoire — pour savoir si la corrélation est <strong style={{ color: 'var(--text-soft)' }}>chère</strong>, normale, ou <strong style={{ color: 'var(--text-soft)' }}>bon marché</strong>.
+      </p>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, marginBottom: 6 }}>
+        <div style={{ font: '800 30px/1 var(--font-mono)', color: tone }}>{pctR}<span style={{ font: '600 12px/1 var(--font-sans)', color: 'var(--text-muted)' }}> ᵉ pct</span></div>
+        <div style={{ font: '700 11px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.07em', color: tone }}>{verdict}</div>
+      </div>
+
+      {/* Strip percentile 0→100 avec repère « aujourd'hui » */}
+      <div style={{ position: 'relative', margin: '30px 0 30px' }}>
+        <div style={{ height: 12, borderRadius: 6, background: 'linear-gradient(90deg, var(--neg) 0%, var(--warn) 50%, var(--pos) 100%)', opacity: 0.8 }} />
+        {[25, 50, 75].map(t => (
+          <div key={t} style={{ position: 'absolute', left: t + '%', top: -3 }}>
+            <div style={{ width: 1, height: 18, background: 'var(--border-strong)' }} />
+            <div style={{ position: 'absolute', top: 21, left: 0, transform: 'translateX(-50%)', whiteSpace: 'nowrap', font: '9px/1 var(--font-mono)', color: 'var(--text-dim)' }}>
+              {qVal(q, t) >= 0 ? '+' : ''}{qVal(q, t).toFixed(1)}
+            </div>
+          </div>
+        ))}
+        {/* repère aujourd'hui */}
+        <div style={{ position: 'absolute', left: markerL + '%', top: -24, transform: 'translateX(-50%)', whiteSpace: 'nowrap', font: '700 10px/1 var(--font-mono)', color: tone }}>
+          {premium >= 0 ? '+' : ''}{premium.toFixed(1)} pts
+        </div>
+        <div style={{ position: 'absolute', left: markerL + '%', top: -8, transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ width: 0, height: 0, borderLeft: '5px solid transparent', borderRight: '5px solid transparent', borderTop: `7px solid ${tone}` }} />
+          <div style={{ width: 2, height: 22, background: tone }} />
+        </div>
+      </div>
+
+      <p style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', margin: 0 }}>
+        La prime actuelle est {msg}
+      </p>
+      {mode === 'Débutant' && (
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '10px 0 0' }}>
+          <strong>Percentile</strong> = le rang d'aujourd'hui dans l'historique. 80ᵉ percentile = plus élevé que 80 % des jours passés. Un repère de contexte, jamais une garantie — une prime large peut se refermer d'un coup lors d'un krach corrélé.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ─── Contribution par composant ──────────────────────────────────── */
 function ContribChart({ matrixTickers, matrix, rhoImpl }) {
   if (!matrixTickers || !matrix || matrixTickers.length < 2) return null;
@@ -527,6 +622,9 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
           accent={parseFloat(prime) > 3 ? 'var(--pos)' : parseFloat(prime) > 0 ? 'var(--warn)' : 'var(--neg)'}
           hint="Synthèse du signal : Favorable si la prime dépasse ~3 pts, Neutre si elle est légèrement positive, Défavorable si négative." />
       </div>
+
+      {/* Régime : la prime du jour située dans son historique (repère de contexte) */}
+      <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} />
 
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>

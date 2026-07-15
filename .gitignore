@@ -13,3 +13,6 @@ dist
 # Python
 __pycache__/
 *.pyc
+
+# Recherche dispersion (données lourdes + scripts) — ne pas versionner
+backtest/
