@@ -1,3 +1,48 @@
+/* ─── Feu de régime de dispersion (live : vol du marché + prime) ─────
+   Le régime FAVORABLE = marché calme + prime positive (les actions bougent
+   chacune de leur côté). PRUDENCE = vol qui spike (en stress tout se corrèle,
+   la dispersion perd) ou prime négative. Seuils IV ATM = standards VIX,
+   indépendants du panier. */
+function RegimeFeu({ ivAtm, prime, mode }) {
+  let tone, verdict, msg;
+  if (ivAtm == null || prime == null) {
+    tone = 'var(--text-muted)'; verdict = 'En cours'; msg = 'Chargement des données de marché…';
+  } else if (ivAtm > 30 || prime < 0) {
+    tone = 'var(--neg)'; verdict = 'Prudence';
+    msg = ivAtm > 30
+      ? `Volatilité élevée (IV ${ivAtm.toFixed(0)} %) : en régime de stress la corrélation grimpe et la dispersion perd. Contexte à éviter.`
+      : `Prime de corrélation négative (${prime} pts) : le marché price moins de synchronisation que celle observée. Peu favorable.`;
+  } else if (ivAtm < 22 && prime > 3) {
+    tone = 'var(--pos)'; verdict = 'Favorable';
+    msg = `Marché calme (IV ${ivAtm.toFixed(0)} %) et prime généreuse (+${prime} pts) : les actions bougent chacune de leur côté — le contexte où la dispersion tend à payer.`;
+  } else {
+    tone = 'var(--warn)'; verdict = 'Mitigé';
+    msg = `Contexte intermédiaire (IV ${ivAtm.toFixed(0)} %, prime ${prime >= 0 ? '+' : ''}${prime} pts) : ni franchement calme, ni en stress.`;
+  }
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: `3px solid ${tone}`, borderRadius: 'var(--radius-lg)', padding: '16px 18px', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', paddingTop: 3 }}>
+        {['var(--neg)', 'var(--warn)', 'var(--pos)'].map(c => {
+          const on = c === tone;
+          return <span key={c} style={{ width: 11, height: 11, borderRadius: '50%', background: on ? c : 'var(--bg-elevated)', boxShadow: on ? `0 0 8px ${c}` : 'none', border: on ? 'none' : '1px solid var(--border)' }} />;
+        })}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Régime de dispersion</h3>
+          <span style={{ font: '700 12px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: tone }}>{verdict}</span>
+        </div>
+        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '6px 0 0' }}>{msg}</p>
+        {mode === 'Débutant' && (
+          <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '8px 0 0' }}>
+            La dispersion parie que les actions se décorrèlent : elle profite en marché calme et perd quand tout tombe ensemble. Ce feu résume la volatilité du marché et la prime — un repère de contexte, pas un signal d'entrée.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ─── Dashboard: what deserves my attention today? ─────────────── */
 function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
@@ -126,6 +171,9 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
           Lecture du jour : la prime de corrélation reste positive sur le SPX. Un signal à analyser, pas une recommandation.
         </p>
       </div>
+
+      {/* Feu de régime de dispersion (live) */}
+      <RegimeFeu ivAtm={ivAtm} prime={prime} mode={mode} />
 
       {/* Market Overview */}
       <section>

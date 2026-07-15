@@ -198,6 +198,85 @@ function CorrRegime({ premium, index, mode }) {
   );
 }
 
+/* ─── Carte de la corrélation (structure moyenne 2022-2026, statique) ───
+   ρ_impl moyen par MONEYNESS (skew) et par ÉCHÉANCE (terme), par indice.
+   Calculé par backtest/build_corrmap.mjs. Repère de structure, PAS du temps réel
+   (à passer en live via IBKR — chaînes multi-strike/tenor — plus tard). */
+const CORR_MAP = {
+  SPX: { skew: [0.445, 0.328, 0.198, 0.110, 0.145], term: [0.197, 0.210, 0.206, 0.247, 0.282] },
+  NDX: { skew: [0.510, 0.429, 0.331, 0.255, 0.243], term: [0.332, 0.344, 0.339, 0.377, 0.397] },
+  DJI: { skew: [0.555, 0.426, 0.289, 0.225, 0.355], term: [0.286, 0.288, 0.283, 0.319, 0.339] },
+};
+const SKEW_LABELS = ['−10 %', '−5 %', 'ATM', '+5 %', '+10 %'];
+const TERM_LABELS = ['1 m', '2 m', '3 m', '6 m', '1 an'];
+
+function MiniCurve({ values, labels, color }) {
+  const W = 264, H = 138, padL = 28, padR = 12, padT = 20, padB = 26, n = values.length;
+  const yMax = Math.max(0.1, Math.ceil(Math.max(...values) / 0.1) * 0.1);
+  const x = i => padL + (i / (n - 1)) * (W - padL - padR);
+  const y = v => padT + (1 - v / yMax) * (H - padT - padB);
+  const gid = 'mc' + color.replace(/[^a-z]/gi, '');
+  const line = values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+  const area = `${line} L ${x(n - 1).toFixed(1)} ${y(0).toFixed(1)} L ${x(0).toFixed(1)} ${y(0).toFixed(1)} Z`;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: 'block' }}>
+      <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={color} stopOpacity="0.18" /><stop offset="100%" stopColor={color} stopOpacity="0.01" /></linearGradient></defs>
+      {[0, 0.5, 1].map(g => { const v = yMax * g; return (
+        <g key={g}>
+          <line x1={padL} y1={y(v)} x2={W - padR} y2={y(v)} stroke="var(--border-subtle)" />
+          <text x={padL - 4} y={y(v) + 3} textAnchor="end" fontSize="8" fontFamily="var(--font-mono)" fill="var(--text-dim)">{v.toFixed(2)}</text>
+        </g>); })}
+      <path d={area} fill={`url(#${gid})`} />
+      <path d={line} fill="none" stroke={color} strokeWidth="2.5" />
+      {values.map((v, i) => (
+        <g key={i}>
+          <circle cx={x(i)} cy={y(v)} r="3" fill={color} />
+          <text x={x(i)} y={y(v) - 7} textAnchor="middle" fontSize="8.5" fontFamily="var(--font-mono)" fontWeight="700" fill="var(--text-soft)">{v.toFixed(2)}</text>
+          <text x={x(i)} y={H - 8} textAnchor="middle" fontSize="8.5" fontFamily="var(--font-sans)" fill="var(--text-dim)">{labels[i]}</text>
+        </g>))}
+    </svg>
+  );
+}
+
+function CorrMap({ index, mode }) {
+  const key = (index || 'SPX').toUpperCase();
+  const m = CORR_MAP[key];
+  if (!m) return null;   // pas de carte pour cet indice → masqué
+  const lbl = (CORR_BASELINE[key] || {}).label || key;
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Carte de la corrélation</h3>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Structure moyenne · {lbl} · 2022–2026</span>
+      </div>
+      <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '4px 0 16px' }}>
+        Comment le marché price la corrélation selon le <strong style={{ color: 'var(--text-soft)' }}>scénario</strong> (hausse/baisse) et l'<strong style={{ color: 'var(--text-soft)' }}>échéance</strong>. Repère de structure, pas du temps réel.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 18 }}>
+        <div>
+          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 2 }}>Selon le scénario (skew)</div>
+          <MiniCurve values={m.skew} labels={SKEW_LABELS} color="var(--neg-bright)" />
+          <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+            Le marché price <strong style={{ color: 'var(--neg-bright)' }}>{m.skew[0].toFixed(2)}</strong> de corrélation pour une <strong>baisse de 10 %</strong>, contre {m.skew[2].toFixed(2)} à la monnaie : il price le <strong>risque de krach corrélé</strong>.
+          </p>
+        </div>
+        <div>
+          <div style={{ font: '600 11px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 2 }}>Selon l'échéance (structure par terme)</div>
+          <MiniCurve values={m.term} labels={TERM_LABELS} color="var(--accent-hover)" />
+          <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '6px 0 0' }}>
+            Plus l'horizon est long, plus la corrélation implicite est haute ({m.term[0].toFixed(2)} à 1 mois → <strong style={{ color: 'var(--accent-hover)' }}>{m.term[4].toFixed(2)}</strong> à 1 an).
+          </p>
+        </div>
+      </div>
+      {mode === 'Débutant' && (
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '12px 0 0' }}>
+          Pourquoi ça compte : faire de la dispersion, c'est « vendre » de la corrélation. Le marché en price le plus là où le risque est le plus grand — sur les baisses et le long terme. C'est là que la prime est la plus riche… et le risque aussi.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ─── Contribution par composant ──────────────────────────────────── */
 function ContribChart({ matrixTickers, matrix, rhoImpl }) {
   if (!matrixTickers || !matrix || matrixTickers.length < 2) return null;
@@ -625,6 +704,9 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
 
       {/* Régime : la prime du jour située dans son historique (repère de contexte) */}
       <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} />
+
+      {/* Carte : structure de la corrélation (skew + terme), statique 2022-2026 */}
+      <CorrMap index={ctx.listIndex || C.index} mode={mode} />
 
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
