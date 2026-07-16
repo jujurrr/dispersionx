@@ -91,10 +91,26 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
 
     async function rescoreAll() {
       setRescoring(true);
+      // ρ implicite RÉELLE de CETTE liste — calculée une fois, passée à chaque score, comme le
+      // fait déjà le scoring d'indice (store.js). Sans elle le serveur applique le fail-safe 0,65
+      // et les scores d'une liste ne sont pas comparables à ceux d'un indice (~24 points d'écart).
+      //
+      // Garde-fou : sous ~12 noms, ρ_impl s'effondre MÉCANIQUEMENT (son terme Σwᵢ²σᵢ² décroît en
+      // 1/N et finit par absorber la variance de l'indice ; ρ tombe au clamp 0,05). Sur un petit
+      // panier on préfère donc le fail-safe : il est arbitraire, mais au moins dans le bon ordre
+      // de grandeur. Mieux vaut une ancre grossière qu'une ancre fausse.
+      let rhoImpl = null;
+      const tickers = items.map(i => i.ticker).filter(Boolean);
+      if (tickers.length >= 12) {
+        try {
+          const r = await DXApi.impliedCorrelation(indexSym, tickers, null, 30);
+          if (r && r.rho_impl != null) rhoImpl = r.rho_impl;
+        } catch { /* non-bloquant : on retombe sur le fail-safe serveur */ }
+      }
       for (let i = 0; i < items.length; i += BATCH) {
         const batch = items.slice(i, i + BATCH);
         await Promise.allSettled(batch.map(async item => {
-          const result = await DXApi.autoScore(indexSym, item.ticker, 30);
+          const result = await DXApi.autoScore(indexSym, item.ticker, 30, false, rhoImpl);
           if (result?.scoring?.score != null) {
             await DXApi.addListItem(listId, item.ticker, result.scoring);
           }

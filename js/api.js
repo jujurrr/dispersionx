@@ -127,14 +127,19 @@
   // « changent » entre l'affichage et le chargement.
   const _scoreCache = {};     // key -> résultat résolu
   const _scoreInflight = {};  // key -> promesse en cours (dédoublonnage)
-  function _scoreKey(i, s, d, x) { return [i, s, d, x ? 1 : 0].join('|'); }
+  // rho_impl fait PARTIE de la clé. Il ne découle pas de (indice, durée) : il dépend de la LISTE
+  // de composants sur laquelle il a été calculé, et surtout tous les appelants ne le passent pas
+  // — sans lui le serveur applique le fail-safe 0,65. Deux appelants donnaient donc deux scores
+  // différents (jusqu'à ~24 points d'écart) sous la même clé, et le premier arrivé figeait le
+  // résultat pour toute la session : le même titre changeait de score selon le chemin de
+  // navigation. Arrondi à 3 décimales — ρ_impl bouge peu, inutile de fragmenter le cache.
+  function _scoreKey(i, s, d, x, r) { return [i, s, d, x ? 1 : 0, (r > 0 && r < 1) ? r.toFixed(3) : 'default'].join('|'); }
 
-  // rho_impl (optionnel) : corrélation implicite RÉELLE du panier, calculée une
-  // fois par indice/durée et passée à chaque score → ancre du terme de
-  // corrélation à la place de la constante 0.65. La clé de cache n'inclut PAS
-  // rho_impl : il découle de (indice, durée) déjà dans la clé, donc cohérent.
+  // rho_impl (optionnel) : corrélation implicite RÉELLE du panier → ancre du terme de
+  // corrélation à la place de la constante 0.65. À passer dès qu'on l'a : le modèle V2
+  // (DX_SCORE_MODEL) s'en sert comme seuil de sélectivité et dégénère sans lui.
   async function autoScore(index_symbol, stock_symbol, duration_days, use_ex_action = false, rho_impl = null) {
-    const key = _scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action);
+    const key = _scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action, rho_impl);
     if (_scoreCache[key]) return _scoreCache[key];
     if (_scoreInflight[key]) return _scoreInflight[key];
     const p = (async () => {

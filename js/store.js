@@ -184,6 +184,14 @@
     refreshQuotes,
     getIndexData: (symbol) => state.data[symbol] || null,
     getScores: (symbol, dur) => (state.data[symbol] && state.data[symbol].scores[dur || PRELOAD_DUR]) || {},
+    // ρ implicite RÉELLE du panier de l'indice, déjà calculée une fois par (indice, durée) pour
+    // le scoring. L'exposer évite que d'autres écrans (ScoreModal) rescorent sans elle : sans
+    // ancre, le serveur applique le fail-safe 0,65 et le MÊME titre obtient un score différent
+    // selon le chemin de navigation. null = pas encore calculée → l'appelant laisse le fail-safe.
+    getRhoImpl: (symbol, dur) => {
+      const d = state.data[symbol];
+      return (d && d.rhoImpl && d.rhoImpl[dur || PRELOAD_DUR] != null) ? d.rhoImpl[dur || PRELOAD_DUR] : null;
+    },
     isScoring: (symbol, dur) => !!(state.data[symbol] && state.data[symbol].scoring[dur || PRELOAD_DUR]),
     getProgress: () => ({ queued: state.progress.queued, done: state.progress.done }),
     DEFAULT_DUR: PRELOAD_DUR,

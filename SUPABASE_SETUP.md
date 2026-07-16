@@ -134,6 +134,15 @@ create table if not exists public.signal_history (
   confidence_tier text,
   primary key (symbol, d, index_symbol, duration)
 );
+-- §7-bis (2026-07-16) — modèle de score V1/V2. À APPLIQUER si la table existe déjà : sans ces
+-- colonnes, PostgREST rejette la ligne entière et le dataset cesse d'être alimenté (l'app, elle,
+-- continue de fonctionner : recordSignal est non-bloquant).
+-- Les deux modèles sont loggés à chaque score → on pourra trancher V1 vs V2 en FORWARD, sur des
+-- données réelles, au lieu de rejouer le même historique. Le modèle actif est piloté par la
+-- variable d'environnement DX_SCORE_MODEL (V1 par défaut ; V2 = gate de corrélation × qualité).
+alter table public.signal_history add column if not exists score_v1 numeric;
+alter table public.signal_history add column if not exists score_v2 numeric;
+alter table public.signal_history add column if not exists score_model text;
 alter table public.signal_history enable row level security;
 -- Aucune policy publique : seule la clé "service_role" (serveur) y accède.
 ```

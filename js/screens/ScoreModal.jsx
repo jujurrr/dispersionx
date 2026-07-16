@@ -10,7 +10,12 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
 
   React.useEffect(() => {
     setLoading(true);
-    DXApi.autoScore(indexSymbol, stockTicker, duration).then(d => {
+    // Ancre le score sur la ρ implicite RÉELLE de l'indice, déjà calculée par le store pour le
+    // scoring de ses composants. Sans elle, le serveur applique le fail-safe 0,65 et ce détail
+    // afficherait un score différent de celui de la même action dans la liste (~24 points).
+    // null (indice pas encore chargé) → fail-safe serveur, comportement d'avant, non-cassant.
+    const rhoImpl = (window.DXStore && window.DXStore.getRhoImpl) ? window.DXStore.getRhoImpl(indexSymbol, duration) : null;
+    DXApi.autoScore(indexSymbol, stockTicker, duration, false, rhoImpl).then(d => {
       setData(d);
       setLoading(false);
       onScoreLoaded && onScoreLoaded(stockTicker, d?.scoring?.score);
@@ -187,12 +192,18 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               </div>
 
               {/* IV Rank */}
-              {stock.iv_rank && (
+              {stock.iv_rank && (() => {
+                // Deux méthodes rangent une VRAIE IV dans de VRAIES IV : `true_iv` (historique de
+                // snapshots accumulé) et `true_iv_snapshot` (plage 52 sem. mesurée sur notre
+                // historique d'options). Seul `hv_estimated` est un proxy — il ne corrèle qu'à
+                // 0,38 avec le vrai rang, d'où l'intérêt de ne PAS l'étiqueter « réel ».
+                const ivrTrue = stock.iv_rank.method === 'true_iv' || stock.iv_rank.method === 'true_iv_snapshot';
+                return (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)' }}>
                   <div>
-                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>{stock.iv_rank.method === 'true_iv' ? 'IV Rank (réel)' : 'IV Rank (estimé HV)'}</div>
+                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>{ivrTrue ? 'IV Rank (réel)' : 'IV Rank (estimé HV)'}</div>
                     <div style={{ font: '700 22px/1 var(--font-mono)', color: 'var(--text)' }}>{stock.iv_rank.iv_rank}%</div>
-                    {stock.iv_rank.method !== 'true_iv' && stock.iv_rank.true_days > 0 && (
+                    {!ivrTrue && stock.iv_rank.true_days > 0 && (
                       <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 2 }}>vrai IV rank en constitution · {stock.iv_rank.true_days} j</div>
                     )}
                   </div>
@@ -201,12 +212,13 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                     <div style={{ font: '700 22px/1 var(--font-mono)', color: 'var(--text)' }}>{stock.iv_rank.iv_percentile}%</div>
                   </div>
                   <div>
-                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>{stock.iv_rank.method === 'true_iv' ? 'Range 52 sem. (IV)' : 'Range 1 an (HV)'}</div>
+                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>{ivrTrue ? 'Range 52 sem. (IV)' : 'Range 1 an (HV)'}</div>
                     <div style={{ font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{stock.iv_rank.iv_min?.toFixed(1)}% – {stock.iv_rank.iv_max?.toFixed(1)}%</div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>{stock.iv_rank.note}</div>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* Greeks (IBKR) */}
               {stock.greeks && (

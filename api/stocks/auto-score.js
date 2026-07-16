@@ -13,6 +13,7 @@ import { fetchClosesSmart, cboeIvBundle } from '../_lib/cboe.js';
 import { proxyEtf } from '../_lib/proxy-scale.js';
 import { kvCacheGet, kvCacheSet } from '../_lib/iv-cache.js';
 import { recordIv, ivRankFromHistory } from '../_lib/iv-history.js';
+import { IV_RANK_TABLE } from '../_lib/iv-rank-data.js';
 import { recordSignal } from '../_lib/signal-history.js';
 import { pearson } from '../_lib/dispersion-math.js';
 
@@ -203,11 +204,32 @@ export default async (req) => {
   const TRUE_MIN_FOR_SCORE = 60;   // ≥ ~3 mois de snapshots pour piloter le score
   const trueOk = !!(trueRankRes && !trueRankRes.insufficient && trueRankRes.n_days >= TRUE_MIN_FOR_SCORE);
 
-  const ivRank        = trueOk ? trueRankRes.rank : estRank;
-  const ivRankMethod  = trueOk ? 'true_iv' : 'hv_estimated';
-  const ivRankMin     = trueOk ? trueRankRes.min : hvMinR;
-  const ivRankMax     = trueOk ? trueRankRes.max : hvMaxR;
+  // ── Rang sur la plage d'IV 52 s. MESURÉE (snapshot ThetaData 2022-2026) ──────────────────
+  // Deuxième meilleure source, entre `iv_history` (52 s. réellement glissantes, mais lente à se
+  // remplir) et le proxy HV. Ce proxy est mauvais : sur nos données il ne corrèle qu'à 0,38 avec
+  // le vrai rang et s'en écarte de 23 points en moyenne — or l'IV-rank pèse 20 % du score V1 et
+  // 60 % de la quality de V2. Ici on compare une IV réelle à une plage d'IV réelles.
+  // Conditions : IV du jour réelle (comparer une IV estimée à une plage réelle n'aurait aucun
+  // sens) et tenor le plus proche de la durée demandée. Mélange de sources vérifié sûr
+  // (ThetaData vs IBKR : corrélation 0,988, biais −0,6 pt de vol ; un biais constant décale min,
+  // max et le point du jour ensemble, donc ne déplace pas le rang).
+  const ivTab = IV_RANK_TABLE[sym];
+  const ivTi  = duration <= 45 ? 0 : duration <= 75 ? 1 : 2;      // tenors [30, 60, 90]
+  let snapRank = null;
+  if (ivTab && ivSrc === 'cboe_delayed' && ivTab.mx[ivTi] > ivTab.mn[ivTi]) {
+    // (clampS est déclaré plus bas — const n'est pas hoisté, on borne à la main ici.)
+    snapRank = Math.round(Math.max(0, Math.min(100, (iv - ivTab.mn[ivTi]) / (ivTab.mx[ivTi] - ivTab.mn[ivTi]) * 100)));
+  }
+  const snapOk = snapRank != null;
+
+  const ivRank        = trueOk ? trueRankRes.rank : (snapOk ? snapRank : estRank);
+  const ivRankMethod  = trueOk ? 'true_iv' : (snapOk ? 'true_iv_snapshot' : 'hv_estimated');
+  const ivRankMin     = trueOk ? trueRankRes.min : (snapOk ? ivTab.mn[ivTi] : hvMinR);
+  const ivRankMax     = trueOk ? trueRankRes.max : (snapOk ? ivTab.mx[ivTi] : hvMaxR);
   const ivHistoryDays = trueRankRes ? (trueRankRes.n_days || 0) : 0;
+  // Les deux premières méthodes rangent une VRAIE IV dans de VRAIES IV → même traitement en aval
+  // (notamment la décontamination earnings, qui n'a de sens que sur un rang d'IV implicite).
+  const ivRankIsTrue  = trueOk || snapOk;
   const ivPct  = Math.round(Math.max(0, Math.min(100, ivRank * 0.95)));
 
   const volPrem = iv - hv;   // information (IV vs HV) — n'entre PLUS dans le score
@@ -261,7 +283,7 @@ export default async (req) => {
   // serait compté deux fois. Inutile pour l'estimé HV (la HV réalisée n'intègre
   // pas la prime d'un earnings À VENIR).
   let ivRankScore    = Math.round(clampS(100 - ivRank));                      // IV/vol basse dans son historique = favorable
-  if (earningsInStrategy && ivRankMethod === 'true_iv') ivRankScore = Math.max(ivRankScore, 50);
+  if (earningsInStrategy && ivRankIsTrue) ivRankScore = Math.max(ivRankScore, 50);
   // Vol IDIOSYNCRATIQUE : combien l'action bouge INDÉPENDAMMENT de l'indice
   // (σ_idio = HV·√(1−ρ²)). C'est le vrai moteur du straddle long — il faut que
   // ça bouge tout seul pour payer. Remplace l'ancien « beta vs 1.1 » (mesure
@@ -278,10 +300,52 @@ export default async (req) => {
   const liqScore     = atmSpreadPct != null ? Math.round(clampS(100 - atmSpreadPct * 3.5)) : 45;
 
   const W = { correlation: 0.45, iv_rank: 0.20, event: 0.15, idio: 0.10, liquidity: 0.10 };
-  const score = Math.round(clampS(
+  // ── V1 : somme pondérée des 5 sous-scores ──
+  const scoreV1 = Math.round(clampS(
     W.correlation * corrScore + W.iv_rank * ivRankScore + W.event * evScore +
     W.idio * idioScore + W.liquidity * liqScore));
-  const [signal, signal_color] = score >= 75 ? ['FORT', 'green'] : score >= 55 ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
+
+  // ── V2 : gate de corrélation × qualité — un PRODUIT, pas une somme ──────────
+  // Le défaut du modèle additif : un titre très corrélé à son indice n'apporte RIEN à une
+  // dispersion, mais un bon IV-rank peut lui rendre des points et le hisser au-dessus d'un
+  // titre réellement décorrélé. Le produit l'interdit : gate → 0 écrase le score.
+  //
+  // Validé sur données pleines (backtest/backtest_level1.mjs, IC transversal Spearman) :
+  //   NDX 94 noms in-sample : IC 0,647 vs 0,611 (V1) · IR 6,78 vs 4,20
+  //   SPX 360 noms **OOS**  : IC 0,745 vs 0,707 (V1) · IR 9,01 vs 7,05 · et V2 est monotone
+  //                           par quintile là où V1 ne l'est pas.
+  // Trois variantes à échelle « corrigée » ont été testées et sont MOINS BONNES (V3 : IC 0,43 ;
+  // projection σ_I/Σwσ : estimateur biaisé ; V4 ρ̄-panier : IC 0,592/0,701). Cf. la note sur
+  // les échelles plus bas.
+  //
+  // ⚠️ `edge` n'est PAS une prime de corrélation par nom — cette grandeur n'existe pas dans nos
+  // données (on n'a de corrélation implicite qu'au niveau PANIER). ρ_impl est une corrélation
+  // moyenne PAIRE (~0,25), structurellement plus basse qu'une corrélation titre-indice (~0,40) :
+  // il agit donc ici comme un SEUIL DE SÉLECTIVITÉ calé sur le régime — ne passent que les noms
+  // nettement décorrélés. C'est ce qui fait la performance du modèle, et c'est aussi pourquoi V2
+  // exige la VRAIE ρ_impl : avec le fail-safe 0,65 l'edge est positif presque partout, le gate
+  // sature à ~0,9 et V2 dégénère en simple `quality`.
+  //
+  // Qualité = ivrank/idio uniquement : c'est la forme EXACTE qui a été backtestée (liquidité et
+  // earnings étaient des constantes au niveau 1, donc sans effet sur le classement mesuré). Les
+  // ajouter ici donnerait un modèle NON validé — à backtester avant, pas à supposer.
+  const edge     = rhoImpl - rho;
+  const corrGate = 1 / (1 + Math.exp(-(edge - 0.05) / 0.08));          // ∈ (0,1)
+  const quality  = 0.6 * ivRankScore + 0.4 * idioScore;                // 0..100
+  const scoreV2  = Math.round(clampS(corrGate * quality));
+
+  // Modèle actif. V1 par défaut : V2 est validé sur le CLASSEMENT mais change tous les niveaux
+  // affichés — bascule par variable d'environnement, réversible à chaud, sans redéploiement de
+  // code. Les deux scores sont TOUJOURS calculés et renvoyés → comparables en production.
+  const SCORE_MODEL = String(process.env.DX_SCORE_MODEL || 'V1').toUpperCase() === 'V2' ? 'V2' : 'V1';
+  const score = SCORE_MODEL === 'V2' ? scoreV2 : scoreV1;
+
+  // Seuils du signal : propres à chaque modèle. Ceux de V2 sont calibrés sur la distribution
+  // mesurée (13 138 observations NDX+SPX) pour reproduire les proportions de V1 — 4,6 % de FORT
+  // et 33,8 % de MODÉRÉ. Réutiliser 75/55 sur V2 laisserait 0,7 % de FORT : un badge qui ne
+  // s'allume jamais n'informe personne.
+  const TH = SCORE_MODEL === 'V2' ? { fort: 62, mod: 19 } : { fort: 75, mod: 55 };
+  const [signal, signal_color] = score >= TH.fort ? ['FORT', 'green'] : score >= TH.mod ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
 
   const subscores = {
     dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(rhoImpl * 100).toFixed(0)}% (${rho < rhoImpl - 0.1 ? 'sous l\'implicite = favorable' : rho > rhoImpl + 0.05 ? 'au-dessus = défavorable' : 'proche de l\'implicite'})` },
@@ -330,7 +394,7 @@ export default async (req) => {
       `IV : ${ivReal ? (ivSrc === 'cboe_delayed' ? 'réelle Cboe' : 'réelle MarketData') : 'estimée (HV×1.15)'}`,
       `ρ implicite : ${implReal ? 'réelle du panier' : 'défaut 0.65'}`,
       `Spread options : ${spreadReal ? 'réel (chaîne ATM)' : 'estimé'}`,
-      `IV Rank : ${ivRankMethod === 'true_iv' ? `réel (${ivHistoryDays} j)` : 'estimé (HV 1 an)'}`,
+      `IV Rank : ${ivRankMethod === 'true_iv' ? `réel (${ivHistoryDays} j)` : ivRankMethod === 'true_iv_snapshot' ? 'réel (plage 52 sem. mesurée)' : 'estimé (HV 1 an)'}`,
     ],
   };
 
@@ -339,7 +403,12 @@ export default async (req) => {
   if (ivReal) {
     recordSignal({
       symbol: sym, index_symbol: indexSym, duration,
-      score, corr_score: corrScore, ivrank_score: ivRankScore, earnings_score: evScore,
+      // Les deux modèles sont loggés : c'est ce qui permettra de trancher V1/V2 en FORWARD, sur
+      // des données réelles, au lieu de rejouer indéfiniment le même historique.
+      // ⚠️ exige les colonnes score_v1/score_v2/score_model (SUPABASE_SETUP §7-bis) : sans elles
+      // PostgREST rejette la ligne ENTIÈRE et on perd le dataset (l'app, elle, n'en souffre pas).
+      score, score_v1: scoreV1, score_v2: scoreV2, score_model: SCORE_MODEL,
+      corr_score: corrScore, ivrank_score: ivRankScore, earnings_score: evScore,
       idio_score: idioScore, liq_score: liqScore,
       rho_impl: rhoImpl, rho_real: rho, iv, hv, iv_rank: ivRank,
       spread_pct: atmSpreadPct, price: Number(price.toFixed(2)),
@@ -352,6 +421,11 @@ export default async (req) => {
   return Response.json({
     scoring: {
       score, signal, signal_color, confidence,
+      // Les DEUX modèles, toujours. `score` est celui du modèle actif (score_model) ; les autres
+      // champs permettent de comparer V1 et V2 sur les mêmes données réelles sans rien casser.
+      score_model: SCORE_MODEL, score_v1: scoreV1, score_v2: scoreV2,
+      score_thresholds: TH,
+      v2_parts: { corr_gate: Number(corrGate.toFixed(3)), quality: Math.round(quality), edge: Number(edge.toFixed(3)) },
       weights: W,
       // Décomposition pondérée : contribution = poids × sous-score (∑ = score).
       comp_correlation: Number((W.correlation * corrScore).toFixed(1)),
@@ -383,7 +457,9 @@ export default async (req) => {
         true_days: trueRankRes ? (trueRankRes.n_days || 0) : 0,
         note: ivRankMethod === 'true_iv'
           ? `Vrai IV Rank sur ${ivHistoryDays} j d'historique d'IV réelle (52 sem.)`
-          : `IV Rank ESTIMÉ (vol réalisée sur ~1 an) — pas encore d'historique d'IV suffisant${ivHistoryDays ? ` : ${ivHistoryDays} j accumulés` : ''}`,
+          : ivRankMethod === 'true_iv_snapshot'
+            ? `Vrai IV Rank : IV réelle du jour située dans sa plage 52 sem. mesurée (${ivRankMin} %–${ivRankMax} %). Plage figée — l'historique d'IV en cours d'accumulation prendra le relais${ivHistoryDays ? ` (${ivHistoryDays} j accumulés)` : ''}.`
+            : `IV Rank ESTIMÉ (vol réalisée sur ~1 an) — pas encore d'historique d'IV suffisant${ivHistoryDays ? ` : ${ivHistoryDays} j accumulés` : ''}`,
       },
       // Grecs du straddle ATM (Black-Scholes) — désormais nourris par l'IV réelle.
       // Strike/échéance réels de la chaîne Cboe quand disponibles.
