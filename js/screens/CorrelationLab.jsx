@@ -214,12 +214,10 @@ function CorrRegime({ premium, index, mode, onNav }) {
    Calculé par backtest/build_corrmap.mjs. Repère de structure, PAS du temps réel
    (à passer en live via IBKR — chaînes multi-strike/tenor — plus tard). */
 const CORR_MAP = {
-  SPX: { skew: [0.445, 0.328, 0.198, 0.110, 0.145], term: [0.197, 0.210, 0.206, 0.247, 0.282] },
-  NDX: { skew: [0.510, 0.429, 0.331, 0.255, 0.243], term: [0.332, 0.344, 0.339, 0.377, 0.397] },
-  DJI: { skew: [0.555, 0.426, 0.289, 0.225, 0.355], term: [0.286, 0.288, 0.283, 0.319, 0.339] },
+  SPX: { skew: [0.537, 0.445, 0.328, 0.198, 0.109, 0.145, 0.206], term: [0.197, 0.210, 0.206, 0.247, 0.282] },
+  NDX: { skew: [0.572, 0.510, 0.429, 0.331, 0.255, 0.243, 0.287], term: [0.332, 0.344, 0.339, 0.377, 0.397] },
+  DJI: { skew: [0.636, 0.555, 0.426, 0.289, 0.225, 0.355, 0.578], term: [0.286, 0.288, 0.283, 0.319, 0.339] },
 };
-const SKEW_LABELS = ['−10 %', '−5 %', 'ATM', '+5 %', '+10 %'];
-const TERM_LABELS = ['1 m', '2 m', '3 m', '6 m', '1 an'];
 
 function MiniCurve({ values, labels, color }) {
   const W = 264, H = 138, padL = 28, padR = 12, padT = 20, padB = 26, n = values.length;
@@ -249,8 +247,8 @@ function MiniCurve({ values, labels, color }) {
   );
 }
 
-const SKEW_M = [90, 95, 100, 105, 110], TERM_T = [30, 60, 90, 180, 365];
-const SKEW_XL = { 90: '−10 %', 95: '−5 %', 100: 'ATM', 105: '+5 %', 110: '+10 %' };
+const SKEW_M = [85, 90, 95, 100, 105, 110, 115], TERM_T = [30, 60, 90, 180, 365];
+const SKEW_XL = { 85: '−15 %', 90: '−10 %', 95: '−5 %', 100: 'ATM', 105: '+5 %', 110: '+10 %', 115: '+15 %' };
 const TERM_XL = { 30: '1 m', 60: '2 m', 90: '3 m', 180: '6 m', 365: '1 an' };
 const IDX_PROXY = { SPX: 'SPY', NDX: 'QQQ', DJI: 'DIA' };
 
@@ -268,13 +266,13 @@ function listCorrMap(tickers, indexKey, liveRho) {
   const term = I.tm.map((sI, i) => rhoImplAt(sI, comps.map(c => c.tm[i]).filter(v => v > 0)));
   const anch = liveRho != null && isFinite(liveRho);
   const shift = (arr, ref) => arr.map(v => v == null ? null : +((anch && ref != null ? v + (liveRho - ref) : v)).toFixed(3));
-  return { skew: shift(skew, skew[2]), term: shift(term, term[0]), n: comps.length, anchored: anch };
+  return { skew: shift(skew, skew[3]), term: shift(term, term[0]), n: comps.length, anchored: anch };
 }
 
 // une courbe interactive (DXChart : croix de visée, valeurs, infobulle) ou repli MiniCurve.
-function CorrCurve({ data, xKey, xl, color }) {
+function CorrCurve({ data, xKey, xl, color, dots = false }) {
   if (window.DXChart) return (
-    <window.DXChart data={data} xKey={xKey}
+    <window.DXChart data={data} xKey={xKey} dots={dots}
       lines={[{ key: 'rho', color, label: 'ρ implicite', fill: true }]}
       height={172} ticksY={3} yAxisWidth={40} padFrac={0.24}
       yFmt={v => v.toFixed(2)} xFmt={x => xl[x] || String(x)} />
@@ -291,7 +289,7 @@ function CorrMap({ index, mode, tickers, liveRho }) {
   const listed = !!listMap;
   const skewData = SKEW_M.map((mn, i) => ({ m: mn, rho: m.skew[i] })).filter(d => d.rho != null);
   const termData = TERM_T.map((t, i) => ({ t, rho: m.term[i] })).filter(d => d.rho != null);
-  const sDown = skewData[0]?.rho, sAtm = skewData.find(d => d.m === 100)?.rho;
+  const sDownPt = skewData[0], sDown = sDownPt?.rho, sDownXl = sDownPt ? SKEW_XL[sDownPt.m] : '', sAtm = skewData.find(d => d.m === 100)?.rho;
   const t0 = termData[0]?.rho, t1 = termData[termData.length - 1]?.rho;
   return (
     <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 20 }}>
@@ -306,14 +304,26 @@ function CorrMap({ index, mode, tickers, liveRho }) {
           ? <>Comment la corrélation de <strong style={{ color: 'var(--text-soft)' }}>votre panier</strong> se comporte selon le scénario et l'échéance{m.anchored ? ', ancrée au niveau de corrélation actuel' : ''}. Survolez les courbes pour lire les valeurs.</>
           : <>Comment l'<strong style={{ color: 'var(--text-soft)' }}>indice</strong> price la corrélation (repère du marché, identique quelle que soit la liste). Survolez pour lire les valeurs.</>}
       </p>
+      <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '12px 14px', margin: '0 0 20px', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+        <div style={{ marginBottom: 9 }}>
+          La <strong style={{ color: 'var(--text-soft)' }}>corrélation implicite</strong> mesure à quel point le marché s'attend à ce que les actions du panier bougent <em>ensemble</em> (0 = chacune de son côté, 1 = toutes à l'unisson). Ce n'est pas un chiffre unique : elle dépend du <strong style={{ color: 'var(--text-soft)' }}>scénario</strong> envisagé et de l'<strong style={{ color: 'var(--text-soft)' }}>échéance</strong>.
+        </div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <div><span style={{ color: 'var(--neg-bright)', fontWeight: 700 }}>Le skew</span> — la 1ʳᵉ courbe : la corrélation attendue si le marché <strong style={{ color: 'var(--text-soft)' }}>plonge</strong> (à gauche, −15 %), reste stable (au centre, ATM) ou <strong style={{ color: 'var(--text-soft)' }}>monte</strong> (à droite, +15 %). Elle est presque toujours bien plus haute à la baisse : dans un krach, les actions chutent ensemble.</div>
+          <div><span style={{ color: 'var(--accent-hover)', fontWeight: 700 }}>Le terme</span> — la 2ᵉ courbe : la même corrélation attendue selon l'horizon, de 1 mois à 1 an.</div>
+        </div>
+        <div style={{ marginTop: 9, paddingTop: 9, borderTop: '1px solid var(--border-subtle)', color: 'var(--text-dim)' }}>
+          Pourquoi c'est utile : une position de dispersion revient à <strong style={{ color: 'var(--text-soft)' }}>vendre cette corrélation</strong>. Vous êtes donc le plus exposé exactement là où elle est la plus haute — le krach corrélé, à gauche du skew.
+        </div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 24 }}>
         <div>
           <div style={{ font: '600 12px/1.3 var(--font-sans)', color: 'var(--text-soft)', marginBottom: 12 }}>Selon le scénario (skew)</div>
-          <CorrCurve data={skewData} xKey="m" xl={SKEW_XL} color="var(--neg-bright)" />
+          <CorrCurve data={skewData} xKey="m" xl={SKEW_XL} color="var(--neg-bright)" dots />
           {sDown != null && sAtm != null && (
             <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '10px 0 0' }}>
               {sDown > sAtm + 0.03
-                ? <>Plus haute à la baisse (<strong style={{ color: 'var(--neg-bright)' }}>{sDown.toFixed(2)}</strong> à −10 %) qu'à la monnaie ({sAtm.toFixed(2)}) : le krach est corrélé.</>
+                ? <>Plus haute à la baisse (<strong style={{ color: 'var(--neg-bright)' }}>{sDown.toFixed(2)}</strong> à {sDownXl}) qu'à la monnaie ({sAtm.toFixed(2)}) : le krach est corrélé.</>
                 : <>Corrélation {sAtm.toFixed(2)} à la monnaie, {sDown.toFixed(2)} à la baisse — assez plate.</>}
             </p>
           )}

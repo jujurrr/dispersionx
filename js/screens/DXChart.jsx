@@ -13,7 +13,7 @@
      yFmt(v), xFmt(x)                               formatage axes + infobulle
      zoom       bool                                molette = zoom, glisser = pan
      footer     node                                légende sous l'axe X (option) */
-function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFrac = 0.18, yAxisWidth = 56, ticksY = 4, yFmt, xFmt, zoom = false, panY = false, footer = null }) {
+function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFrac = 0.18, yAxisWidth = 56, ticksY = 4, yFmt, xFmt, zoom = false, panY = false, footer = null, dots = false }) {
   const N = Array.isArray(data) ? data.length : 0;
   const plotRef = React.useRef(null);
   const [win, setWin] = React.useState(null);     // { i0, i1 } fenêtre visible (zoom/pan horizontal) ; null = tout
@@ -158,6 +158,11 @@ function DXChart({ data, xKey = 't', lines, baseline = null, height = 170, padFr
             {lines.filter(l => l.fill).map(l => <path key={l.key} d={areaFor(l.key)} fill={`url(#${uid}-${l.key})`} />)}
             {lines.map(l => <path key={l.key} d={pathFor(l.key)} fill="none" stroke={l.color} strokeWidth={l.dash ? 1.5 : 2} strokeDasharray={l.dash ? '3 3' : undefined} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity={l.dash ? 0.85 : 1} />)}
           </svg>
+
+          {/* Points fixes à chaque donnée (opt-in, HTML → cercles parfaits) */}
+          {dots && lines.map(l => vis.map((p, k) => { const v = p[l.key]; if (v == null || !isFinite(v)) return null; return (
+            <span key={`${l.key}-${k}`} style={{ position: 'absolute', left: `${visN === 1 ? 50 : (k / (visN - 1)) * 100}%`, top: yAt(v), transform: 'translate(-50%, -50%)', width: 7, height: 7, borderRadius: '50%', background: l.color, border: '2px solid var(--bg-card)', pointerEvents: 'none', zIndex: 1 }} />
+          ); }))}
 
           {/* Dernier point (HTML → cercle parfait) */}
           {(() => { const l = lines[0]; const v = vis[visN - 1] && vis[visN - 1][l.key]; if (v == null) return null; return (

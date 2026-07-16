@@ -20,6 +20,11 @@ function regimeOf(iv, prime) {
 function RegimeCarousel({ regimes, mode }) {
   const [i, setI] = React.useState(0);
   const n = regimes.length;
+  React.useEffect(() => {   // défilement automatique toutes les 5 s (relancé à chaque changement)
+    if (n <= 1) return;
+    const id = setTimeout(() => setI(x => x + 1), 5000);
+    return () => clearTimeout(id);
+  }, [i, n]);
   if (!n) return null;
   const cur = ((i % n) + n) % n;
   const active = regimeOf(regimes[cur].iv, regimes[cur].prime);
@@ -36,16 +41,17 @@ function RegimeCarousel({ regimes, mode }) {
           <button onClick={() => setI(cur + 1)} aria-label="Indice suivant" style={navBtn}>›</button>
         </div>
       </div>
-      <div style={{ overflow: 'hidden' }}>
-        <div style={{ display: 'flex', transform: `translateX(-${cur * 100}%)`, transition: 'transform 0.42s cubic-bezier(0.22,1,0.36,1)' }}>
-          {regimes.map(r => {
-            const g = regimeOf(r.iv, r.prime);
-            return (
-              <div key={r.symbol} style={{ flex: '0 0 100%', display: 'flex', gap: 16, alignItems: 'flex-start' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', paddingTop: 3 }}>
-                  {['var(--neg)', 'var(--warn)', 'var(--pos)'].map(c => { const on = c === g.tone; return <span key={c} style={{ width: 11, height: 11, borderRadius: '50%', background: on ? c : 'var(--bg-elevated)', boxShadow: on ? `0 0 8px ${c}` : 'none', border: on ? 'none' : '1px solid var(--border)' }} />; })}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
+      {/* feu FIXE (reflète l'indice actif) + texte qui glisse → aucun débordement au bord */}
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center', paddingTop: 3, flexShrink: 0 }}>
+          {['var(--neg)', 'var(--warn)', 'var(--pos)'].map(c => { const on = c === active.tone; return <span key={c} style={{ width: 11, height: 11, borderRadius: '50%', background: on ? c : 'var(--bg-elevated)', boxShadow: on ? `0 0 8px ${c}` : 'none', border: on ? 'none' : '1px solid var(--border)', transition: 'background 0.3s' }} />; })}
+        </div>
+        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', transform: `translateX(-${cur * 100}%)`, transition: 'transform 0.42s cubic-bezier(0.22,1,0.36,1)' }}>
+            {regimes.map(r => {
+              const g = regimeOf(r.iv, r.prime);
+              return (
+                <div key={r.symbol} style={{ flex: '0 0 100%', minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
                     <span style={{ font: 'var(--type-title)', color: 'var(--text)' }}>{r.label}</span>
                     <span style={{ font: '700 12px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: g.tone }}>{g.verdict}</span>
@@ -55,14 +61,14 @@ function RegimeCarousel({ regimes, mode }) {
                   </div>
                   <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '8px 0 0' }}>{g.msg}</p>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
       {mode === 'Débutant' && (
         <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '10px 0 0' }}>
-          La dispersion parie que les actions se décorrèlent : elle profite en marché calme et perd quand tout tombe ensemble. Faites défiler ‹ › pour comparer les indices — un repère de contexte, pas un signal d'entrée.
+          La dispersion parie que les actions se décorrèlent : elle profite en marché calme et perd quand tout tombe ensemble. Ça défile tout seul (‹ › pour comparer manuellement) — un repère de contexte, pas un signal d'entrée.
         </p>
       )}
     </div>
