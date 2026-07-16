@@ -317,7 +317,9 @@
         comp_b_vol_premium: Number((iv - hv).toFixed(1)),   // info IV−HV (hors score)
         comp_c_costs: -4.1,
         rho_implicit_final: RHO_IMPL, rho_real_expected: rho,
-        cost_source: 'estimated', spread_pct_real: 0.22, cost_spread: 2.8, cost_earnings: 1.3,
+        // spread_pct_real en % du mid du straddle ATM (même unité que l'API réelle : ~22 % =
+        // un nom peu liquide ; une méga-cap tourne autour de 3 %).
+        cost_source: 'estimated', spread_pct_real: 22, cost_spread: 2.8, cost_earnings: 1.3,
         subscores: {
           dispersion_contrib: { score: corrScore,    reason: `ρ réalisée ${(rho * 100).toFixed(0)}% vs implicite ${(RHO_IMPL * 100).toFixed(0)}%` },
           vol_attractive:     { score: ivRankScore,  reason: `IV rank ${ivRank}% — IV ${iv.toFixed(1)}% vs HV ${hv.toFixed(1)}%` },

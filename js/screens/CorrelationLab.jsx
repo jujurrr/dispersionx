@@ -106,21 +106,11 @@ const INDEX_SYMS = ['SPX', 'NDX', 'DJI', 'CAC', 'DAX'];
 /* ─── Régime : situer la prime du jour vs son historique ─────────────
    Baseline calculée sur 2022–2026 EXACTEMENT comme l'app (ρ_impl 30j CBOE
    cap ≈ indice · réalisée trailing 60j · prime = impl − réalisée en points).
-   Repère de RÉGIME au niveau indice. Quantiles p0,5,…,100. */
-const CORR_BASELINE = {
-  SPX: {
-    label: 'S&P 500', window: '2022–2026', n: 224,
-    premiumPts: [-36.3, -12.1, -9.3, -7.0, -5.2, -3.7, -2.5, -1.5, 0.1, 1.9, 2.7, 3.3, 4.2, 5.7, 6.9, 7.8, 9.3, 10.7, 12.8, 20.7, 39.4],
-  },
-  NDX: {
-    label: 'Nasdaq 100', window: '2022–2026', n: 224,
-    premiumPts: [-31.3, -14.4, -7.9, -6.1, -3.1, -2.2, -0.7, 0.7, 1.5, 2.8, 3.8, 4.3, 5.1, 6.3, 7.7, 9.5, 11.4, 13.3, 14.1, 17.0, 31.4],
-  },
-  DJI: {
-    label: 'Dow Jones', window: '2022–2026', n: 224,
-    premiumPts: [-30.4, -8.8, -6.9, -4.4, -3.5, -1.4, -0.6, 0.5, 1.9, 2.7, 3.4, 4.2, 5.1, 5.8, 7.4, 8.3, 10.4, 12.3, 15.1, 19.0, 34.9],
-  },
-};
+   Repère de RÉGIME au niveau indice. Quantiles p0,5,…,100.
+   Données dans js/lib/corr-baseline-data.js (générées par backtest/build_baseline.mjs) :
+   source UNIQUE, partagée avec Construction, qui situe dans cette même histoire la prime
+   nécessaire pour couvrir le spread. Repli {} → les panneaux qui en dépendent se masquent. */
+const CORR_BASELINE = window.DXCorrBaseline || {};
 /* percentile (0–100) d'une valeur dans un tableau de quantiles régulier (pas de 5). */
 function pctRank(v, q) {
   if (!q || !q.length || v == null || !isFinite(v)) return null;

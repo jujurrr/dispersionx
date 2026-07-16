@@ -359,7 +359,7 @@ function App() {
       screenEl = <window.StrategyMonitor mode={mode} lists={lists} onNav={onNav} addToast={addToast} />;
       break;
     case 'opportunities':
-      screenEl = <window.OpportunityFinder onNav={onNav} lists={lists} addToast={addToast} pro={pro} />;
+      screenEl = <window.OpportunityFinder onNav={onNav} lists={lists} addToast={addToast} pro={pro} mode={mode} />;
       break;
     case 'market-pro':
       screenEl = <window.MarketPro onNav={onNav} addToast={addToast} pro={pro} lists={lists} />;

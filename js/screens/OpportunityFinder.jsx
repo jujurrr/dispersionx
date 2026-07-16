@@ -251,7 +251,7 @@ function oppCost(m, totalContracts, R) {
   return { netDebit, execCost, marginIdx, capitalEst, grossPrem };
 }
 
-function OpportunityFinder({ onNav, lists, addToast, pro }) {
+function OpportunityFinder({ onNav, lists, addToast, pro, mode }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const t = window.t || ((s) => s);   // pancarte d'accueil traduite (le reste du module reste en FR)
@@ -679,6 +679,11 @@ function OpportunityFinder({ onNav, lists, addToast, pro }) {
           ))}
         </div>
       )}
+
+      {/* Prime de risque / queue de krach : le chercheur classe des candidats — il ne dit pas ce
+          qu'on vend en les tradant. L'avertissement n'apparaît qu'avec des résultats à l'écran,
+          soit au moment où l'utilisateur s'apprête à en retenir un. */}
+      {!running && results && results.length > 0 && window.DXTailWarning && <window.DXTailWarning mode={mode} />}
     </div>
   );
 }

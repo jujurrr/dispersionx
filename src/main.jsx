@@ -47,6 +47,14 @@ import '../js/store.js';
 import '../js/notif-store.js';   // window.DXNotifStore (store partagé des notifications, cloud)
 import '../js/lib/market-hours.js';
 import '../js/lib/corr-skew-data.js';   // window.DXSkewComp : skew moyen par composant → skew de corrélation ajusté à la liste
+import '../js/lib/corr-cost-data.js';   // window.DXCostComp : coût d'exécution réel par composant (repli + référence historique du spread)
+import '../js/lib/corr-baseline-data.js';   // window.DXCorrBaseline : quantiles historiques de la prime de corrélation (Correlation Lab + Construction)
+// Maths du coût d'exécution → window.DXCost. On importe la SOURCE serveur (api/_lib) telle
+// quelle : c'est de l'ESM pur sans dépendance Node, donc Vite la bundle sans adaptation. Une
+// seule implémentation, couverte par `npm test`, partagée par l'API et les écrans — pas de
+// miroir navigateur à resynchroniser à la main (contrairement à DXProxy/proxy-scale).
+import * as DXCostMath from '../api/_lib/dispersion-cost.js';
+window.DXCost = DXCostMath;
 import '../js/lib/ibkr-export.js';   // window.DXIbkr (CSV Risk Navigator/What-If à partir d'une stratégie)
 
 // 5) Écrans (ordre identique à index.html — dépendances de globals au top-level).
@@ -57,6 +65,7 @@ import '../js/screens/ShareDialog.jsx';     // window.ShareDialog (partage liste
 import '../js/screens/IbkrExportDialog.jsx'; // window.IbkrExportDialog (export CSV IBKR What-If, Pro)
 import '../js/screens/ActivityFeed.jsx';    // window.ActivityFeed + window.DXActivity (helpers audit)
 import '../js/screens/DXChart.jsx';          // window.DXChart (graphe en courbes interactif réutilisable)
+import '../js/screens/TailWarning.jsx';      // window.DXTailWarning (avertissement prime de risque / queue, au moment du trade)
 import '../js/screens/Shell.jsx';
 import '../js/screens/Home.jsx';
 import '../js/screens/IndexDetail.jsx';

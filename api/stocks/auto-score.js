@@ -291,13 +291,18 @@ export default async (req) => {
     liquidity:          { score: liqScore,     reason: atmSpreadPct != null ? `Spread straddle ATM ${atmSpreadPct.toFixed(1)}% (réel Cboe) — ${atmSpreadPct <= 3 ? 'liquide' : atmSpreadPct <= 8 ? 'moyen' : 'large / illiquide'}` : 'Options non cotées — liquidité incertaine' },
   };
 
-  // Coût d'exécution ESTIMÉ, spécifique à chaque action (pas de vraie chaîne
-  // bid/ask ici) : spread aller-retour plus large pour les noms chers en vol et
-  // peu liquides (proxy de liquidité = prix), + un tampon événement/slippage qui
-  // croît avec l'IV. Remplace l'ancienne valeur figée (-3.8 pour tout le monde).
-  const spreadPctEst = Math.max(0.03, Math.min(1.2,
-    0.05 + (iv / 100) * 0.30 + Math.max(0, (60 - Math.min(60, price)) / 60) * 0.35));
-  const costSpread   = Number((spreadPctEst * 12).toFixed(1));
+  // Coût d'exécution. On utilise le spread bid/ask RÉEL du straddle ATM (chaîne Cboe) dès qu'il
+  // est coté — il est déjà calculé plus haut pour le sous-score de liquidité, il n'y a aucune
+  // raison de lui préférer une formule. Repli sur une estimation quand le nom n'est pas coté :
+  // spread plus large pour les noms chers en vol et peu liquides (proxy de liquidité = prix).
+  //
+  // Unité unique : POURCENTAGE du mid du straddle, comme atmSpreadPct. Auparavant l'estimation
+  // était une FRACTION (0.14) et le réel un POURCENTAGE (3.28), et les deux alimentaient le même
+  // champ `spread_pct_real` — deux unités pour une seule grandeur. (Ordre de grandeur mesuré sur
+  // ThetaData 2022-2026 : ~12 % pour un composant typique, ~3 % pour une méga-cap liquide.)
+  const spreadPctEst  = Math.max(3, Math.min(120, 5 + iv * 0.30 + Math.max(0, (60 - Math.min(60, price)) / 60) * 35));
+  const spreadPctUsed = atmSpreadPct != null ? atmSpreadPct : spreadPctEst;
+  const costSpread    = Number((spreadPctUsed / 100 * 12).toFixed(1));
   // Coût earnings majoré si un résultat tombe DANS la fenêtre (IV crush / gap).
   const costEarnings = Number(((0.6 + (iv / 100) * 1.2) * (earningsInStrategy ? 1.7 : 1)).toFixed(1));
   const compCcosts   = Number((-(costSpread + costEarnings)).toFixed(1));
@@ -360,7 +365,8 @@ export default async (req) => {
       comp_b_vol_premium: Number(volPrem.toFixed(1)),   // info IV−HV (hors score)
       comp_c_costs: compCcosts,
       rho_implicit_final: rhoImpl, rho_impl_source: rhoImplSrc, corr_risk_premium: Number((rhoImpl - rho).toFixed(3)), rho_real_expected: rho,
-      cost_source: atmSpreadPct != null ? 'real_bidask' : 'estimated', spread_pct_real: atmSpreadPct != null ? atmSpreadPct : Number(spreadPctEst.toFixed(2)), cost_spread: costSpread, cost_earnings: costEarnings,
+      // spread_pct_real : toujours en % du mid du straddle ATM ; cost_source dit d'où il vient.
+      cost_source: atmSpreadPct != null ? 'real_bidask' : 'estimated', spread_pct_real: Number(spreadPctUsed.toFixed(2)), cost_spread: costSpread, cost_earnings: costEarnings,
       subscores, composite_score: { score },
       pipeline: { rho_per_window: { 20: Number((rho + 0.02).toFixed(3)), 60: rho, 120: Number((rho - 0.01).toFixed(3)) }, weights_normalized: { 20: 0.25, 60: 0.50, 120: 0.25 }, blend: rho, regime_factor: 1.0, rho_hat_final: rho },
       recommendation: rec,

@@ -108,6 +108,17 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                 </div>
               </div>
 
+              {/* Ce que le score mesure — et ce qu'il ne mesure pas.
+                  Nos backtests (backtest/backtest_level1.mjs, _level2_basket.mjs) tranchent net :
+                  le score PRÉDIT bien la corrélation future (IC ~0,6 ; le panier le mieux classé
+                  capture +0,25 de corrélation, 94 % de réussite) mais il ne prédit PAS le P&L net
+                  — ce même panier a le PIRE résultat tradeable, parce que le portage de volatilité
+                  et le spread pilotent le profit autant que la corrélation. Le présenter comme un
+                  signal d'achat serait donc faux. On le dit là où le chiffre se lit. */}
+              <div style={{ padding: '10px 13px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                <strong style={{ color: 'var(--text-soft)' }}>Comment lire ce score.</strong> Il classe l'<strong>apport de ce composant à une dispersion</strong> : bouge-t-il assez indépendamment de l'indice, sa volatilité est-elle attractive, ses options sont-elles traitables. Nos tests sur 2 ans confirment qu'il <strong>prédit bien la corrélation</strong> à venir — mais il ne prédit <strong>pas le gain</strong> : dans nos backtests, le panier le mieux classé est celui qui capture le mieux la corrélation, et pourtant pas celui au meilleur résultat net de frais. C'est un outil d'<strong>analyse</strong>, pas un signal d'achat : le résultat se joue au moment du trade, sur le coût d'exécution et la taille.
+              </div>
+
               {/* Components A/B/C */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 {[
@@ -159,6 +170,16 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                           <div style={{ height: '100%', width: s.score + '%', background: barColor, borderRadius: 2, transition: 'width 0.8s var(--ease)' }} />
                         </div>
                         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 2 }}>{s.reason}</div>
+                        {/* Vol idio : l'arbitrage que le sous-score seul ne dit pas (brique 7).
+                            Mesuré (backtest/sweep_untested.mjs) : sélectionner par vol idio plutôt
+                            que par liquidité améliore le Sharpe (0,99 vs 0,82) MAIS retourne la
+                            skew (+0,16 vs −0,41) et perd 2× plus dans le vrai pic de corrélation
+                            d'avril 2025. Plus de prime CONTRE plus de queue — pas un repas gratuit. */}
+                        {key === 'idio_vol' && s.score >= 70 && (
+                          <div style={{ font: 'var(--type-caption)', color: 'var(--warn)', marginTop: 3, lineHeight: 1.5 }}>
+                            ⚠ Une vol idio élevée est le <strong>moteur</strong> d'une dispersion — c'est ce qui la fait payer. Mais ce sont aussi les titres qui <strong>chutent le plus fort quand tout le marché tombe ensemble</strong> : dans nos tests, un panier sélectionné sur ce critère perd deux fois plus lors d'un vrai pic de corrélation. Vous achetez plus de prime en échange de plus de risque de queue, pas un avantage gratuit.
+                          </div>
+                        )}
                       </div>
                     );
                   })}

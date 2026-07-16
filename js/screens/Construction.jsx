@@ -54,6 +54,11 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [duration, setDuration] = React.useState(initOpt ? initOpt.dte : (durationOverride || 30));
   const [expiry,   setExpiry]   = React.useState(initOpt ? initOpt.date : null);
   const [deltaHedge, setDeltaHedge] = React.useState('none');      // none | index | legs
+  // Qualité d'exécution : fraction du spread bid/ask réellement payée. 1 = on traverse (ordre au
+  // marché) — l'hypothèse de nos backtests, donc la BORNE HAUTE du coût. C'est le seul levier de
+  // coût qu'un particulier contrôle, et la littérature le désigne comme l'endroit où vit l'edge.
+  const [fill, setFill] = React.useState(1);
+  const [implRho, setImplRho] = React.useState(null);              // ρ implicite du panier (source unifiée du site)
   const [savedTick, setSavedTick] = React.useState(0);
   const [importMsg, setImportMsg] = React.useState(null);
   const [shareOpen, setShareOpen] = React.useState(false);
@@ -130,11 +135,14 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
       // Prix négociable de l'indice = ETF proxy (QQQ, SPY…), pas le niveau
       // d'indice synthétique : primes, notionnels et hedge collent au broker.
-      let indexPrice = 600, indexIV = 18, indexEtf = indexSym;
+      let indexPrice = 600, indexIV = 18, indexEtf = indexSym, indexSpreadPct = null;
       try {
         const sn = await DXApi.getSnapshot(indexSym);
         if (sn) {
           indexIV = sn.iv_est || indexIV;
+          // Spread bid/ask réel du straddle ATM de l'ETF proxy — la jambe BON MARCHÉ de la
+          // dispersion. Sert au panneau « Coût réel ». null si non coté → repli sur la table.
+          indexSpreadPct = sn.atm_spread_pct ?? null;
           const tr = window.DXProxy ? window.DXProxy.tradableIndex(sn, indexSym) : null;
           if (tr && tr.price) { indexPrice = tr.price; indexEtf = tr.etf; }
           else if (sn.price) indexPrice = sn.price;
@@ -169,9 +177,11 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         const beta = v.beta != null ? v.beta : 1.0;
         const mcap = mcapMap[t] != null ? mcapMap[t] : null;
         const weight = (weightMap[t] != null ? weightMap[t] : (idxWeights[t] != null ? idxWeights[t] : null));
-        return { ticker: t, price, iv, hv, beta, mcap, sector: v.sector || 'Autre', weight, g: sg(price, iv, duration) };
+        // spread_pct = spread bid/ask RÉEL du straddle ATM (% du mid), mesuré sur la chaîne Cboe
+        // à ~30 j. null si le nom n'est pas coté → le panneau de coût se replie sur DXCostComp.
+        return { ticker: t, price, iv, hv, beta, mcap, sector: v.sector || 'Autre', weight, g: sg(price, iv, duration), spreadPct: live?.spread_pct ?? null };
       });
-      if (!cancelled) { const _b = { indexSym, indexEtf, indexPrice, indexIV, idxG, perTicker }; _constrCache[listId] = { sig: _sig, base: _b, at: Date.now() }; setBase(_b); setLoading(false); }
+      if (!cancelled) { const _b = { indexSym, indexEtf, indexPrice, indexIV, indexSpreadPct, idxG, perTicker }; _constrCache[listId] = { sig: _sig, base: _b, at: Date.now() }; setBase(_b); setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [listId, indexSym, duration]);
@@ -277,6 +287,124 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       totalLots: comps.reduce((s, c) => s + c.nContracts, 0),
     };
   }, [base, nIndex, sizing, weightBasis]);
+
+  // ── ρ implicite du panier (source unifiée du site : formule CBOE sur IV réelles, vega-pondérée
+  //    — la même que le Correlation Lab, le score et l'auto-chercheur). Sert au seuil de
+  //    rentabilité plus bas. Non-bloquant : indisponible → le panneau masque le break-even. ──
+  const rhoKey = sized ? sized.comps.map(c => c.ticker).join(',') : '';
+  React.useEffect(() => {
+    if (!rhoKey || !DXApi.impliedCorrelation) return;
+    let cancelled = false;
+    DXApi.impliedCorrelation(indexSym, rhoKey.split(','), null, duration)
+      .then(r => { if (!cancelled && r && r.rho_impl != null) setImplRho(r.rho_impl); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [rhoKey, indexSym, duration]);
+
+  // ── COÛT RÉEL D'EXÉCUTION (brique 3) ────────────────────────────────────────
+  // Le chiffre décisif de toute la recherche : la dispersion est structurellement LONGUE la jambe
+  // chère (composants, spread médian ~11,8 % du straddle ATM à 30 j) et COURTE la jambe bon marché
+  // (SPY ~0,6 %) — ~19× d'asymétrie sur ce qu'on trade. Mesuré sur vrais spreads ThetaData
+  // 2022-2026, krachs inclus (backtest/NETCOST_REPORT.md). On le rend visible AVANT le trade.
+  //
+  // Source du spread, par ordre de préférence :
+  //   1. RÉEL du jour — chaîne Cboe (base.perTicker[].spreadPct, ~30 j)
+  //   2. Historique — window.DXCostComp (médiane 2022-2026) si le nom n'est pas coté
+  //   3. Rien — la jambe est marquée non chiffrable et le total n'est PAS affiché (jamais de
+  //      coût sous-estimé : l'utilisateur en tirerait la conclusion inverse de la bonne).
+  const costModel = React.useMemo(() => {
+    if (!base || !sized || !window.DXCost) return null;
+    const { legCost, basketCost, rhoBreakeven } = window.DXCost;
+    const TAB = window.DXCostComp || {};
+    // La table porte les tenors [30,60,90] ; le spread live est mesuré à ~30 j quel que soit le
+    // DTE choisi. On corrige donc le live par la déformation MESURÉE du spread avec l'échéance
+    // (sp[tenor]/sp[30]) : sans ça, un trade à 60 j verrait son coût surestimé de ~30 %.
+    const ti = duration <= 45 ? 0 : duration <= 75 ? 1 : 2;
+    const tenorLabel = [30, 60, 90][ti];
+    const spreadOf = (ticker, live) => {
+      const tab = TAB[ticker];
+      if (live != null && live > 0) {
+        const scale = (tab && tab.sp[0] > 0) ? tab.sp[ti] / tab.sp[0] : 1;
+        return { sp: live * scale, src: 'live' };
+      }
+      if (tab && tab.sp[ti] > 0) return { sp: tab.sp[ti], src: 'hist' };
+      return { sp: null, src: null };
+    };
+
+    const legs = sized.comps.map(c => {
+      const { sp, src } = spreadOf(c.ticker, c.spreadPct);
+      return { ticker: c.ticker, sp, src, cost: legCost({ spreadPct: sp, straddlePremium: c.g.premium, contracts: c.nContracts, fill }) };
+    });
+    const idxSpread = spreadOf(base.indexEtf || base.indexSym, base.indexSpreadPct);
+    const idxCost = legCost({ spreadPct: idxSpread.sp, straddlePremium: base.idxG.premium, contracts: nIndex, fill });
+    if (idxCost == null || legs.some(l => l.cost == null)) {
+      return { unpriced: legs.filter(l => l.cost == null).map(l => l.ticker).concat(idxCost == null ? [base.indexEtf || base.indexSym] : []) };
+    }
+
+    const bc = basketCost({ compLegs: legs, indexCost: idxCost, vegaIndex: sized.idxVega });
+    if (!bc) return null;
+
+    // Seuil de rentabilité : jusqu'où la corrélation réalisée doit tomber, sous ce que le marché
+    // price, pour que le trade couvre juste son spread. Poids = ceux du trade (répartition du vega
+    // choisie), σ = les IV réelles → cohérent avec le panier réellement construit.
+    const names = sized.comps.map(c => ({ w: c.share / 100, sigma: c.iv / 100 }));
+
+    // ── Représentativité du panier (garde-fou) ──
+    // La formule CBOE ne vaut que pour un panier qui RÉPLIQUE l'indice. Son terme B = Σwᵢ²σᵢ²
+    // décroît en 1/N : sur un petit panier B approche σ_I², et ρ_impl s'effondre MÉCANIQUEMENT
+    // (σ_I 14 %, composants ~28 % → ρ_impl = 0,22 à 30 noms, 0,17 à 10, 0,06 à 5, clamp à 3).
+    // Sans ce garde-fou, une liste de 5 noms afficherait « rentabilité inatteignable » à cause
+    // d'un artefact de formule, pas du marché — le faux verdict que ce panneau doit combattre.
+    // Mesure : nombre EFFECTIF de noms (Herfindahl inverse), qui pénalise aussi la concentration —
+    // 30 noms dont un pèse 80 % ne réplique pas davantage l'indice. Nos backtests : 29-30 noms.
+    const nEff = 1 / names.reduce((s, n) => s + n.w * n.w, 0);
+    const REPRESENTATIVE_MIN = 12;   // sous ce seuil, le biais dépasse ~20 % → on n'affiche pas
+    const representative = nEff >= REPRESENTATIVE_MIN;
+
+    // ── Neutralité vega (2ᵉ garde-fou) ──
+    // Tout ce modèle exprime le P&L par $1 de vega INDICE : le gain de dispersion vient du short
+    // indice qui réalise moins que son implicite quand la corrélation baisse. Ça ne tient que si
+    // le vega des composants compense celui de l'indice. Si le panier est net long vega (cas
+    // courant : `nContracts` a un plancher à 1 contrat, donc 30 jambes contre 1 lot d'indice
+    // pèsent ~10× le vega indice), le P&L est piloté par la volatilité des composants et plus du
+    // tout par la corrélation → le seuil de rentabilité, lui, deviendrait faux.
+    const vegaBalanced = Math.abs(sized.netVega) <= 0.25 * sized.idxVega;
+    const be = (implRho != null && representative && vegaBalanced)
+      ? rhoBreakeven({ rhoImpl: implRho, names, vegaIndex: sized.idxVega, cost: bc.total }) : null;
+    // Marge MAXIMALE théoriquement captable : la vol que l'indice perdrait si la corrélation
+    // passait de ce que le marché price à zéro (le meilleur cas absolu d'une dispersion). Si le
+    // spread dépasse ça, le trade est perdant par construction — le chiffre qui le dit.
+    const sImpl = implRho != null ? window.DXCost.sigmaIndexAt(implRho, names) : null;
+    const maxCapturePts = (sImpl != null && be) ? sImpl * 100 - be.floorSigmaPts : null;
+    // Prime de corrélation à capturer (en points) = ce que ρ doit céder rien que pour rentrer dans
+    // ses frais. On la situe dans SON histoire via la même baseline que le panneau Régime du
+    // Correlation Lab → « ce trade exige une prime au Xᵉ percentile juste pour couvrir le spread ».
+    const bl = (window.DXCorrBaseline || {})[(indexSym || 'SPX').toUpperCase()];
+    const needPremiumPts = (be && be.reachable && implRho != null) ? (implRho - be.rho) * 100 : null;
+    let needPct = null;
+    if (bl && needPremiumPts != null) {
+      const q = bl.premiumPts;
+      if (needPremiumPts <= q[0]) needPct = 0;
+      else if (needPremiumPts >= q[q.length - 1]) needPct = 100;
+      else for (let i = 0; i < q.length - 1; i++) {
+        if (needPremiumPts >= q[i] && needPremiumPts <= q[i + 1]) {
+          const span = q[i + 1] - q[i];
+          needPct = i * 5 + (span > 0 ? (needPremiumPts - q[i]) / span * 5 : 0);
+          break;
+        }
+      }
+    }
+    const nLive = legs.filter(l => l.src === 'live').length;
+    return {
+      legs, idxSpread, ...bc, be, needPremiumPts, needPct, tenorLabel, maxCapturePts,
+      nEff, representative, REPRESENTATIVE_MIN, vegaBalanced,
+      medianPremiumPts: bl ? bl.premiumPts[10] : null,
+      baseline: bl,
+      nLive, nHist: legs.length - nLive,
+      // % de la prime nette encaissée que le spread consomme — le « combien ça me coûte » concret
+      premiumBurn: sized.netPremium > 0 ? bc.total / sized.netPremium : null,
+    };
+  }, [base, sized, duration, fill, nIndex, implRho, indexSym]);
 
   // ── Échéances COMMUNES à tous les sous-jacents, calculées 1× au chargement ──
   // Dès que le panier est prêt, on récupère (sur la vraie chaîne d'options Cboe)
@@ -630,6 +758,152 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         </WarningPanel>
       )}
 
+      {/* ── Coût réel d'exécution & seuil de rentabilité (brique 3) ── */}
+      {costModel && (costModel.unpriced ? (
+        <WarningPanel tone="warn" title="Coût d'exécution non chiffrable">
+          Pas de spread bid/ask disponible pour {costModel.unpriced.slice(0, 4).join(', ')}{costModel.unpriced.length > 4 ? ` et ${costModel.unpriced.length - 4} autre(s)` : ''} —
+          ni en cotation du jour, ni dans notre historique. On préfère ne rien afficher plutôt qu'un coût sous-estimé : il vous ferait conclure l'inverse de la réalité.
+        </WarningPanel>
+      ) : (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+            <div style={{ maxWidth: 520 }}>
+              <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Coût réel d'exécution</div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 3 }}>
+                Le spread bid/ask que vous payez pour entrer <em>et</em> sortir. Une dispersion est structurellement <strong>longue la jambe chère</strong> (les composants) et <strong>courte la jambe bon marché</strong> (l'indice) — c'est le facteur qui décide du résultat, avant tout modèle.
+              </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <div style={{ font: '800 22px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{dxN(costModel.total)} {dxSym()}</div>
+              {/* Les « points de vol » normalisent le coût par le vega indice : l'unité de nos
+                  backtests, mais elle n'a de sens que si le trade est vega-neutre — sinon on
+                  divise par un vega qui ne représente plus la position (on lirait 25 pts au lieu
+                  de 3). Trade déséquilibré → on s'en tient aux dollars, qui restent vrais. */}
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>aller-retour{costModel.vegaBalanced && costModel.volPts != null ? ` · ${costModel.volPts.toFixed(2)} pts de vol` : ''}</div>
+            </div>
+          </div>
+
+          {/* Qualité d'exécution — le seul levier de coût réellement à la main de l'utilisateur */}
+          <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 6 }}>Qualité d'exécution</div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+            {[
+              { v: 1, label: 'Au marché', sub: 'tout le spread' },
+              { v: 0.5, label: 'Ordre travaillé', sub: 'moitié du spread' },
+              { v: 0, label: 'Au mid', sub: 'spread nul' },
+            ].map(opt => {
+              const on = fill === opt.v;
+              return (
+                <button key={opt.v} onClick={() => setFill(opt.v)}
+                  style={{ flex: 1, padding: '10px 6px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: 'pointer', textAlign: 'center' }}>
+                  <div style={{ font: '600 12px/1 var(--font-sans)' }}>{opt.label}</div>
+                  <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{opt.sub}</div>
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 14 }}>
+            {fill === 1 && <>Hypothèse de nos backtests : vous traversez le spread aux deux bouts. C'est une <strong>borne haute</strong> — le pire cas réaliste.</>}
+            {fill === 0.5 && <>Vous placez des ordres limite et obtenez la moitié du spread. Réaliste sur des sous-jacents liquides, avec de la patience.</>}
+            {fill === 0 && <>Exécution parfaite au milieu du marché. C'est le privilège du <strong>teneur de marché</strong> : il <em>encaisse</em> le spread au lieu de le payer. Hors de portée en retail — utile comme référence de ce que coûte réellement votre exécution.</>}
+          </div>
+
+          {/* Décomposition par jambe : l'asymétrie rendue visible */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 14 }}>
+            {[
+              { l: `Composants (${costModel.legs.length} jambes, long)`, v: costModel.comp, c: 'var(--neg-bright)' },
+              { l: `Indice · ${base.indexEtf || base.indexSym} (short)`, v: costModel.index, c: 'var(--text-soft)' },
+              { l: 'Asymétrie', v: null, c: 'var(--warn-bright)', txt: costModel.ratio != null ? `${costModel.ratio.toFixed(0)}× plus cher` : '—' },
+            ].map(d => (
+              <div key={d.l} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
+                <div style={{ font: '9px/1.3 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 5 }}>{d.l}</div>
+                <div style={{ font: '700 13px/1 var(--font-mono)', color: d.c }}>{d.txt || `−${dxN(d.v)} ${dxSym()}`}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── LE seuil de rentabilité ── */}
+          {costModel.be && implRho != null ? (
+            costModel.be.reachable ? (() => {
+              const pct = costModel.needPct;
+              const tone = pct == null ? 'var(--text-soft)' : pct >= 80 ? 'var(--neg-bright)' : pct >= 50 ? 'var(--warn-bright)' : 'var(--pos-bright)';
+              return (
+                <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 14 }}>
+                  <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Seuil de rentabilité</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-body-sm)', color: 'var(--text-soft)', marginBottom: 5 }}>
+                    <span>Le marché price la corrélation à</span>
+                    <strong style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{implRho.toFixed(3)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: 'var(--type-body-sm)', color: 'var(--text-soft)', marginBottom: 5 }}>
+                    <span>Pour couvrir le spread, elle doit se réaliser sous</span>
+                    <strong style={{ font: '600 12px/1 var(--font-mono)', color: tone }}>{costModel.be.rho.toFixed(3)}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', font: '700 12px/1 var(--font-mono)', marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-subtle)' }}>
+                    <span style={{ color: 'var(--text-soft)' }}>Prime de corrélation à capturer</span>
+                    <span style={{ color: tone }}>{costModel.needPremiumPts.toFixed(1)} pts</span>
+                  </div>
+                  {pct != null && costModel.baseline && (
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.5 }}>
+                      {pct >= 80
+                        ? <>C'est une prime au <strong style={{ color: tone }}>~{Math.round(pct)}ᵉ percentile</strong> de son historique {costModel.baseline.window} — il faudrait un régime de corrélation <strong>exceptionnellement généreux</strong> rien que pour rentrer dans vos frais. La prime médiane est de {costModel.medianPremiumPts} pts.</>
+                        : pct >= 50
+                          ? <>C'est une prime au <strong style={{ color: tone }}>~{Math.round(pct)}ᵉ percentile</strong> de son historique {costModel.baseline.window} — au-dessus de la médiane ({costModel.medianPremiumPts} pts) : le spread exige un régime plus favorable que la normale.</>
+                          : <>C'est une prime au <strong style={{ color: tone }}>~{Math.round(pct)}ᵉ percentile</strong> de son historique {costModel.baseline.window} — sous la médiane ({costModel.medianPremiumPts} pts) : le coût reste franchissable dans un régime ordinaire.</>}
+                      {' '}<button onClick={() => onNav && onNav('correlation')} style={{ background: 'none', border: 'none', padding: 0, font: 'inherit', color: 'var(--accent)', cursor: 'pointer', textDecoration: 'underline' }}>Voir la prime du jour dans le Correlation Lab →</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })() : (
+              <WarningPanel tone="neg" title="Le spread ne peut pas être couvert">
+                Même si la corrélation tombait à <strong>zéro</strong> — les composants bougeant chacun totalement de leur côté, le meilleur cas absolu pour une dispersion — l'indice ne perdrait que <strong>{costModel.maxCapturePts != null ? costModel.maxCapturePts.toFixed(1) : '—'} points de volatilité</strong>, alors que votre spread en coûte <strong>{costModel.volPts.toFixed(1)}</strong>.
+                Ce panier, à cette échéance et avec cette exécution, est perdant <strong>par construction</strong> : aucun scénario de marché ne le rend gagnant.
+                {' '}Les trois leviers : allonger l'échéance (le spread d'un composant se resserre de ~12 % à 30 j à ~7 % à 90 j), ne garder que les noms les plus liquides, et travailler vos ordres au lieu de traverser le marché.
+              </WarningPanel>
+            )
+          ) : !costModel.representative ? (
+            /* Ordre volontaire : la représentativité passe AVANT la neutralité vega. Un panier de
+               5 noms est aussi, presque toujours, déséquilibré en vega — mais lui conseiller de
+               rééquilibrer l'enverrait sur une fausse piste : même parfaitement neutre, son ρ_impl
+               resterait au clamp. On énonce d'abord la contrainte structurelle, puis le réglage. */
+            <WarningPanel tone="warn" title="Panier trop concentré pour un seuil de rentabilité fiable">
+              Votre panier compte <strong>{costModel.nEff.toFixed(1)} noms effectifs</strong> (une mesure qui tient compte de la concentration : {sized.comps.length} composants, mais les poids sont inégaux). En dessous d'une douzaine, la corrélation implicite s'effondre <strong>mécaniquement</strong> — un artefact de la formule, pas un signal du marché — et tout seuil de rentabilité calculé dessus serait faux.
+              {' '}Le coût ci-dessus, lui, est bien réel.
+              <div style={{ marginTop: 8 }}>
+                Plus profondément : short indice contre une poignée de titres n'est pas une dispersion, c'est un pari sur ces titres-là. Une vraie dispersion veut un panier qui <strong>réplique l'indice</strong> — nos backtests en utilisent une trentaine. Ajoutez des composants ou répartissez les poids pour rendre ce seuil calculable.
+              </div>
+            </WarningPanel>
+          ) : !costModel.vegaBalanced ? (
+            <WarningPanel tone="warn" title="Rééquilibrez le vega pour obtenir un seuil de rentabilité">
+              Le vega net de la position est de <strong>{fmtS(sized.netVega)} {dxSym()}/1%</strong> face à {dxN(sized.idxVega)} {dxSym()}/1% sur la jambe indice : le panier est loin d'être neutre. Son P&L serait piloté par la <strong>volatilité des composants</strong>, pas par la corrélation — la dispersion n'est plus le pari.
+              {' '}Le seuil de rentabilité, qui mesure ce que la corrélation doit vous rapporter, n'aurait donc aucun sens ici.
+              <div style={{ marginTop: 8 }}>
+                Cause habituelle : chaque jambe reçoit au minimum 1 contrat, donc {sized.comps.length} composants face à {nIndex} lot{nIndex > 1 ? 's' : ''} d'indice pèsent bien plus lourd que lui. <strong>Augmentez le nombre de lots indice</strong> (vers {Math.max(1, Math.round(sized.compVega / (sized.idxVega / Math.max(1, nIndex))))} environ) jusqu'à ce que le vega net repasse près de zéro.
+              </div>
+            </WarningPanel>
+          ) : (
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
+              Seuil de rentabilité indisponible : la corrélation implicite du panier n'a pas pu être calculée.
+            </div>
+          )}
+
+          {/* Provenance — le coût affiché est-il réel ou historique ? */}
+          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 10, lineHeight: 1.5 }}>
+            Spreads : <strong style={{ color: costModel.nLive > 0 ? 'var(--pos-bright)' : 'var(--text-dim)' }}>{costModel.nLive} réel{costModel.nLive > 1 ? 's' : ''} (chaîne Cboe du jour)</strong>
+            {costModel.nHist > 0 && <> · {costModel.nHist} estimé{costModel.nHist > 1 ? 's' : ''} sur notre historique 2022-2026 (nom non coté aujourd'hui)</>}.
+            {' '}Mesurés à ~30 j puis rapportés à {duration} j par la déformation constatée du spread avec l'échéance.
+            {costModel.premiumBurn != null && costModel.premiumBurn > 0 && <> Ce coût représente <strong style={{ color: 'var(--warn-bright)' }}>{Math.round(costModel.premiumBurn * 100)} %</strong> de la prime nette encaissée.</>}
+          </div>
+
+          {mode === 'Débutant' && (
+            <div style={{ marginTop: 12 }}>
+              <BeginnerExplanationBox>
+                Le <strong>spread</strong> est l'écart entre le prix d'achat et le prix de vente d'une option : c'est la commission invisible du teneur de marché. Sur un indice comme {base.indexEtf || base.indexSym} il est minuscule (~0,6 % du prix du straddle), mais sur une action individuelle il est bien plus large (~12 % en moyenne). Or une dispersion <strong>achète</strong> les options chères à traiter et <strong>vend</strong> l'option bon marché — vous franchissez donc l'écart dans le mauvais sens sur chaque jambe. Le « seuil de rentabilité » vous dit combien la corrélation doit vous donner rien que pour rembourser ça.
+              </BeginnerExplanationBox>
+            </div>
+          )}
+        </div>
+      ))}
+
       {/* ── Delta de la stratégie / couverture ── */}
       <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
@@ -793,6 +1067,11 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           )}
         </div>
       )}
+
+      {/* Prime de risque / queue de krach — tout en bas, une fois le trade dimensionné : c'est le
+          moment où l'utilisateur décide, donc le moment où il doit savoir ce qu'il vend. Masqué en
+          embarqué (le Builder a son propre fil de lecture). */}
+      {!embedded && window.DXTailWarning && <window.DXTailWarning mode={mode} />}
 
       {shareOpen && window.ShareDialog && shareList && (
         <window.ShareDialog list={shareList} kind="construction" onClose={() => setShareOpen(false)} addToast={addToast} />

@@ -111,6 +111,12 @@ export default async (req) => {
         ticker, hv30, hv60,
         iv_est: iv, iv_src: ivReal ? 'cboe_delayed' : 'hv_estimate',
         spread, beta, correlation: corr,
+        // Spread bid/ask RÉEL du straddle ATM (% du mid), déjà calculé par atmGreeks sur la
+        // chaîne Cboe. C'est le coût d'exécution du trade — le facteur que toute la recherche
+        // désigne comme décisif (backtest/NETCOST_REPORT.md) — donc Construction en a besoin
+        // par jambe. `spread` juste au-dessus est IV−HV : un autre concept, ne pas confondre.
+        // null si le nom n'est pas coté → l'appelant se replie sur la table historique.
+        spread_pct: ivReal?.greeks?.spreadPct ?? null,
       };
     });
 

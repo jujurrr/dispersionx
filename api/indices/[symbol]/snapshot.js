@@ -157,6 +157,10 @@ export default async (req) => {
   const ivReal = await ivPromise;
   if (ivReal?.iv != null) { snap.iv_est = ivReal.iv; snap.iv_source = 'cboe_delayed'; }
   else snap.iv_source = 'estimated';
+  // Spread bid/ask RÉEL du straddle ATM de l'ETF proxy (% du mid) : le coût d'exécution de la
+  // jambe indice d'une dispersion. C'est la jambe BON MARCHÉ (SPY ~0,6 % vs ~12 % pour un
+  // composant typique) — l'asymétrie que Construction doit rendre visible. null si non coté.
+  snap.atm_spread_pct = ivReal?.greeks?.spreadPct ?? null;
 
   // etf_price = prix RÉEL de l'ETF proxy (ce que le broker trade) — utilisé par les
   // modules de stratégie. Ne pilote PLUS le prix d'indice affiché.
