@@ -5,6 +5,7 @@ const ICONS = {
   dashboard:'M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z',
   builder:  'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z',
   corr:     'M3 3v18h18M7 14l3-3 3 3 5-6',
+  regime:   'M12 3L3 8l9 5 9-5-9-5ZM3 13l9 5 9-5M3 17l9 5 9-5',
   vol:      'M3 12h4l3 8 4-16 3 8h4',
   sizing:   'M4 21v-7M4 10V4M12 21v-9M12 8V4M20 21v-5M20 12V4M1 14h6M9 8h6M17 16h6',
   risk:     'M12 2 2 7v6c0 5 4 8 10 9 6-1 10-4 10-9V7L12 2Z',
@@ -285,7 +286,7 @@ const NAV = [
   // risque (Risk Lab).
   { group: 'Analyse', items: [
     { id: 'corr', label: 'Correlation Lab', icon: 'corr' },
-    { id: 'regime', label: 'Régime & Structure', icon: 'corr' },
+    { id: 'regime', label: 'Régime & Structure', icon: 'regime' },
     { id: 'vol', label: 'Volatility Lab', icon: 'vol' },
     { id: 'construction', label: 'Construction', icon: 'sizing' },
     { id: 'risk', label: 'Risk Lab', icon: 'risk' },
