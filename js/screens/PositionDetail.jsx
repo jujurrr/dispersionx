@@ -612,7 +612,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)' }}>
-                {['Jambe', 'Sens', 'Qté', 'Spot entrée→now', 'Prime entrée', 'Prime actuelle', 'IV (Δ)', 'P&L (' + dxSym() + ' · %)'].map((h, i) => (
+                {['Jambe', 'Sens', 'Qté', 'Spot entrée→now', 'Prime entrée', 'Prime actuelle', 'IV entrée→now', 'P&L (' + dxSym() + ' · %)'].map((h, i) => (
                   <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -644,9 +644,16 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                     </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{l.entry_prem != null ? dxCur(l.entry_prem, { sign: false }) : '—'}</td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{l.current_prem != null ? dxCur(l.current_prem, { sign: false }) : '—'}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>
-                      {l.current_iv != null ? l.current_iv + '%' : '—'}
-                      {l.iv_change != null && <span style={{ color: l.iv_change >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', marginLeft: 6, fontSize: 10 }}>{l.iv_change > 0 ? '+' : ''}{l.iv_change}</span>}
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)' }}>
+                      {l.entry_iv != null && l.current_iv != null ? (() => {
+                        const pct = l.entry_iv > 0 ? (l.current_iv / l.entry_iv - 1) * 100 : null;   // variation d'IV en %
+                        return (<>
+                          <span style={{ color: 'var(--text-muted)' }}>{l.entry_iv}%</span>
+                          <span style={{ color: 'var(--text-dim)' }}> → </span>
+                          <span style={{ color: 'var(--text-soft)' }}>{l.current_iv}%</span>
+                          {pct != null && <div style={{ font: 'var(--type-caption)', color: pct >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{pct > 0 ? '+' : ''}{pct.toFixed(1)} %</div>}
+                        </>);
+                      })() : (l.current_iv != null ? l.current_iv + '%' : '—')}
                     </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: l.pnl == null ? 'var(--text-muted)' : lpnlPos ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>
                       {l.pnl != null ? dxCur(l.pnl) + ' ' + dxSym() : '—'}
