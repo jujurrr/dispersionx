@@ -19,7 +19,7 @@ function persistStrategy(listId, s) {
 const _constrCache = {};
 const CONSTR_TTL = 15 * 60 * 1000;
 
-function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, indexOverride, durationOverride, onSaved, addToast }) {
+function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, indexOverride, durationOverride, onSaved, addToast, sizingOverride }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const CONTRACT  = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
@@ -38,7 +38,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const [loading,  setLoading]  = React.useState(true);
   const [base,     setBase]     = React.useState(null);
   const [nIndex,   setNIndex]   = React.useState(1);
-  const [sizing,   setSizing]   = React.useState('vega_neutral');
+  const [sizing,   setSizing]   = React.useState(['vega_neutral', 'gamma_flat', 'theta_flat', 'premium_neutral', 'equal_weight'].includes(sizingOverride) ? sizingOverride : 'vega_neutral');
   const [weightBasis, setWeightBasis] = React.useState('capped');  // capped (défaut) | index (w_i) | variance (w_i²) | equal
   // Échéances proposées : les 4 dates réelles (les plus proches de 15/30/45/60 j)
   // COTÉES PAR TOUS les sous-jacents du panier — calculées une fois au chargement
@@ -240,11 +240,18 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       const sumW = rawW.reduce((a, b) => a + b, 0) || 1;
       wNormArr = rawW.map(x => x / sumW);
     }
-    const targetVega = base.idxG.vega * nIndex;          // vega à neutraliser
+    const targetVega = base.idxG.vega * nIndex;          // magnitude vega (idxVega, coût — toujours)
+    // Structure choisie = quel grec on neutralise (BNP « risk-flat » + GS premium-neutral) :
+    //   vega-neutre : Σ vega = vega indice · gamma-flat : Σ gamma = gamma indice ·
+    //   theta-flat : Σ theta = theta indice · premium-neutral : Σ prime = prime indice.
+    //   equal_weight : 1 lot/jambe (aucune neutralisation). Répartition par poids identique.
+    const GKEY = { vega_neutral: 'vega', gamma_flat: 'gammaK', theta_flat: 'theta', premium_neutral: 'premium' }[sizing] || null;
+    const targetG = GKEY ? base.idxG[GKEY] * nIndex : 0;
     const comps = base.perTicker.map((t, i) => {
       const wNorm = wNormArr[i];
-      const n = (sizing === 'vega_neutral' && t.g.vega > 0)
-        ? Math.max(1, Math.round(targetVega * wNorm / t.g.vega))
+      const gi = GKEY ? t.g[GKEY] : 0;
+      const n = (GKEY && gi && Math.abs(gi) > 1e-12)
+        ? Math.max(1, Math.round(Math.abs(targetG * wNorm / gi)))
         : 1;
       return {
         ...t, weightUsed: resolveW[i].w / sumLin * 100, weightEst: resolveW[i].est, share: wNorm * 100,
@@ -670,8 +677,11 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Méthode de sizing</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {[
-                { v: 'vega_neutral', label: 'Vega-neutre', desc: 'n_i = round(vega_indice × poids_i / vega_i). Sensibilité IV des composants ≈ celle de l\'indice short.' },
-                { v: 'equal_weight', label: 'Poids égaux · 1 lot', desc: '1 contrat par composant. Simple, mais vega déséquilibré si les IV diffèrent.' },
+                { v: 'vega_neutral', label: 'Vega-neutre (vega-flat)', desc: 'Σ vega composants = vega indice. Le pari = corrélation pure. Régime calme / vol basse.' },
+                { v: 'gamma_flat', label: 'Gamma-flat', desc: 'Σ gamma composants = gamma indice. Dispersion statistique pure. Régime range / récession.' },
+                { v: 'theta_flat', label: 'Theta-flat', desc: 'Σ theta composants = theta indice. Portage (carry) de la prime. Régime haussier / tendance.' },
+                { v: 'premium_neutral', label: 'Premium-neutral (GS)', desc: 'Σ prime composants = prime indice. Jeu de covariance : signe du P&L = réalisé vs implicite.' },
+                { v: 'equal_weight', label: 'Poids égaux · 1 lot', desc: '1 contrat par composant. Simple, mais aucun grec neutralisé.' },
               ].map(opt => (
                 <div key={opt.v} onClick={() => setSizing(opt.v)} style={{ display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 'var(--radius)', border: `1px solid ${sizing === opt.v ? 'var(--accent)' : 'var(--border)'}`, background: sizing === opt.v ? 'var(--bg-elevated)' : 'transparent', cursor: 'pointer' }}>
                   <div style={{ width: 16, height: 16, borderRadius: '50%', border: `2px solid ${sizing === opt.v ? 'var(--accent)' : 'var(--text-dim)'}`, marginTop: 1, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -687,9 +697,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           </div>
 
           {/* Pondération du panier */}
-          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, opacity: sizing === 'vega_neutral' ? 1 : 0.5 }}>
+          <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, opacity: sizing === 'equal_weight' ? 0.5 : 1 }}>
             <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 4 }}>Pondération du panier</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Comment répartir le vega entre composants. « Capée 20 % » (recommandée) : par {sized.weightSource === 'cap' ? 'capitalisation' : 'poids indice'} mais plafonnée à 20 % par jambe — les méga-caps ne monopolisent pas la dispersion. Vega-neutre uniquement.</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginBottom: 12 }}>Comment répartir la neutralisation entre composants. « Capée 20 % » (recommandée) : par {sized.weightSource === 'cap' ? 'capitalisation' : 'poids indice'} mais plafonnée à 20 % par jambe — les méga-caps ne monopolisent pas la dispersion. Actif sauf en mode « 1 lot ».</div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
                 { v: 'capped', label: 'Capée 20 %', sub: 'min(w_i, 20 %)' },
@@ -699,8 +709,8 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               ].map(opt => {
                 const on = weightBasis === opt.v;
                 return (
-                  <button key={opt.v} onClick={() => sizing === 'vega_neutral' && setWeightBasis(opt.v)} disabled={sizing !== 'vega_neutral'}
-                    style={{ flex: 1, padding: '10px 6px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: sizing === 'vega_neutral' ? 'pointer' : 'default', textAlign: 'center' }}>
+                  <button key={opt.v} onClick={() => sizing !== 'equal_weight' && setWeightBasis(opt.v)} disabled={sizing === 'equal_weight'}
+                    style={{ flex: 1, padding: '10px 6px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: sizing !== 'equal_weight' ? 'pointer' : 'default', textAlign: 'center' }}>
                     <div style={{ font: '600 12px/1 var(--font-sans)' }}>{opt.label}</div>
                     <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{opt.sub}</div>
                   </button>
@@ -752,12 +762,19 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
       {/* ── Récap grecs ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-        <MetricCard label="Vega net" value={fmtS(sized.netVega) + ' $/1%'} hint={Math.abs(sized.netVega) < 60 ? 'Quasi-neutre ✓' : 'À rééquilibrer'} accent={Math.abs(sized.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'} />
+        <MetricCard label="Vega net" value={fmtS(sized.netVega) + ' $/1%'} hint={sizing === 'vega_neutral' ? (Math.abs(sized.netVega) < 60 ? 'Quasi-neutre ✓' : 'À rééquilibrer') : 'Libre (structure ≠ vega)'} accent={sizing === 'vega_neutral' ? (Math.abs(sized.netVega) < 60 ? 'var(--pos)' : 'var(--warn)') : 'var(--text-soft)'} />
         <MetricCard label="Delta net" value={fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta) + ' $/1%'} hint={deltaHedge === 'index' ? 'Couvert · ETF indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(sized.netDelta) < 50 ? 'Résidu faible' : 'Non couvert')} accent={deltaHedge !== 'none' || Math.abs(sized.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
         <MetricCard label="Theta net /jour" value={fmtS(sized.netTheta) + ' $'} hint={sized.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
         <MetricCard label="Prime nette" value={fmtMoney(sized.netPremium)} hint={sized.netPremium >= 0 ? 'Crédit net' : 'Débit net'} accent="var(--accent)" />
         <MetricCard label="Lots composants" value={String(sized.totalLots)} hint={'Notionnel ' + fmtNot(sized.compNotional)} accent="var(--info)" />
       </div>
+
+      {/* Structure active : quel grec est neutralisé = le profil d'exposition choisi (BNP/GS). */}
+      {sizing !== 'equal_weight' && (
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', padding: '2px 2px', lineHeight: 1.5 }}>
+          Structure <strong style={{ color: 'var(--accent-hover)' }}>{({ vega_neutral: 'Vega-neutre', gamma_flat: 'Gamma-flat', theta_flat: 'Theta-flat', premium_neutral: 'Premium-neutral' }[sizing])}</strong> — grec neutralisé : <strong style={{ color: 'var(--text-soft)' }}>{({ vega_neutral: 'vega', gamma_flat: 'gamma', theta_flat: 'theta', premium_neutral: 'prime' }[sizing])} net ≈ {fmtS(({ vega_neutral: sized.netVega, gamma_flat: sized.netGamma, theta_flat: sized.netTheta, premium_neutral: sized.netPremium }[sizing]))}</strong>. Les autres grecs sont <strong>libres</strong> : c'est un choix de <strong>profil d'exposition</strong> (ça change l'exposition, pas l'edge net).
+        </div>
+      )}
 
       {/* Note poids estimés */}
       {sized.nEstimated > 0 && (
@@ -982,6 +999,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               </div>
             </WarningPanel>
           ) : !costModel.vegaBalanced ? (
+            sizing === 'vega_neutral' ? (
             <WarningPanel tone="warn" title="Rééquilibrez le vega pour obtenir un seuil de rentabilité">
               Le vega net de la position est de <strong>{fmtS(sized.netVega)} {dxSym()}/1%</strong> face à {dxN(sized.idxVega)} {dxSym()}/1% sur la jambe indice : le panier est loin d'être neutre. Son P&L serait piloté par la <strong>volatilité des composants</strong>, pas par la corrélation — la dispersion n'est plus le pari.
               {' '}Le seuil de rentabilité, qui mesure ce que la corrélation doit vous rapporter, n'aurait donc aucun sens ici.
@@ -989,6 +1007,11 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
                 Cause habituelle : chaque jambe reçoit au minimum 1 contrat, donc {sized.comps.length} composants face à {nIndex} lot{nIndex > 1 ? 's' : ''} d'indice pèsent bien plus lourd que lui. <strong>Augmentez le nombre de lots indice</strong> (vers {Math.max(1, Math.round(sized.compVega / (sized.idxVega / Math.max(1, nIndex))))} environ) jusqu'à ce que le vega net repasse près de zéro.
               </div>
             </WarningPanel>
+            ) : (
+            <div style={{ padding: '12px 16px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+              Structure <strong style={{ color: 'var(--text-soft)' }}>{({ gamma_flat: 'gamma-flat', theta_flat: 'theta-flat', premium_neutral: 'premium-neutral', equal_weight: '1 lot' }[sizing]) || sizing}</strong> : le vega net n'est pas nul <strong>par choix</strong> — le pari n'est pas la corrélation pure. Le seuil de rentabilité (calculé pour une structure vega-neutre) ne s'applique donc pas ici. Le <strong>coût d'exécution</strong> plus haut, lui, reste valide.
+            </div>
+            )
           ) : (
             <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>
               Seuil de rentabilité indisponible : la corrélation implicite du panier n'a pas pu être calculée.

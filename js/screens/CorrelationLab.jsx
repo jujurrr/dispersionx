@@ -209,7 +209,9 @@ function CorrRegime({ premium, index, mode, onNav }) {
    + un arbitrage prime↔queue, jamais une promesse de gain.
    Entrées 100 % dérivées de ce que le Lab observe déjà : percentile de prime
    (régime), skew (ρ downside − ATM), pente de terme. Repli propre si absentes. */
-function RegimePlaybook({ premiumPct, premium, skew, term, mode }) {
+function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId }) {
+  // Structure recommandée → méthode de sizing Construction (propagation « câbler la structure »).
+  const SIZING_OF = { equal: 'vega_neutral', theta: 'theta_flat', gamma: 'gamma_flat', premium: 'premium_neutral' };
   const pct        = (premiumPct != null && isFinite(premiumPct)) ? Math.round(premiumPct) : null;
   const skewSteep  = (skew && skew[0] != null && skew[3] != null) ? (skew[0] - skew[3]) : null;   // ρ(−15%) − ρ(ATM)
   const termSlope  = (term && term[0] != null && term[term.length - 1] != null) ? (term[term.length - 1] - term[0]) : null;
@@ -278,6 +280,12 @@ function RegimePlaybook({ premiumPct, premium, skew, term, mode }) {
         <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>Recommandé maintenant</div>
         <div style={{ font: '700 15px/1.2 var(--font-sans)', color: recKey === 'wait' ? 'var(--neg-bright)' : 'var(--pos-bright)', marginBottom: 6 }}>{recRow?.name}</div>
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', lineHeight: 1.55 }}>{why}</div>
+        {onNav && listId && SIZING_OF[recKey] && (
+          <button onClick={() => onNav('construction', { listId, sizing: SIZING_OF[recKey] })}
+            style={{ marginTop: 12, font: '600 12px/1 var(--font-sans)', padding: '9px 15px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
+            Construire en {recRow?.name} →
+          </button>
+        )}
       </div>
 
       {/* Tableau des profils (le recommandé est surligné) */}
@@ -915,7 +923,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
         {/* Régime : la prime du jour située dans son historique */}
         <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} onNav={onNav} />
         {/* Playbook : structure recommandée selon le régime + checklist de pré-trade */}
-        <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} />
+        <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} onNav={onNav} listId={ctx.listId} />
       </>)}
 
       {/* ── Écran « Correlation Lab » : matrice, contribution, secteurs, historique ── */}

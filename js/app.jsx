@@ -350,7 +350,7 @@ function App() {
       screenEl = <window.VolatilityLab mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} onNav={onNav} />;
       break;
     case 'construction':
-      screenEl = <window.Construction listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} addToast={addToast} durationOverride={params.duration} />;
+      screenEl = <window.Construction listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} addToast={addToast} durationOverride={params.duration} sizingOverride={params.sizing} />;
       break;
     case 'risk':
       screenEl = <window.RiskLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} pro={pro} />;
