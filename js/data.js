@@ -399,6 +399,13 @@
       LISTS.push(l); _saveLists(); return l;
     },
     deleteList: (id) => { LISTS = LISTS.filter(l => l.id !== id); _saveLists(); return { success: true }; },
+    // Renomme une liste (chaîne non vide). Stocké dans dx-lists.
+    renameList: (id, name) => {
+      const l = _findList(id); if (!l) return { success: false };
+      const nm = String(name || '').trim(); if (!nm) return { success: false };
+      l.name = nm; l.updated_at = new Date().toISOString().slice(0, 10); _saveLists();
+      return { success: true, name: nm };
+    },
     // Affecte une liste à un groupe (chaîne) ou null (aucun). Stocké dans dx-lists.
     setListGroup: (id, group_name) => {
       const l = _findList(id); if (!l) return { success: false };

@@ -6,6 +6,8 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // export réservé à Pro (comme le partage)
   const [list, setList]       = React.useState(null);
+  const [editingName, setEditingName] = React.useState(false);
+  const [nameDraft, setNameDraft]     = React.useState('');
   const [analysis, setAnalysis] = React.useState(null);
   const [quotes, setQuotes]   = React.useState({});
   const [volData, setVolData] = React.useState({});
@@ -134,6 +136,19 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   }, [list, listId]);
 
   const notify = (msg) => addToast && addToast(msg);
+  async function saveName() {
+    const nm = nameDraft.trim();
+    if (!nm || nm === list.name) { setEditingName(false); return; }
+    try {
+      await DXApi.renameList(list.id, nm);
+      setList(l => ({ ...l, name: nm }));
+      setEditingName(false);
+      addToast && addToast('Liste renommée.');
+      window.dispatchEvent(new CustomEvent('dx-activity-poke'));   // rafraîchit sidebar/classements
+    } catch (e) {
+      addToast && addToast('Renommage impossible : ' + (e?.message || 'erreur') + '.', 'error');
+    }
+  }
   async function runDialog() {
     if (!dialog?.onConfirm) return;
     setDialogBusy(true);
@@ -228,7 +243,20 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
             <span style={{ font: 'var(--type-caption)', color: 'var(--accent-hover)' }}>{list.index_symbol}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>{list.name}</h1>
+            {editingName ? (
+              <>
+                <input value={nameDraft} onChange={e => setNameDraft(e.target.value)} autoFocus
+                  onKeyDown={e => { if (e.key === 'Enter') saveName(); else if (e.key === 'Escape') setEditingName(false); }}
+                  style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', background: 'var(--bg-input)', border: '1px solid var(--accent)', borderRadius: 'var(--radius)', padding: '2px 10px', outline: 'none', maxWidth: 440 }} />
+                <button onClick={saveName} title="Enregistrer" style={{ font: '600 13px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>✓</button>
+                <button onClick={() => setEditingName(false)} title="Annuler" style={{ font: '600 13px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>✕</button>
+              </>
+            ) : (
+              <>
+                <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 4px' }}>{list.name}</h1>
+                {!readOnly && <button onClick={() => { setNameDraft(list.name); setEditingName(true); }} title="Renommer la liste" style={{ font: '14px/1 var(--font-sans)', padding: '5px 9px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>✎</button>}
+              </>
+            )}
             {rescoring && <span style={{ font: 'var(--type-caption)', color: 'var(--accent-hover)', animation: 'pulse 1.2s infinite' }}>⟳ Scoring…</span>}
           </div>
           {list.description && <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0 }}>{list.description}</p>}

@@ -265,6 +265,18 @@
     }
     return window.DXMock.setListGroup(id, group);
   }
+  async function renameList(id, name) {
+    const c = _cloud();
+    if (c) {
+      // c.lists.update(id, name, description?) : description omise (undefined) → Supabase
+      // ne touche QUE le nom. Pas de méthode c.lists.rename dédiée dans le cloud.
+      if (!c.lists.update) throw new Error('renommage non supporté par cette version cloud');
+      const r = await c.lists.update(id, name);
+      _poke();
+      return r;
+    }
+    return window.DXMock.renameList(id, name);
+  }
   async function addListItem(id, ticker, score_data, notes = '') {
     const c = _cloud();
     // Connecté : l'erreur remonte (l'ajout ne doit pas atterrir dans le store invité).
@@ -739,7 +751,7 @@
     getIndices, getIndex, getSnapshot, getComponents, getSources,
     batchQuotes, getMarketCaps,
     autoScore, getCachedScore, clearScoreCache, getOptionAtm, impliedCorrelation,
-    getLists, createList, getList, updateList, deleteList, setListGroup,
+    getLists, createList, getList, updateList, deleteList, setListGroup, renameList,
     addListItem, removeListItem, getListAnalysis,
     exportList, exportAllLists, importLists,
     getSharedLists, getListShares, shareList, setShareRole, revokeShare, getListAudit, getGlobalActivity, getNotifications,
