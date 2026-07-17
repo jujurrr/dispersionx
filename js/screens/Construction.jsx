@@ -351,6 +351,16 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     const bc = basketCost({ compLegs: legs, indexCost: idxCost, vegaIndex: sized.idxVega });
     if (!bc) return null;
 
+    // ── Coût d'exécution de la COUVERTURE Δ (spread des actions/future) ──
+    // Petit vs les options, mais réel : on franchit aussi le bid/ask sur l'ETF (mode indice)
+    // ou les actions (mode par jambe) de couverture. Spread equity ≈ 4 bps aller-retour sur
+    // sous-jacents liquides — estimation honnête, faute de flux equity live. 0 si pas de couverture.
+    const HEDGE_SPREAD = 0.0004;
+    const hedgeNotional = deltaHedge === 'index' ? (sized.indexHedgeNotional || 0)
+                        : deltaHedge === 'legs'  ? (sized.legsHedgeNotional || 0) : 0;
+    const hedgeCost = Number((hedgeNotional * HEDGE_SPREAD).toFixed(1));
+    const totalAll = Number((bc.total + hedgeCost).toFixed(1));
+
     // Seuil de rentabilité : jusqu'où la corrélation réalisée doit tomber, sous ce que le marché
     // price, pour que le trade couvre juste son spread. Poids = ceux du trade (répartition du vega
     // choisie), σ = les IV réelles → cohérent avec le panier réellement construit.
@@ -377,7 +387,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     // tout par la corrélation → le seuil de rentabilité, lui, deviendrait faux.
     const vegaBalanced = Math.abs(sized.netVega) <= 0.25 * sized.idxVega;
     const be = (implRho != null && representative && vegaBalanced)
-      ? rhoBreakeven({ rhoImpl: implRho, names, vegaIndex: sized.idxVega, cost: bc.total }) : null;
+      ? rhoBreakeven({ rhoImpl: implRho, names, vegaIndex: sized.idxVega, cost: totalAll }) : null;
     // Marge MAXIMALE théoriquement captable : la vol que l'indice perdrait si la corrélation
     // passait de ce que le marché price à zéro (le meilleur cas absolu d'une dispersion). Si le
     // spread dépasse ça, le trade est perdant par construction — le chiffre qui le dit.
@@ -403,15 +413,15 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     }
     const nLive = legs.filter(l => l.src === 'live').length;
     return {
-      legs, idxSpread, ...bc, be, needPremiumPts, needPct, tenorLabel, maxCapturePts,
+      legs, idxSpread, ...bc, total: totalAll, optionCost: bc.total, hedgeCost, be, needPremiumPts, needPct, tenorLabel, maxCapturePts,
       nEff, representative, REPRESENTATIVE_MIN, vegaBalanced,
       medianPremiumPts: bl ? bl.premiumPts[10] : null,
       baseline: bl,
       nLive, nHist: legs.length - nLive,
-      // % de la prime nette encaissée que le spread consomme — le « combien ça me coûte » concret
-      premiumBurn: sized.netPremium > 0 ? bc.total / sized.netPremium : null,
+      // % de la prime nette encaissée que le spread (options + couverture Δ) consomme.
+      premiumBurn: sized.netPremium > 0 ? totalAll / sized.netPremium : null,
     };
-  }, [base, sized, duration, fill, nIndex, implRho, indexSym]);
+  }, [base, sized, duration, fill, nIndex, implRho, indexSym, deltaHedge]);
 
   // ── Échéances COMMUNES à tous les sous-jacents, calculées 1× au chargement ──
   // Dès que le panier est prêt, on récupère (sur la vraie chaîne d'options Cboe)
@@ -912,6 +922,13 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               </div>
             ))}
           </div>
+
+          {/* Coût de la couverture Δ (spread actions/future) — inclus dans le total, petit mais réel. */}
+          {costModel.hedgeCost > 0 && (
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '-4px 0 14px' }}>
+              Dont <strong style={{ color: 'var(--text-soft)' }}>couverture Δ</strong> : −{dxN(costModel.hedgeCost)} {dxSym()} <span style={{ color: 'var(--text-dim)' }}>(spread des actions/future de couverture · ~4 bps estimé — faible mais réel, désormais compté)</span>
+            </div>
+          )}
 
           {/* ── LE seuil de rentabilité ── */}
           {costModel.be && implRho != null ? (
