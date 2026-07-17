@@ -79,6 +79,10 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--neg)', font: 'var(--type-body)' }}>Erreur de chargement. Réessayez.</div>
         ) : (() => {
           const { scoring, stock, index: idx } = data;
+          // Modèle actif : V1 (somme pondérée) ou V2 (porte corrélation × qualité). L'affichage
+          // s'ADAPTE au modèle — les blocs V1 restent tels quels quand V1 est actif, on ne les écrase pas.
+          const isV2 = scoring.score_model === 'V2';
+          const v2 = scoring.v2_parts || {};
           return (
             <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
               {/* Earnings warning */}
@@ -92,6 +96,15 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               {scoring.is_fallback && (
                 <WarningPanel tone="warn">
                   Score <strong>estimé</strong> — les données de marché de ce composant n'ont pas pu être chargées (backend momentanément indisponible ou surchargé). Ce chiffre est une approximation, <strong>pas le vrai score</strong> : recharge la page pour relancer le calcul.
+                </WarningPanel>
+              )}
+
+              {/* Coût d'exécution : LE facteur qui décide du P&L net (verrou de la dispersion).
+                  Le score classe l'apport à la dispersion, pas le coût de le trader — on rend donc
+                  ce coût impossible à rater dès qu'il est élevé, indépendamment du modèle de score. */}
+              {scoring.spread_pct_real != null && scoring.spread_pct_real > 8 && (
+                <WarningPanel tone={scoring.spread_pct_real > 15 ? 'neg' : 'warn'}>
+                  Coût d'exécution <strong>{scoring.spread_pct_real > 15 ? 'très élevé' : 'élevé'}</strong> — le spread bid/ask du straddle ATM vaut <strong>{scoring.spread_pct_real.toFixed(0)} % du prix</strong>{scoring.cost_source === 'estimated' ? ' (estimé — options peu ou pas cotées)' : ' (réel Cboe)'}. C'est le facteur qui <strong>décide du P&L net</strong> : à ce niveau, une dispersion sur ce nom peut être <strong>non rentable net de frais</strong>, même avec un bon score. Le score classe l'apport à la dispersion, <strong>pas le coût de le trader</strong>.
                 </WarningPanel>
               )}
 
@@ -124,14 +137,26 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                 <strong style={{ color: 'var(--text-soft)' }}>Comment lire ce score.</strong> Il classe l'<strong>apport de ce composant à une dispersion</strong> : bouge-t-il assez indépendamment de l'indice, sa volatilité est-elle attractive, ses options sont-elles traitables. Nos tests sur 2 ans confirment qu'il <strong>prédit bien la corrélation</strong> à venir — mais il ne prédit <strong>pas le gain</strong> : dans nos backtests, le panier le mieux classé est celui qui capture le mieux la corrélation, et pourtant pas celui au meilleur résultat net de frais. C'est un outil d'<strong>analyse</strong>, pas un signal d'achat : le résultat se joue au moment du trade, sur le coût d'exécution et la taille.
               </div>
 
-              {/* Components A/B/C */}
+              {/* Modèle actif : formule de combinaison (adaptée V1 ↔ V2) */}
+              <div style={{ padding: '9px 13px', background: isV2 ? 'var(--accent-soft, var(--bg-card))' : 'var(--bg-card)', border: `1px solid ${isV2 ? 'var(--accent)' : 'var(--border)'}`, borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+                {isV2
+                  ? <><strong style={{ color: 'var(--accent-hover)' }}>Modèle V2</strong> — <strong style={{ color: 'var(--text-soft)' }}>porte de corrélation × qualité</strong> (un produit). Un titre trop corrélé à l'indice <strong>ferme la porte</strong> (→ 0) : aucun IV-rank ne le rattrape. Earnings et liquidité sont affichés pour information mais <strong>n'entrent pas</strong> dans V2.</>
+                  : <><strong style={{ color: 'var(--text-soft)' }}>Modèle V1</strong> — <strong>moyenne pondérée</strong> de 5 sous-scores (45 / 20 / 15 / 10 / 10). Un bon critère peut compenser une corrélation moyenne.</>}
+              </div>
+
+              {/* Décomposition — 4 cartes (V1 : 4 poids · V2 : porte, qualité, et ses 2 briques) */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
-                {[
+                {(isV2 ? [
+                  { l: 'Porte corrélation', v: v2.corr_gate != null ? Math.round(v2.corr_gate * 100) + '%' : '—', sub: v2.edge != null ? `edge ${v2.edge >= 0 ? '+' : ''}${(v2.edge * 100).toFixed(0)} pts · ferme si corrélé` : 'ρ impl − ρ réal', color: 'var(--pos-bright)' },
+                  { l: 'Qualité', v: v2.quality ?? '—', sub: '0.6·IV-rank + 0.4·vol idio', color: 'var(--accent-hover)' },
+                  { l: 'IV Rank · 60% qual.', v: scoring.subscores?.vol_attractive?.score ?? '—', sub: `rank ${stock.iv_rank?.iv_rank ?? '—'}% · bas = favorable`, color: 'var(--info)' },
+                  { l: 'Vol idio · 40% qual.', v: scoring.subscores?.idio_vol?.score ?? '—', sub: `mouvement propre · β ${stock.beta?.toFixed(2)}`, color: 'var(--info)' },
+                ] : [
                   { l: 'Corrélation · 45%', v: scoring.subscores?.dispersion_contrib?.score ?? '—', sub: `ρ impl ${(scoring.rho_implicit_final * 100)?.toFixed(0)}% → réal ${(scoring.rho_real_expected * 100)?.toFixed(0)}%`, color: 'var(--pos-bright)' },
                   { l: 'IV Rank · 20%', v: scoring.subscores?.vol_attractive?.score ?? '—', sub: `rank ${stock.iv_rank?.iv_rank ?? '—'}% · bas = favorable`, color: 'var(--accent-hover)' },
                   { l: 'Earnings · 15%', v: scoring.subscores?.earnings_catalyst?.score ?? '—', sub: stock.earnings_in_strategy ? `gap dans ${stock.days_to_earnings}j · décorrélation` : 'pas de catalyseur', color: 'var(--info)' },
                   { l: 'Vol idio · 10%', v: scoring.subscores?.idio_vol?.score ?? '—', sub: `mouvement propre · β ${stock.beta?.toFixed(2)}`, color: 'var(--info)' },
-                ].map(m => (
+                ]).map(m => (
                   <div key={m.l} style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 14px' }}>
                     <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 6 }}>{m.l}</div>
                     <div style={{ font: '700 18px/1 var(--font-mono)', color: m.color }}>{m.v}</div>
@@ -155,7 +180,15 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', padding: '14px 16px', border: '1px solid var(--border)' }}>
                 <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Sous-scores décomposés</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {Object.entries({
+                  {Object.entries(isV2 ? {
+                    // V2 : la corrélation est une PORTE (pas un poids), IV-rank et vol idio forment
+                    // la qualité (60/40) ; earnings et liquidité sont hors modèle → étiquetés « info ».
+                    dispersion_contrib: 'Corrélation · porte (gate)',
+                    vol_attractive: 'IV Rank · 60% qualité',
+                    idio_vol: 'Vol idio · 40% qualité',
+                    earnings_catalyst: 'Earnings · info (hors V2)',
+                    liquidity: 'Liquidité · info (hors V2)',
+                  } : {
                     dispersion_contrib: 'Corrélation (45%)',
                     vol_attractive: 'IV Rank (20%)',
                     earnings_catalyst: 'Earnings · décorrélation (15%)',
@@ -251,7 +284,11 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               {/* Beginner box */}
               {mode === 'Débutant' && (
                 <BeginnerExplanationBox>
-                  <strong>Pourquoi ce score ?</strong> Le score est une <strong>moyenne pondérée</strong> de cinq critères notés sur 100 : la <strong>corrélation</strong> (45 %, le cœur de la dispersion — on cherche des actions qui bougent indépendamment de l'indice), l'<strong>IV rank</strong> (20 % — sur une action on <strong>achète</strong> la volatilité, donc on la préfère <strong>BASSE dans son historique</strong> : la payer moins cher est un meilleur point d'entrée), le <strong>catalyseur d'earnings</strong> (15 % — un résultat dans la fenêtre crée un gap idiosyncratique qui décorrèle le titre de l'indice, <em>favorable</em> à une dispersion), la <strong>vol idiosyncratique</strong> (10 % — combien l'action bouge indépendamment de l'indice, ce qui fait payer le straddle) et la <strong>liquidité</strong> (10 % — spread réel des options). Plus le score est élevé, meilleur est le composant pour la jambe longue de la stratégie.
+                  {isV2 ? (
+                    <><strong>Pourquoi ce score ?</strong> Le modèle V2 <strong>multiplie</strong> deux choses. D'abord une <strong>porte de corrélation</strong> : ce titre bouge-t-il vraiment indépendamment de l'indice ? Si sa corrélation est trop élevée, la porte se ferme (→ 0) et le score tombe — <em>un titre qui suit l'indice n'apporte rien à une dispersion, quelle que soit sa vol</em>. Ensuite une <strong>qualité</strong> : 60 % d'<strong>IV rank</strong> (on <strong>achète</strong> la volatilité, donc on la préfère <strong>basse dans son historique</strong>) + 40 % de <strong>vol idiosyncratique</strong> (bouge-t-il assez, tout seul, pour payer le straddle ?). C'est un <strong>produit, pas une moyenne</strong> : contrairement à V1, un bon critère ne compense jamais une corrélation trop haute. Les <strong>earnings</strong> et la <strong>liquidité</strong> sont affichés pour information mais n'entrent pas dans V2.</>
+                  ) : (
+                    <><strong>Pourquoi ce score ?</strong> Le score est une <strong>moyenne pondérée</strong> de cinq critères notés sur 100 : la <strong>corrélation</strong> (45 %, le cœur de la dispersion — on cherche des actions qui bougent indépendamment de l'indice), l'<strong>IV rank</strong> (20 % — sur une action on <strong>achète</strong> la volatilité, donc on la préfère <strong>BASSE dans son historique</strong> : la payer moins cher est un meilleur point d'entrée), le <strong>catalyseur d'earnings</strong> (15 % — un résultat dans la fenêtre crée un gap idiosyncratique qui décorrèle le titre de l'indice, <em>favorable</em> à une dispersion), la <strong>vol idiosyncratique</strong> (10 % — combien l'action bouge indépendamment de l'indice, ce qui fait payer le straddle) et la <strong>liquidité</strong> (10 % — spread réel des options). Plus le score est élevé, meilleur est le composant pour la jambe longue de la stratégie.</>
+                  )}
                 </BeginnerExplanationBox>
               )}
 

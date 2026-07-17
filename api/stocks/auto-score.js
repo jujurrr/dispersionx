@@ -374,10 +374,13 @@ export default async (req) => {
   const g = bsAtm(price, iv / 100, T);
   const expiryDate = new Date(Date.now() + duration * 86400000).toISOString().slice(0, 10);
 
+  // La reco suit le SIGNAL du modèle actif (FORT/MODÉRÉ/FAIBLE), pas un seuil codé en dur :
+  // en V2 les seuils sont 62/19 (≠ 75/55 de V1), donc keyer sur `score >= 75` afficherait
+  // « modéré » pour un titre badgé FORT. Keyer sur `signal` aligne texte et badge dans les deux modèles.
   let rec;
-  if (score >= 75)     rec = `Score favorable (${score}/100) : prime de corrélation présente (ρ réal. ${(rho * 100).toFixed(0)}% < ρ impl. ${(rhoImpl * 100).toFixed(0)}%${rhoImplSrc === 'basket_cboe' ? ' réelle' : ''}) et volatilité ${ivRank <= 45 ? "bon marché à l'achat" : 'correcte'} (IV rank ${ivRank}%). Bon candidat pour la jambe longue d'une dispersion.`;
-  else if (score >= 55) rec = `Score modéré (${score}/100) : composant utilisable. ρ réalisée ${(rho * 100).toFixed(0)}% ; IV rank ${ivRank}%. Surveiller la liquidité et un éventuel résultat dans la fenêtre.`;
-  else                  rec = `Score faible (${score}/100) : ${rho >= 0.7 ? `corrélation élevée avec l'indice (ρ=${(rho * 100).toFixed(0)}%) limite l'apport à la dispersion` : 'profil peu favorable à la dispersion'}${ivRank >= 65 ? " et IV chère à l'achat (IV rank élevé)" : ''}. Envisager un autre composant.`;
+  if (signal === 'FORT')        rec = `Score favorable (${score}/100) : prime de corrélation présente (ρ réal. ${(rho * 100).toFixed(0)}% < ρ impl. ${(rhoImpl * 100).toFixed(0)}%${rhoImplSrc === 'basket_cboe' ? ' réelle' : ''}) et volatilité ${ivRank <= 45 ? "bon marché à l'achat" : 'correcte'} (IV rank ${ivRank}%). Bon candidat pour la jambe longue d'une dispersion.`;
+  else if (signal === 'MODÉRÉ') rec = `Score modéré (${score}/100) : composant utilisable. ρ réalisée ${(rho * 100).toFixed(0)}% ; IV rank ${ivRank}%. Surveiller la liquidité et un éventuel résultat dans la fenêtre.`;
+  else                          rec = `Score faible (${score}/100) : ${rho >= 0.7 ? `corrélation élevée avec l'indice (ρ=${(rho * 100).toFixed(0)}%) limite l'apport à la dispersion` : 'profil peu favorable à la dispersion'}${ivRank >= 65 ? " et IV chère à l'achat (IV rank élevé)" : ''}. Envisager un autre composant.`;
 
   // ── #2 Score de CONFIANCE (qualité des données) : agrège les drapeaux déjà
   //    présents. A = tout réel · B = IV réelle mais ≥ 1 proxy · C = IV estimée
