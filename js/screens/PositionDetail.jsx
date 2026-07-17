@@ -30,7 +30,7 @@ function dxLocalDateTime(iso) {
 function pnlSeries(snaps, unit) {
   const pts = (snaps || [])
     .filter(s => s && s.mtm && typeof s.total_pnl === 'number' && s.taken_at)
-    .map(s => ({ t: s.taken_at, v: s.total_pnl, ms: new Date(s.taken_at).getTime() }))
+    .map(s => ({ t: s.taken_at, v: (typeof s.total_pnl_dyn === 'number' ? s.total_pnl_dyn : s.total_pnl), ms: new Date(s.taken_at).getTime() }))
     .filter(p => isFinite(p.ms))
     .sort((a, b) => a.ms - b.ms);
   if (!pts.length) return [];
@@ -227,7 +227,11 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   // Valeurs affichées : la reprise LIVE prime quand elle est disponible, sinon
   // le dernier snapshot mark-to-market persisté, sinon le suivi théorique.
   const liveOn = !!(live && typeof live.total_pnl === 'number');
-  const totalPnl = liveOn ? live.total_pnl : (m.total_pnl ?? pos.pnl ?? null);
+  // Position COUVERTE → total « rééquilibré à neutre » (estimé) : le hedge d'entrée figé
+  // sous-compte grossièrement la couverture réelle (cf. hedge_pnl_dyn). Sinon total brut.
+  const totalPnl = liveOn
+    ? ((live.delta_dollar && live.delta_dollar.hedged && typeof live.total_pnl_dyn === 'number') ? live.total_pnl_dyn : live.total_pnl)
+    : (m.total_pnl ?? pos.pnl ?? null);
   const dailyPnl = liveOn
     ? (data.last_mtm_pnl != null ? Math.round((live.total_pnl - data.last_mtm_pnl) * 100) / 100 : null)
     : m.daily_pnl;
@@ -249,6 +253,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   // la couverture d'entrée figée (minuscule) — pas les rééquilibrages réels de l'utilisateur.
   const hedgePnlDyn = liveOn && typeof live.hedge_pnl_dyn === 'number' ? live.hedge_pnl_dyn : null;
   const straddlePnl = liveOn && typeof live.straddle_pnl === 'number' ? live.straddle_pnl : null;
+  // Couverture AFFICHÉE : dynamique (rééquilibrée à neutre) si dispo, sinon statique d'entrée.
+  const hedgeShown = hedgePnlDyn != null ? hedgePnlDyn : hedgePnl;
+  const hedgeDyn = hedgePnlDyn != null && hedgePnl != null && Math.abs(hedgePnlDyn - hedgePnl) >= 50;
   const hasGreeks = gEntry.vega != null || gEntry.theta != null || gEntry.gamma != null;
 
   // Base des %  : prime brute engagée à l'entrée (Σ des primes de straddle). Constante
@@ -403,21 +410,20 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         <MetricCard label="Jambes valorisées (réel)" value={coverage ? `${coverage.priced}/${coverage.total}` : (m.n_legs_priced != null ? `${m.n_legs_priced}/${m.n_legs_total}` : String(legs.length))} accent="var(--info)" />
       </div>
 
-      {/* Décomposition P&L : straddles + couverture Δ (actions/future) */}
-      {(straddlePnl != null && hedgePnl != null && Math.abs(hedgePnl) >= 1) && (
+      {/* Décomposition P&L : straddles + couverture Δ (dynamique/rééquilibrée à neutre si couverte) */}
+      {(straddlePnl != null && hedgeShown != null && Math.abs(hedgeShown) >= 1) && (
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', font: 'var(--type-body-sm)', color: 'var(--text-muted)', padding: '4px 2px' }}>
           <span>Straddles : <strong style={{ color: straddlePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(straddlePnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(straddlePnl, pctBase)})</span>}</span>
-          <span>· Couverture Δ (actions) : <strong style={{ color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(hedgePnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(hedgePnl, pctBase)})</span>}</span>
-          <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxCur(totalPnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(totalPnl, pctBase)})</span>}</span>
+          <span>· Couverture Δ{hedgeDyn ? <span style={{ color: 'var(--text-dim)' }}> (rééquilibrée · est.)</span> : ' (actions)'} : <strong style={{ color: hedgeShown >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(hedgeShown)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(hedgeShown, pctBase)})</span>}</span>
+          <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxCur(straddlePnl + (hedgeShown || 0))} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(straddlePnl + (hedgeShown || 0), pctBase)})</span>}</span>
         </div>
       )}
 
-      {/* Couverture Δ — lecture honnête : le hedge_pnl affiché est la couverture d'ENTRÉE figée
-          (minuscule car la dispersion part quasi delta-neutre). Si l'utilisateur rééquilibre à
-          neutre (recommandé), sa vraie couverture grossit avec le gamma → estimation dynamique. */}
-      {deltaInfo && deltaInfo.hedged && hedgePnlDyn != null && straddlePnl != null && Math.abs(hedgePnlDyn - (hedgePnl || 0)) >= 50 && (
+      {/* Caveat : la couverture affichée est l'estimation DYNAMIQUE (rééquilibrée à neutre) — pas la
+          couverture d'entrée figée. Rend l'hypothèse explicite ; le vrai chiffre dépend des fills. */}
+      {hedgeDyn && (
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.55, padding: '10px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)' }}>
-          <strong style={{ color: 'var(--text-soft)' }}>Couverture Δ — lecture honnête.</strong> La ligne de couverture est la <strong>couverture d'entrée figée</strong> ({dxCur(hedgePnl)} {dxSym()}) : une dispersion part quasi delta-neutre, elle est donc minuscule. Si vous <strong>rééquilibrez à neutre</strong> (recommandé, voir plus bas), votre couverture grossit avec la dérive du delta et son P&L est plutôt ~<strong style={{ color: hedgePnlDyn >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(hedgePnlDyn)} {dxSym()}</strong> (total ~{dxCur(straddlePnl + hedgePnlDyn)} {dxSym()}). Estimation — le chiffre exact dépend de vos exécutions réelles.
+          <strong style={{ color: 'var(--text-soft)' }}>Couverture Δ = estimation « rééquilibrée à neutre ».</strong> Une dispersion part quasi delta-neutre, donc la couverture d'<strong>entrée figée</strong> est minuscule ({dxCur(hedgePnl)} {dxSym()}). Mais le delta dérive avec le gamma : si vous <strong>rééquilibrez</strong> (recommandé, voir plus bas), votre couverture grossit — c'est ce que reflète le chiffre ci-dessus. Estimation par intégration entre l'entrée et maintenant ; le montant exact dépend de vos exécutions réelles.
         </div>
       )}
 
@@ -625,12 +631,12 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                   </tr>
                 );
               })}
-              {hedgePnl != null && Math.abs(hedgePnl) >= 1 && (
+              {hedgeShown != null && Math.abs(hedgeShown) >= 1 && (
                 <tr style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
                   <td style={{ padding: '11px 16px', color: 'var(--text)' }}>Couverture Δ <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· actions / future</span></td>
                   <td style={{ padding: '11px 16px', textAlign: 'right' }}><span style={{ color: 'var(--text-muted)', font: '600 11px/1 var(--font-sans)', textTransform: 'uppercase' }}>hedge</span></td>
-                  <td colSpan={4} style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>P&L des actions/future de couverture du delta</td>
-                  <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>{dxCur(hedgePnl)} {dxSym()}</td>
+                  <td colSpan={4} style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{hedgeDyn ? 'P&L de couverture rééquilibrée à neutre (estimé)' : 'P&L des actions/future de couverture du delta'}</td>
+                  <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: hedgeShown >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>{dxCur(hedgeShown)} {dxSym()}</td>
                 </tr>
               )}
             </tbody>

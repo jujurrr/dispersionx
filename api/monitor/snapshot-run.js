@@ -38,7 +38,11 @@ async function sbPatchSnapshots(id, snapshots) {
 // Dernier P&L mark-to-market déjà enregistré (pour le P&L quotidien).
 function lastMtmPnl(snaps) {
   for (let i = (snaps || []).length - 1; i >= 0; i--) {
-    if (snaps[i] && snaps[i].mtm && typeof snaps[i].total_pnl === 'number') return snaps[i].total_pnl;
+    const s = snaps[i];
+    if (s && s.mtm) {
+      if (typeof s.total_pnl_dyn === 'number') return s.total_pnl_dyn;   // base cohérente (rééquilibré)
+      if (typeof s.total_pnl === 'number') return s.total_pnl;
+    }
   }
   return null;
 }
@@ -61,10 +65,15 @@ export default async (req) => {
     try {
       const v = await repriceStrategy(strategy, cboeMarket);
       const prev = lastMtmPnl(p.snapshots);
+      // Total « rééquilibré à neutre » (estimé) si la position est couverte — le hedge
+      // d'entrée figé sous-compte grossièrement la vraie couverture (cf. reprice.js).
+      const hedged = !!(v.delta_dollar && v.delta_dollar.hedged);
+      const totalShown = (hedged && typeof v.total_pnl_dyn === 'number') ? v.total_pnl_dyn : v.total_pnl;
       const snap = {
         taken_at: v.asof,
         total_pnl: v.total_pnl,
-        daily_pnl: prev == null ? null : Math.round((v.total_pnl - prev) * 100) / 100,
+        total_pnl_dyn: v.total_pnl_dyn,   // couverture rééquilibrée à neutre (estimée)
+        daily_pnl: prev == null ? null : Math.round((totalShown - prev) * 100) / 100,
         net_vega: v.net_vega,
         net_theta: v.net_theta,
         dte: v.dte,
