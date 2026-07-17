@@ -238,8 +238,9 @@ function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId }
   ];
   const recRow = STRUCTS.find(s => s.key === recKey);
 
-  // Checklist de pré-trade (desk vol-arb, 5 catégories). 2 portes MESURABLES ici,
-  // 3 relèvent du jugement (affichées « à confirmer » — on ne les coche pas à ta place).
+  // Checklist de pré-trade (desk vol-arb, 5 catégories). 3 portes MESURABLES depuis nos données
+  // (edge, structure, queue via skew) ; 2 sont HORS données PAR NATURE (surpeuplement = flux/AUM
+  // qu'on ne capte pas en live ; sortie = plan de trade de l'utilisateur) → à confirmer par lui.
   const COST_PTS = 3;   // « l'edge doit dépasser 3-4 % pour être viable net » (praticien)
   const checks = [
     { auto: true,  ok: premium != null && premium >= COST_PTS,
@@ -248,18 +249,19 @@ function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId }
     { auto: true,  ok: pct != null && pct >= 50,
       label: 'Structure de marché favorable',
       detail: pct != null ? `Prime au ${pct}ᵉ percentile de son histoire (≥ 50 requis)` : 'percentile indisponible' },
-    { auto: false, ok: null,
-      label: 'Risque de queue mesuré & assumé',
-      detail: skewSteep != null ? `Skew +${(skewSteep * 100).toFixed(0)} pts à la baisse : c'est le krach que vous vendez` : 'lire le skew ci-dessus' },
+    { auto: true, ok: skewSteep != null,
+      label: 'Risque de queue chiffré',
+      detail: skewSteep != null ? `Skew +${(skewSteep * 100).toFixed(0)} pts à la baisse${skewSteep >= 0.15 ? ' — queue ÉLEVÉE, à assumer' : ''} : le krach corrélé que vous vendez` : 'skew indisponible (panier < 3 noms)' },
     { auto: false, ok: null,
       label: 'Pas de surpeuplement',
-      detail: 'Trade crowded 2024-26 (AUM ×2-3) — à juger hors app' },
+      detail: 'Fait de FLUX / AUM (Bloomberg : ×2-3 en 2021-24) — hors de nos données de marché, impossible à mesurer en live. À juger toi-même.' },
     { auto: false, ok: null,
       label: 'Discipline de sortie prédéfinie',
-      detail: 'Ex. stop si ρ implicite +15 pts vs entrée' },
+      detail: 'Ton plan de trade (ex. stop si ρ implicite +15 pts vs entrée) — l\'app ne peut ni le connaître ni le vérifier.' },
   ];
   const autoOk  = checks.filter(c => c.auto && c.ok).length;
-  const autoTot = checks.filter(c => c.auto).length;
+  const autoTot = checks.filter(c => c.auto).length;   // 3 : edge, structure, queue
+  const manualTot = checks.filter(c => !c.auto).length; // 2 : surpeuplement, sortie (hors données)
 
   const card = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 };
   const th   = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'left', padding: '6px 8px' };
@@ -312,10 +314,10 @@ function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId }
       <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
           <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Checklist de pré-trade</h3>
-          <span style={{ font: '700 13px/1 var(--font-mono)', color: autoOk === autoTot ? 'var(--pos-bright)' : 'var(--warn)' }}>{autoOk}/{autoTot} mesurées OK</span>
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-muted)' }}><strong style={{ font: '700 13px/1 var(--font-mono)', color: autoOk === autoTot ? 'var(--pos-bright)' : 'var(--warn)' }}>{autoOk}/{autoTot}</strong> auto-mesurées · <strong style={{ color: 'var(--text-dim)' }}>{manualTot} à confirmer</strong></span>
         </div>
         <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>
-          Un desk exige <strong style={{ color: 'var(--text-soft)' }}>≥ 4/5</strong> portes — dont l'edge et la structure — avant d'ouvrir. Plus honnête qu'un seul score : chaque porte se vérifie séparément.
+          Un desk exige <strong style={{ color: 'var(--text-soft)' }}>≥ 4/5</strong> portes avant d'ouvrir. <strong>3 sont mesurées</strong> depuis nos données (edge, structure, queue) ; les <strong>2 dernières sont hors des données</strong> et te reviennent — le <strong>surpeuplement</strong> est un fait de flux/AUM qu'on ne capte pas en live, la <strong>discipline de sortie</strong> est ton plan de trade. Plus honnête qu'un seul score : chaque porte se vérifie séparément.
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {checks.map((c, i) => {
