@@ -199,6 +199,142 @@ function CorrRegime({ premium, index, mode, onNav }) {
   );
 }
 
+/* ─── Playbook : structure de dispersion selon le régime + checklist ──────────
+   Traduit la recherche institutionnelle (BNP QIS « risk-flat profiles » :
+   gamma/vega/theta-flat à alterner selon le cycle ; GS premium-neutral ; playbook
+   desk vol-arb : checklist à 5 portes) en aide à la décision HONNÊTE. Règle d'or
+   maintenue : AUCUNE structure ne rend le P&L net positif « par magie » — la prime
+   est un paiement pour porter le krach corrélé, pas un free lunch (cf.
+   backtest/DISPERSION_SYNTHESE.md). Le module affiche donc un CHOIX D'EXPOSITION
+   + un arbitrage prime↔queue, jamais une promesse de gain.
+   Entrées 100 % dérivées de ce que le Lab observe déjà : percentile de prime
+   (régime), skew (ρ downside − ATM), pente de terme. Repli propre si absentes. */
+function RegimePlaybook({ premiumPct, premium, skew, term, mode }) {
+  const pct        = (premiumPct != null && isFinite(premiumPct)) ? Math.round(premiumPct) : null;
+  const skewSteep  = (skew && skew[0] != null && skew[3] != null) ? (skew[0] - skew[3]) : null;   // ρ(−15%) − ρ(ATM)
+  const termSlope  = (term && term[0] != null && term[term.length - 1] != null) ? (term[term.length - 1] - term[0]) : null;
+
+  const rich  = pct != null && pct >= 66;
+  const cheap = pct != null && pct < 33;
+  const steep = skewSteep != null && skewSteep >= 0.15;
+
+  // Structure que la THÉORIE favorise dans ce régime de corrélation (le cycle de
+  // marché — tendance/vol — complète ce tableau, à lire sur le Dashboard).
+  let recKey, why;
+  if (pct == null)         { recKey = 'equal';   why = "Régime indéterminé (pas d'historique de prime) — structure neutre par défaut."; }
+  else if (cheap)          { recKey = 'wait';    why = `Prime serrée (${pct}ᵉ pct) : trop mince pour couvrir le coût d'exécution retail. Aucune structure n'imprime ici — attendre que la prime se reconstitue, ou réduire la taille.`; }
+  else if (rich && steep)  { recKey = 'theta';   why = `Prime riche (${pct}ᵉ pct) mais skew raide (+${(skewSteep * 100).toFixed(0)} pts à la baisse) : la prime vit sur le krach corrélé. Le theta-weighted encaisse le portage — mais taille réduite et couverture de queue, vous êtes short un krach lourd.`; }
+  else if (rich)           { recKey = 'premium'; why = `Prime riche (${pct}ᵉ pct), skew modéré : jeu de covariance. Le premium-neutral rend le signe du P&L dépendant du seul réalisé vs implicite (magnitude ∝ vol réalisée).`; }
+  else                     { recKey = 'equal';   why = `Prime dans sa norme (${pct}ᵉ pct) : équipondéré vega-neutre — la capture de base, équilibrée. Rien ne justifie un profil plus agressif.`; }
+
+  const STRUCTS = [
+    { key: 'equal',   name: 'Équipondéré · vega-neutre',   regime: 'Calme, vol basse',         capture: 'Prime de corrélation (base)',   tail: 'Krach corrélé (standard)' },
+    { key: 'theta',   name: 'Theta-weighted (theta-flat)', regime: 'Haussier / tendance',      capture: 'Portage positif (carry)',       tail: 'Krach + bleed si le marché range' },
+    { key: 'gamma',   name: 'Gamma-flat',                  regime: 'Range / récession',        capture: 'Dispersion statistique pure',   tail: 'Corrélation basse qui persiste' },
+    { key: 'premium', name: 'Premium-neutral (GS)',        regime: 'Prime riche · covariance', capture: 'Signe = réalisé vs implicite',  tail: 'Magnitude ∝ vol réalisée' },
+    { key: 'wait',    name: 'Attendre / réduire',          regime: 'Prime serrée',             capture: '— (coût > prime)',              tail: 'Le coût mange la prime' },
+  ];
+  const recRow = STRUCTS.find(s => s.key === recKey);
+
+  // Checklist de pré-trade (desk vol-arb, 5 catégories). 2 portes MESURABLES ici,
+  // 3 relèvent du jugement (affichées « à confirmer » — on ne les coche pas à ta place).
+  const COST_PTS = 3;   // « l'edge doit dépasser 3-4 % pour être viable net » (praticien)
+  const checks = [
+    { auto: true,  ok: premium != null && premium >= COST_PTS,
+      label: 'Edge quantifié > coût',
+      detail: premium != null ? `Prime ${premium >= 0 ? '+' : ''}${premium.toFixed(1)} pts vs seuil desk ~${COST_PTS}–4 pts` : 'prime indisponible' },
+    { auto: true,  ok: pct != null && pct >= 50,
+      label: 'Structure de marché favorable',
+      detail: pct != null ? `Prime au ${pct}ᵉ percentile de son histoire (≥ 50 requis)` : 'percentile indisponible' },
+    { auto: false, ok: null,
+      label: 'Risque de queue mesuré & assumé',
+      detail: skewSteep != null ? `Skew +${(skewSteep * 100).toFixed(0)} pts à la baisse : c'est le krach que vous vendez` : 'lire le skew ci-dessus' },
+    { auto: false, ok: null,
+      label: 'Pas de surpeuplement',
+      detail: 'Trade crowded 2024-26 (AUM ×2-3) — à juger hors app' },
+    { auto: false, ok: null,
+      label: 'Discipline de sortie prédéfinie',
+      detail: 'Ex. stop si ρ implicite +15 pts vs entrée' },
+  ];
+  const autoOk  = checks.filter(c => c.auto && c.ok).length;
+  const autoTot = checks.filter(c => c.auto).length;
+
+  const card = { background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 };
+  const th   = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', textAlign: 'left', padding: '6px 8px' };
+  const td   = { font: 'var(--type-caption)', color: 'var(--text-soft)', padding: '8px', borderTop: '1px solid var(--border-subtle)', verticalAlign: 'top' };
+
+  return (
+    <div style={card}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
+        <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Quelle structure pour ce régime ?</h3>
+        <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>d'après BNP QIS · Goldman · desks vol-arb</span>
+      </div>
+      <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '4px 0 16px' }}>
+        La structure d'une dispersion n'est pas neutre : chaque profil capture la prime autrement et porte une queue différente. Voici celui que la <strong style={{ color: 'var(--text-soft)' }}>théorie favorise aujourd'hui</strong> — un <strong style={{ color: 'var(--text-soft)' }}>choix d'exposition</strong>, jamais une promesse de gain.
+      </p>
+
+      {/* Reco du régime */}
+      <div style={{ background: recKey === 'wait' ? 'var(--neg-soft, var(--bg-elevated))' : 'var(--pos-soft, var(--bg-elevated))', border: `1px solid ${recKey === 'wait' ? 'var(--neg)' : 'var(--pos)'}`, borderRadius: 'var(--radius)', padding: '12px 14px', marginBottom: 16 }}>
+        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 4 }}>Recommandé maintenant</div>
+        <div style={{ font: '700 15px/1.2 var(--font-sans)', color: recKey === 'wait' ? 'var(--neg-bright)' : 'var(--pos-bright)', marginBottom: 6 }}>{recRow?.name}</div>
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', lineHeight: 1.55 }}>{why}</div>
+      </div>
+
+      {/* Tableau des profils (le recommandé est surligné) */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
+          <thead><tr><th style={th}>Structure</th><th style={th}>Régime favorable</th><th style={th}>Capture</th><th style={th}>Sa queue</th></tr></thead>
+          <tbody>
+            {STRUCTS.map(s => {
+              const on = s.key === recKey;
+              return (
+                <tr key={s.key} style={{ background: on ? 'var(--bg-elevated)' : 'transparent' }}>
+                  <td style={{ ...td, color: on ? 'var(--accent-hover)' : 'var(--text-soft)', fontWeight: on ? 700 : 400 }}>{on ? '→ ' : ''}{s.name}</td>
+                  <td style={td}>{s.regime}</td>
+                  <td style={td}>{s.capture}</td>
+                  <td style={{ ...td, color: 'var(--text-muted)' }}>{s.tail}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Checklist de pré-trade */}
+      <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+          <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>Checklist de pré-trade</h3>
+          <span style={{ font: '700 13px/1 var(--font-mono)', color: autoOk === autoTot ? 'var(--pos-bright)' : 'var(--warn)' }}>{autoOk}/{autoTot} mesurées OK</span>
+        </div>
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', margin: '0 0 14px' }}>
+          Un desk exige <strong style={{ color: 'var(--text-soft)' }}>≥ 4/5</strong> portes — dont l'edge et la structure — avant d'ouvrir. Plus honnête qu'un seul score : chaque porte se vérifie séparément.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {checks.map((c, i) => {
+            const icon = c.auto ? (c.ok ? '✓' : '✗') : '○';
+            const col  = c.auto ? (c.ok ? 'var(--pos-bright)' : 'var(--neg-bright)') : 'var(--text-dim)';
+            return (
+              <div key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                <span style={{ font: '700 14px/1.3 var(--font-mono)', color: col, flexShrink: 0, width: 16, textAlign: 'center' }}>{icon}</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>{c.label}{!c.auto && <span style={{ color: 'var(--text-dim)', font: 'var(--type-caption)' }}> · à confirmer</span>}</div>
+                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 1 }}>{c.detail}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {mode === 'Débutant' && (
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: '14px 0 0', lineHeight: 1.5 }}>
+          Rappel : ces profils ne sont pas des « recettes qui gagnent ». Ils décrivent <strong>comment</strong> vous vous exposez à la même prime de corrélation. Le résultat net dépend surtout du <strong>coût d'exécution</strong> et de la <strong>taille</strong> — et, en cas de krach corrélé, chaque structure perd. La checklist sert à ne pas entrer sur un seul chiffre séduisant.
+        </p>
+      )}
+    </div>
+  );
+}
+
 /* ─── Carte de la corrélation (structure moyenne 2022-2026, statique) ───
    ρ_impl moyen par MONEYNESS (skew) et par ÉCHÉANCE (terme), par indice.
    Calculé par backtest/build_corrmap.mjs. Repère de structure, PAS du temps réel
@@ -718,6 +854,14 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
     : (rawMatrix?.values || matrixTickers.map((_, i) => matrixTickers.map((_, j) => i === j ? 1 : 0.45)));
   const history = C.history || [];
 
+  // ── Playbook régime→structure (module A) : entrées 100 % dérivées de ce que le
+  //    Lab calcule déjà — percentile de prime (régime) + skew/terme de la liste. ──
+  const rgKey        = (ctx.listIndex || C.index || 'SPX').toUpperCase();
+  const rgBase       = CORR_BASELINE[rgKey];
+  const rgPremiumPts = (rhoImpl - rhoReal) * 100;
+  const rgPremiumPct = rgBase ? pctRank(rgPremiumPts, rgBase.premiumPts) : null;
+  const rgMap        = listCorrMap(matrixTickers, rgKey, rhoImpl) || CORR_MAP[rgKey] || null;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Contexte liste */}
@@ -761,6 +905,9 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
 
       {/* Régime : la prime du jour située dans son historique (repère de contexte) */}
       <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} onNav={onNav} />
+
+      {/* Playbook : structure recommandée selon le régime + checklist de pré-trade (module A) */}
+      <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} />
 
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
