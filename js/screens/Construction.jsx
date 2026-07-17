@@ -153,14 +153,20 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       // La vol vient de la même source que le Volatility Lab (HV Yahoo) — repli
       // synthVol si l'endpoint est indisponible : mêmes chiffres partout.
       const priceMap = {}, mcapMap = {}, volLive = {};
-      const [quotes, mcaps, volBatch] = await Promise.all([
+      const [quotes, mcaps, volBatch, impl] = await Promise.all([
         DXApi.batchQuotes(tickers).catch(() => null),
         DXApi.getMarketCaps(tickers).catch(() => null),
         DXApi.getBatchVol(tickers, indexSym).catch(() => null),
+        // IV d'option RÉELLE Cboe par composant (même source que le reprix du suivi & le score).
+        // Sert d'IV d'entrée → le mark-to-market compare enfin réel↔réel, plus proxy-HV↔réel.
+        (DXApi.impliedCorrelation ? DXApi.impliedCorrelation(indexSym, tickers, null, duration).catch(() => null) : Promise.resolve(null)),
       ]);
       (quotes || []).forEach(r => { if (r?.ticker) priceMap[r.ticker] = parseFloat(r.price) || null; });
       (mcaps || []).forEach(r => { if (r?.ticker && r.mcap != null && r.mcap > 0) mcapMap[r.ticker] = r.mcap; });
       (volBatch?.results || []).forEach(r => { if (r?.ticker && !r.error) volLive[r.ticker] = r; });
+      // Vraie IV d'option Cboe par nom (repli sur le proxy HV si absente — non-cassant).
+      const realIvMap = {};
+      if (impl && Array.isArray(impl.per_name)) impl.per_name.forEach(p => { if (p && p.ticker && p.iv > 0) realIvMap[p.ticker] = p.iv; });
 
       // Poids indice connu (composition réelle) — repli quand pas de market cap.
       const idxComps = window.DXMock?.getComponents ? window.DXMock.getComponents(indexSym) : [];
@@ -172,7 +178,8 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         const live = volLive[t];
         if (live) ['iv_est', 'hv30', 'beta'].forEach(k => { if (live[k] != null) v[k] = live[k]; });
         const price = priceMap[t] || 100;
-        const iv = v.iv_est != null ? v.iv_est : 30;
+        // IV = vraie IV d'option Cboe (réelle, comme le suivi/le score) ; repli proxy HV si absente.
+        const iv = realIvMap[t] != null ? realIvMap[t] : (v.iv_est != null ? v.iv_est : 30);
         const hv = v.hv30  != null ? v.hv30  : 27;
         const beta = v.beta != null ? v.beta : 1.0;
         const mcap = mcapMap[t] != null ? mcapMap[t] : null;
