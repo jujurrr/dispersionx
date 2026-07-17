@@ -209,7 +209,7 @@ function CorrRegime({ premium, index, mode, onNav }) {
    + un arbitrage prime↔queue, jamais une promesse de gain.
    Entrées 100 % dérivées de ce que le Lab observe déjà : percentile de prime
    (régime), skew (ρ downside − ATM), pente de terme. Repli propre si absentes. */
-function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId }) {
+function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId, onStructure }) {
   // Structure recommandée → méthode de sizing Construction (propagation « câbler la structure »).
   const SIZING_OF = { equal: 'vega_neutral', theta: 'theta_flat', gamma: 'gamma_flat', premium: 'premium_neutral' };
   const pct        = (premiumPct != null && isFinite(premiumPct)) ? Math.round(premiumPct) : null;
@@ -237,6 +237,9 @@ function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId }
     { key: 'wait',    name: 'Attendre / réduire',          regime: 'Prime serrée',             capture: '— (coût > prime)',              tail: 'Le coût mange la prime' },
   ];
   const recRow = STRUCTS.find(s => s.key === recKey);
+  // Remonte la structure recommandée à l'appelant (Builder → pré-sélection Construction).
+  const recSizing = SIZING_OF[recKey] || null;
+  React.useEffect(() => { if (onStructure && recSizing) onStructure(recSizing); }, [onStructure, recSizing]);
 
   // Checklist de pré-trade (desk vol-arb, 5 catégories). 3 portes MESURABLES depuis nos données
   // (edge, structure, queue via skew) ; 2 sont HORS données PAR NATURE (surpeuplement = flux/AUM
@@ -783,7 +786,7 @@ function SingleTickerCorr({ ctx, onCtx, lists, mode }) {
 // `view` : 'corr' (défaut) = matrice/prime/contribution/secteurs/historique ·
 //          'regime' = régime + structure recommandée + skew/terme (écran dédié).
 // Même pipeline de données, deux vues — on désengorge sans dupliquer la collecte.
-function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, view = 'corr' }) {
+function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, view = 'corr', onStructure }) {
   const { MetricCard, Badge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -925,7 +928,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
         {/* Régime : la prime du jour située dans son historique */}
         <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} onNav={onNav} />
         {/* Playbook : structure recommandée selon le régime + checklist de pré-trade */}
-        <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} onNav={onNav} listId={ctx.listId} />
+        <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} onNav={onNav} listId={ctx.listId} onStructure={onStructure} />
       </>)}
 
       {/* ── Écran « Correlation Lab » : matrice, contribution, secteurs, historique ── */}

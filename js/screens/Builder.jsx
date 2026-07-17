@@ -159,7 +159,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
   const dxA   = (n, o) => window.DXMoney ? window.DXMoney.value(n, o) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
   const dxMag = n => window.DXMoney ? window.DXMoney.value(Math.abs(n), { sign: false }) : Math.abs(Math.round(n)).toLocaleString('fr-FR');
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
-  const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Construction', 'Risque', 'Synthèse'];
+  const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Structure', 'Construction', 'Risque', 'Synthèse'];
   const d0 = listId ? null : _builderDraft;   // brouillon à restaurer (hors entrée ciblée)
   const [step, setStep] = React.useState(d0 ? d0.step : (listId ? 3 : 0));
   const [list, setList] = React.useState(null);
@@ -177,6 +177,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
   const [building, setBuilding] = React.useState(false);
   const [nIndexContracts, setNIndexContracts] = React.useState(d0 ? d0.nIndexContracts : 1);
   const [buildError, setBuildError] = React.useState(null);
+  const [recommendedSizing, setRecommendedSizing] = React.useState(null);   // structure reco (étape Régime) → pré-sélectionne la construction
 
   // Sauvegarde continue du brouillon (hors entrée ciblée sur un listId) → l'état
   // est restauré à l'identique si on quitte puis revient sur le Builder.
@@ -367,7 +368,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
         return;
       }
       setStratData({ strategy });
-      setStep(7);
+      setStep(8);
     } catch (err) {
       setBuildError('Erreur — ' + (err?.message || 'inattendue') + '.');
     } finally {
@@ -375,7 +376,7 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
     }
   }
 
-  if (step === 7) {
+  if (step === 8) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '6px 10px' }}>
@@ -392,8 +393,9 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
     2: ['Point de départ', 'Partez d\'une de vos listes existantes, ou construisez de zéro.'],
     3: ['Sélectionner les composants', 'Cherchez et ajoutez n\'importe quelle action (tous indices), ou cochez parmi les composants connus. Ces actions composeront la jambe single-name long straddle.'],
     4: ['Corrélation et prime', "Comparez ce que le marché price (ρ implicite) à ce qui a été observé (ρ̂ réalisée). L'écart est la prime de corrélation."],
-    5: ['Construction', 'Définissez les quantités et équilibrez le vega de la position.'],
-    6: ['Évaluation du risque', 'Visualisez les scénarios de risque avant de valider la stratégie.'],
+    5: ['Régime & structure', 'La structure de dispersion recommandée selon le régime — pré-sélectionnée dans la construction.'],
+    6: ['Construction', 'Définissez les quantités et équilibrez le vega de la position.'],
+    7: ['Évaluation du risque', 'Visualisez les scénarios de risque avant de valider la stratégie.'],
   }[step] || [STEPS[step], 'Étape du parcours de construction.'];
 
   return (
@@ -411,8 +413,8 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
           {step > 0 && (
             <button onClick={() => setStep(s => s - 1)} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>← Retour</button>
           )}
-          {step < 6 ? (
-            <button onClick={() => setStep(s => Math.min(6, s + 1))} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Continuer →</button>
+          {step < 7 ? (
+            <button onClick={() => setStep(s => Math.min(7, s + 1))} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Continuer →</button>
           ) : (
             <button onClick={handleBuild} disabled={building} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: building ? 'var(--text-dim)' : 'var(--accent)', color: '#fff', cursor: building ? 'not-allowed' : 'pointer' }}>
               {building ? '⏳ Calcul en cours…' : 'Construire la stratégie →'}
@@ -432,13 +434,19 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
         ? <window.CorrelationLab embedded listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
         : <NoListYet target="le Correlation Lab" />)}
 
+      {/* Étape Structure : le module Régime & Structure recommande une structure selon le régime ;
+          on la capte (onStructure) pour la PRÉ-SÉLECTIONNER à l'étape Construction (sizingOverride). */}
+      {step === 5 && (effectiveListId
+        ? <window.CorrelationLab embedded view="regime" listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} onStructure={setRecommendedSizing} />
+        : <NoListYet target="le Régime & Structure" />)}
+
       {buildError && <div style={{ padding: '12px 16px', background: 'var(--neg-soft)', border: '1px solid var(--neg)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--neg-bright)' }}>{buildError}</div>}
 
-      {step === 5 && (effectiveListId
-        ? <window.Construction embedded listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} indexOverride={selectedIndex} durationOverride={selectedDuration} onSaved={s => setStratData({ strategy: s })} />
+      {step === 6 && (effectiveListId
+        ? <window.Construction embedded listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} indexOverride={selectedIndex} durationOverride={selectedDuration} sizingOverride={recommendedSizing} onSaved={s => setStratData({ strategy: s })} />
         : <NoListYet target="la Construction (répartition des contrats)" />)}
 
-      {step === 6 && (effectiveListId
+      {step === 7 && (effectiveListId
         ? <window.RiskLab embedded listId={effectiveListId} onNav={onNav} mode={mode} lists={lists} moduleCtx={{ listId: effectiveListId, listIndex: selectedIndex, index: selectedIndex }} onModuleCtx={onModuleCtx} />
         : <NoListYet target="le Risk Lab" />)}
     </div>
