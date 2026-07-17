@@ -758,6 +758,91 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         </WarningPanel>
       )}
 
+      {/* ── Delta de la stratégie / couverture ── */}
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
+          <div style={{ maxWidth: 460 }}>
+            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Delta de la stratégie</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 3 }}>Exposition directionnelle nette ($ de P&L pour +1 % du sous-jacent). Les straddles ATM sont quasi delta-neutres, mais un résidu subsiste (vol des composants ≠ vol indice) — on peut l'annuler.</div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ font: '800 22px/1 var(--font-mono)', color: Math.abs(deltaHedge !== 'none' ? 0 : sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta)} {dxSym()}/1%</div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>delta net {deltaHedge === 'index' ? '· couvert (ETF indice)' : deltaHedge === 'legs' ? '· couvert (par jambe)' : 'global'}</div>
+          </div>
+        </div>
+
+        {/* Décomposition par jambe */}
+        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${deltaHedge !== 'none' ? 5 : 3}, 1fr)`, gap: 10, marginBottom: 16 }}>
+          {[
+            { l: 'Composants (long)', v: sized.compDelta, c: 'var(--pos-bright)' },
+            { l: 'Indice (short)', v: sized.idxDelta, c: 'var(--neg-bright)' },
+            { l: 'Net (avant couverture)', v: sized.netDelta, c: Math.abs(sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' },
+            ...(deltaHedge !== 'none' ? [
+              { l: deltaHedge === 'index' ? 'Couverture (ETF)' : 'Couverture (par jambe)', v: -sized.netDelta, c: 'var(--info)' },
+              { l: 'Net final (couvert)', v: 0, c: 'var(--pos-bright)' },
+            ] : []),
+          ].map(d => (
+            <div key={d.l} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
+              <div style={{ font: '9px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 5 }}>{d.l}</div>
+              <div style={{ font: '700 13px/1 var(--font-mono)', color: d.c }}>{fmtS(d.v)} {dxSym()}/1%</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Choix de couverture */}
+        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Neutraliser le delta</div>
+        <div style={{ display: 'flex', gap: 8, marginBottom: deltaHedge !== 'none' ? 12 : 0 }}>
+          {[
+            { v: 'none', label: 'Aucune', sub: 'garder le résidu' },
+            { v: 'index', label: 'Par l\'indice', sub: 'ETF indice · global' },
+            { v: 'legs', label: 'Par sous-jacent', sub: 'actions + future · par jambe' },
+          ].map(opt => {
+            const on = deltaHedge === opt.v;
+            return (
+              <button key={opt.v} onClick={() => setDeltaHedge(opt.v)}
+                style={{ flex: 1, padding: '10px 6px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: 'pointer', textAlign: 'center' }}>
+                <div style={{ font: '600 12px/1 var(--font-sans)' }}>{opt.label}</div>
+                <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{opt.sub}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {deltaHedge === 'index' && (
+          <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+            {Math.abs(sized.hedgeUnits * CONTRACT) < 0.5 ? (
+              <>Le delta net est déjà quasi nul — aucune couverture à trader.</>
+            ) : (
+              <>Ordre de couverture : <strong style={{ color: 'var(--text)' }}>{sized.hedgeUnits >= 0 ? 'acheter' : 'vendre'} {Math.round(Math.abs(sized.hedgeUnits) * CONTRACT)} action(s) {base.indexEtf}</strong> (≈ {fmtNot(sized.indexHedgeNotional)} de notionnel, soit {fmtQty(sized.hedgeUnits)} lot(s) de {CONTRACT}) pour annuler le delta net de {fmtS(sized.netDelta)} {dxSym()}/1% → <strong style={{ color: 'var(--pos-bright)' }}>delta net final ≈ 0</strong>. La couverture est intégrée à la stratégie enregistrée et reprise par le Risk Lab.</>
+            )}
+          </div>
+        )}
+        {deltaHedge === 'legs' && (
+          <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+            <div style={{ padding: '10px 12px', font: 'var(--type-body-sm)', color: 'var(--text-soft)', borderBottom: '1px solid var(--border-subtle)' }}>
+              Couverture <strong>jambe par jambe</strong> : chaque straddle est neutralisé par son propre sous-jacent (actions pour les composants, future pour l'indice) → <strong style={{ color: 'var(--pos-bright)' }}>delta net ≈ 0</strong>. Total ≈ <strong style={{ color: 'var(--text)' }}>{fmtNot(sized.legsHedgeNotional)}</strong> de notionnel directionnel. Intégrée à la stratégie enregistrée et reprise par le Risk Lab.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
+              {['Jambe', 'Ordre', 'Notionnel'].map(h => (
+                <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: h === 'Jambe' ? 'left' : 'right' }}>{h}</span>
+              ))}
+            </div>
+            {sized.comps.map(c => (
+              <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
+                <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· actions</span></span>
+                <span style={{ font: '600 11px/1 var(--font-mono)', color: c.hedgeShares >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>{c.hedgeShares >= 0 ? 'Acheter' : 'Vendre'} {Math.round(Math.abs(c.hedgeShares)) || '<1'}</span>
+                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>{fmtNot(c.hedgeNotional)}</span>
+              </div>
+            ))}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', alignItems: 'center' }}>
+              <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{base.indexEtf} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· ETF indice</span></span>
+              <span style={{ font: '600 11px/1 var(--font-mono)', color: sized.idxLegHedgeUnits >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>{sized.idxLegHedgeUnits >= 0 ? 'Acheter' : 'Vendre'} {Math.round(Math.abs(sized.idxLegHedgeUnits) * CONTRACT) || '<1'}</span>
+              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>{fmtNot(Math.abs(sized.idxLegHedgeUnits) * base.indexPrice * CONTRACT)}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── Coût réel d'exécution & seuil de rentabilité (brique 3) ── */}
       {costModel && (costModel.unpriced ? (
         <WarningPanel tone="warn" title="Coût d'exécution non chiffrable">
@@ -903,91 +988,6 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
           )}
         </div>
       ))}
-
-      {/* ── Delta de la stratégie / couverture ── */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 14 }}>
-          <div style={{ maxWidth: 460 }}>
-            <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Delta de la stratégie</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 3 }}>Exposition directionnelle nette ($ de P&L pour +1 % du sous-jacent). Les straddles ATM sont quasi delta-neutres, mais un résidu subsiste (vol des composants ≠ vol indice) — on peut l'annuler.</div>
-          </div>
-          <div style={{ textAlign: 'right' }}>
-            <div style={{ font: '800 22px/1 var(--font-mono)', color: Math.abs(deltaHedge !== 'none' ? 0 : sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' }}>{fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta)} {dxSym()}/1%</div>
-            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>delta net {deltaHedge === 'index' ? '· couvert (ETF indice)' : deltaHedge === 'legs' ? '· couvert (par jambe)' : 'global'}</div>
-          </div>
-        </div>
-
-        {/* Décomposition par jambe */}
-        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${deltaHedge !== 'none' ? 5 : 3}, 1fr)`, gap: 10, marginBottom: 16 }}>
-          {[
-            { l: 'Composants (long)', v: sized.compDelta, c: 'var(--pos-bright)' },
-            { l: 'Indice (short)', v: sized.idxDelta, c: 'var(--neg-bright)' },
-            { l: 'Net (avant couverture)', v: sized.netDelta, c: Math.abs(sized.netDelta) < 50 ? 'var(--pos-bright)' : 'var(--warn-bright)' },
-            ...(deltaHedge !== 'none' ? [
-              { l: deltaHedge === 'index' ? 'Couverture (ETF)' : 'Couverture (par jambe)', v: -sized.netDelta, c: 'var(--info)' },
-              { l: 'Net final (couvert)', v: 0, c: 'var(--pos-bright)' },
-            ] : []),
-          ].map(d => (
-            <div key={d.l} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '8px 10px' }}>
-              <div style={{ font: '9px/1 var(--font-sans)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 5 }}>{d.l}</div>
-              <div style={{ font: '700 13px/1 var(--font-mono)', color: d.c }}>{fmtS(d.v)} {dxSym()}/1%</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Choix de couverture */}
-        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Neutraliser le delta</div>
-        <div style={{ display: 'flex', gap: 8, marginBottom: deltaHedge !== 'none' ? 12 : 0 }}>
-          {[
-            { v: 'none', label: 'Aucune', sub: 'garder le résidu' },
-            { v: 'index', label: 'Par l\'indice', sub: 'ETF indice · global' },
-            { v: 'legs', label: 'Par sous-jacent', sub: 'actions + future · par jambe' },
-          ].map(opt => {
-            const on = deltaHedge === opt.v;
-            return (
-              <button key={opt.v} onClick={() => setDeltaHedge(opt.v)}
-                style={{ flex: 1, padding: '10px 6px', borderRadius: 'var(--radius)', border: `1px solid ${on ? 'var(--accent)' : 'var(--border)'}`, background: on ? 'var(--accent-soft)' : 'transparent', color: on ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: 'pointer', textAlign: 'center' }}>
-                <div style={{ font: '600 12px/1 var(--font-sans)' }}>{opt.label}</div>
-                <div style={{ font: '9px/1.4 var(--font-mono)', color: 'var(--text-dim)', marginTop: 3 }}>{opt.sub}</div>
-              </button>
-            );
-          })}
-        </div>
-
-        {deltaHedge === 'index' && (
-          <div style={{ padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-            {Math.abs(sized.hedgeUnits * CONTRACT) < 0.5 ? (
-              <>Le delta net est déjà quasi nul — aucune couverture à trader.</>
-            ) : (
-              <>Ordre de couverture : <strong style={{ color: 'var(--text)' }}>{sized.hedgeUnits >= 0 ? 'acheter' : 'vendre'} {Math.round(Math.abs(sized.hedgeUnits) * CONTRACT)} action(s) {base.indexEtf}</strong> (≈ {fmtNot(sized.indexHedgeNotional)} de notionnel, soit {fmtQty(sized.hedgeUnits)} lot(s) de {CONTRACT}) pour annuler le delta net de {fmtS(sized.netDelta)} {dxSym()}/1% → <strong style={{ color: 'var(--pos-bright)' }}>delta net final ≈ 0</strong>. La couverture est intégrée à la stratégie enregistrée et reprise par le Risk Lab.</>
-            )}
-          </div>
-        )}
-        {deltaHedge === 'legs' && (
-          <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
-            <div style={{ padding: '10px 12px', font: 'var(--type-body-sm)', color: 'var(--text-soft)', borderBottom: '1px solid var(--border-subtle)' }}>
-              Couverture <strong>jambe par jambe</strong> : chaque straddle est neutralisé par son propre sous-jacent (actions pour les composants, future pour l'indice) → <strong style={{ color: 'var(--pos-bright)' }}>delta net ≈ 0</strong>. Total ≈ <strong style={{ color: 'var(--text)' }}>{fmtNot(sized.legsHedgeNotional)}</strong> de notionnel directionnel. Intégrée à la stratégie enregistrée et reprise par le Risk Lab.
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', borderBottom: '1px solid var(--border-subtle)' }}>
-              {['Jambe', 'Ordre', 'Notionnel'].map(h => (
-                <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.07em', textAlign: h === 'Jambe' ? 'left' : 'right' }}>{h}</span>
-              ))}
-            </div>
-            {sized.comps.map(c => (
-              <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-                <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· actions</span></span>
-                <span style={{ font: '600 11px/1 var(--font-mono)', color: c.hedgeShares >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>{c.hedgeShares >= 0 ? 'Acheter' : 'Vendre'} {Math.round(Math.abs(c.hedgeShares)) || '<1'}</span>
-                <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>{fmtNot(c.hedgeNotional)}</span>
-              </div>
-            ))}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 90px 110px', padding: '7px 12px', alignItems: 'center' }}>
-              <span style={{ font: '600 11px/1 var(--font-mono)', color: 'var(--text)' }}>{base.indexEtf} <span style={{ color: 'var(--text-dim)', fontWeight: 400 }}>· ETF indice</span></span>
-              <span style={{ font: '600 11px/1 var(--font-mono)', color: sized.idxLegHedgeUnits >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', textAlign: 'right' }}>{sized.idxLegHedgeUnits >= 0 ? 'Acheter' : 'Vendre'} {Math.round(Math.abs(sized.idxLegHedgeUnits) * CONTRACT) || '<1'}</span>
-              <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-muted)', textAlign: 'right' }}>{fmtNot(Math.abs(sized.idxLegHedgeUnits) * base.indexPrice * CONTRACT)}</span>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* ── Actions (mode autonome ; en embarqué le Builder gère le flux) ── */}
       {embedded ? (
