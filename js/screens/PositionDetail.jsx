@@ -587,6 +587,21 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
         </div>
       )}
 
+      {/* Diagnostic : spot d'entrée aberrant (repli 100 $ ou très loin du spot actuel) → le
+          straddle est ancré sur un mauvais strike, devient deep ITM et se comporte comme une
+          ACTION (P&L directionnel), au lieu d'un straddle. Cause : stratégie construite sans
+          prix/IV live. On le dit clairement plutôt que d'afficher des P&L faux sans prévenir. */}
+      {(() => {
+        const susp = (liveLegs || []).filter(l => l && l.covered && l.spot_entry != null && l.spot_now != null && (Math.round(l.spot_entry) === 100 || Math.abs(l.spot_change_pct || 0) > 25));
+        if (!susp.length) return null;
+        const at100 = susp.filter(l => Math.round(l.spot_entry) === 100).length;
+        return (
+          <div style={{ padding: '12px 16px', background: 'var(--neg-soft, var(--bg-elevated))', border: '1px solid var(--neg)', borderRadius: 'var(--radius-lg)', font: 'var(--type-body-sm)', color: 'var(--text-soft)', lineHeight: 1.55 }}>
+            <strong style={{ color: 'var(--neg-bright)' }}>Données d'entrée suspectes — P&L par jambe faussé.</strong> Le <strong>spot d'entrée</strong> de {susp.length} jambe{susp.length > 1 ? 's' : ''} est très loin du spot actuel{at100 ? ` (dont ${at100} à ~100 $, un prix de repli)` : ''}. Le straddle est alors ancré sur un <strong>mauvais strike</strong> : il devient profondément dans la monnaie et se comporte comme une <strong>action</strong> (P&L directionnel), pas comme un straddle. Cause : la stratégie a été construite <strong>sans prix/IV live</strong> (backend indisponible au moment du build). <strong>Reconstruis la stratégie</strong> quand les données de marché sont dispo → les strikes seront corrects. Regarde la colonne « Spot entrée→now » ci-dessous pour repérer les jambes concernées.
+          </div>
+        );
+      })()}
+
       {/* Legs P&L — jambes réelles (primes de straddle) quand une reprise mark-to-
           market est disponible, sinon repli théorique. */}
       {liveLegs && liveLegs.length > 0 ? (
@@ -597,7 +612,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)' }}>
-                {['Jambe', 'Sens', 'Qté', 'Prime entrée', 'Prime actuelle', 'IV (Δ)', 'P&L (' + dxSym() + ' · %)'].map((h, i) => (
+                {['Jambe', 'Sens', 'Qté', 'Spot entrée→now', 'Prime entrée', 'Prime actuelle', 'IV (Δ)', 'P&L (' + dxSym() + ' · %)'].map((h, i) => (
                   <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '10px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -616,6 +631,17 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                       <span style={{ color: l.side === 'short' ? 'var(--neg-bright)' : 'var(--pos-bright)', font: '600 11px/1 var(--font-sans)', textTransform: 'uppercase' }}>{l.side}</span>
                     </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{l.qty ?? '—'}</td>
+                    <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)' }}>
+                      {l.spot_entry != null && l.spot_now != null ? (() => {
+                        const off = Math.round(l.spot_entry) === 100 || Math.abs(l.spot_change_pct || 0) > 25;   // strike aberrant
+                        return (<>
+                          <span style={{ color: off ? 'var(--neg-bright)' : 'var(--text-muted)' }}>{l.spot_entry.toFixed(l.spot_entry < 20 ? 2 : 0)}</span>
+                          <span style={{ color: 'var(--text-dim)' }}> → </span>
+                          <span style={{ color: 'var(--text-soft)' }}>{l.spot_now.toFixed(l.spot_now < 20 ? 2 : 0)}</span>
+                          {l.spot_change_pct != null && <div style={{ font: 'var(--type-caption)', color: off ? 'var(--neg-bright)' : 'var(--text-dim)' }}>{off ? '⚠ ' : ''}{l.spot_change_pct > 0 ? '+' : ''}{l.spot_change_pct}%</div>}
+                        </>);
+                      })() : '—'}
+                    </td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-muted)' }}>{l.entry_prem != null ? dxCur(l.entry_prem, { sign: false }) : '—'}</td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{l.current_prem != null ? dxCur(l.current_prem, { sign: false }) : '—'}</td>
                     <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>
@@ -635,7 +661,7 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
                 <tr style={{ borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-elevated)' }}>
                   <td style={{ padding: '11px 16px', color: 'var(--text)' }}>Couverture Δ <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>· actions / future</span></td>
                   <td style={{ padding: '11px 16px', textAlign: 'right' }}><span style={{ color: 'var(--text-muted)', font: '600 11px/1 var(--font-sans)', textTransform: 'uppercase' }}>hedge</span></td>
-                  <td colSpan={4} style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{hedgeDyn ? 'P&L de couverture rééquilibrée à neutre (estimé)' : 'P&L des actions/future de couverture du delta'}</td>
+                  <td colSpan={5} style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--text-dim)' }}>{hedgeDyn ? 'P&L de couverture rééquilibrée à neutre (estimé)' : 'P&L des actions/future de couverture du delta'}</td>
                   <td style={{ padding: '11px 16px', textAlign: 'right', font: 'var(--type-data)', color: hedgeShown >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)', fontWeight: 600 }}>{dxCur(hedgeShown)} {dxSym()}</td>
                 </tr>
               )}
