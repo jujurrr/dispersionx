@@ -770,7 +770,10 @@ function SingleTickerCorr({ ctx, onCtx, lists, mode }) {
 }
 
 /* ─── Correlation Lab ─────────────────────────────────────────────── */
-function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded }) {
+// `view` : 'corr' (défaut) = matrice/prime/contribution/secteurs/historique ·
+//          'regime' = régime + structure recommandée + skew/terme (écran dédié).
+// Même pipeline de données, deux vues — on désengorge sans dupliquer la collecte.
+function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, view = 'corr' }) {
   const { MetricCard, Badge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -823,8 +826,10 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
       <window.ModuleCtxPicker
         lists={lists}
         onCtx={upd => onModuleCtx && onModuleCtx(upd)}
-        title="Correlation Lab"
-        subtitle="Calculez la matrice de corrélation réalisée et la prime de corrélation implicite (via VIX) pour une liste sélectionnée."
+        title={view === 'regime' ? 'Régime & Structure' : 'Correlation Lab'}
+        subtitle={view === 'regime'
+          ? 'Situez la prime de corrélation dans son historique, la structure que la théorie favorise selon le régime, et la forme du skew/terme — pour une liste sélectionnée.'
+          : 'Calculez la matrice de corrélation réalisée et la prime de corrélation implicite (via VIX) pour une liste sélectionnée.'}
       />
     );
   }
@@ -878,9 +883,11 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
       {!embedded && (
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Correlation Lab</h1>
+          <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>{view === 'regime' ? 'Régime & Structure' : 'Correlation Lab'}</h1>
           <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 660 }}>
-            Le cœur de la stratégie : ce que le marché price (ρ implicite) face à ce qui a été observé (ρ̂ réalisée). L'écart est la prime de corrélation.
+            {view === 'regime'
+              ? 'Où se situe la prime dans son histoire, quelle structure la théorie favorise selon le régime, et comment la corrélation est façonnée (skew, terme). Un choix d\'exposition — pas une promesse de P&L.'
+              : 'Le cœur de la stratégie : ce que le marché price (ρ implicite) face à ce qui a été observé (ρ̂ réalisée). L\'écart est la prime de corrélation.'}
           </p>
         </div>
         {listId && onNav && listIdParam && (
@@ -903,12 +910,16 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
           hint="Synthèse du signal : Favorable si la prime dépasse ~3 pts, Neutre si elle est légèrement positive, Défavorable si négative." />
       </div>
 
-      {/* Régime : la prime du jour située dans son historique (repère de contexte) */}
-      <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} onNav={onNav} />
+      {/* ── Écran « Régime & Structure » : régime + playbook (+ skew/terme plus bas) ── */}
+      {view === 'regime' && (<>
+        {/* Régime : la prime du jour située dans son historique */}
+        <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} onNav={onNav} />
+        {/* Playbook : structure recommandée selon le régime + checklist de pré-trade */}
+        <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} />
+      </>)}
 
-      {/* Playbook : structure recommandée selon le régime + checklist de pré-trade (module A) */}
-      <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} />
-
+      {/* ── Écran « Correlation Lab » : matrice, contribution, secteurs, historique ── */}
+      {view !== 'regime' && (<>
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
           Une dispersion classique cherche une corrélation implicite supérieure à la réalisée : l'indice price une synchronisation plus forte que celle observée récemment. Plus la matrice est « froide » (ρ faibles, teintes teal), plus les composants bougent indépendamment.
@@ -985,16 +996,21 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
           <div style={{ padding: '32px 0', textAlign: 'center', color: 'var(--text-dim)', font: 'var(--type-caption)' }}>Historique insuffisant (min. 2 fenêtres)</div>
         )}
       </div>
+      </>)}
 
-      {/* Structure de la corrélation (skew + terme) — ajustée à la liste */}
+      {/* Structure de la corrélation (skew + terme) — écran « Régime & Structure » */}
+      {view === 'regime' && (
       <CorrMap index={ctx.listIndex || C.index} mode={mode} tickers={matrixTickers} liveRho={rhoImpl} />
+      )}
 
       {/* Le risque à garder en tête — tout en bas */}
       <WarningPanel tone="neg" title="Le risque à garder en tête">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
           <div>Faire de la dispersion, c'est <strong>vendre de la corrélation</strong> : on parie que les actions bougent chacune de leur côté. Tant que le marché est calme, la prime se collecte tranquillement.</div>
           <div>Mais lors d'un <strong>sell-off corrélé</strong> (krach, panique), les actions chutent toutes ensemble : la corrélation <em>réalisée</em> bondit vers l'<em>implicite</em>, la prime se referme d'un coup, et la dispersion <strong>perd — parfois lourdement</strong>.</div>
-          <div>C'est exactement ce que montre le <strong>skew</strong> juste au-dessus (la courbe « selon le scénario ») : le marché price déjà <strong>bien plus de corrélation sur la baisse</strong> (les puts, à −10 %) qu'à la monnaie. En vendant de la dispersion, vous êtes donc <strong>short ce risque de krach corrélé</strong> — vous touchez une prime pour porter précisément ce danger. Une prime positive est un point d'entrée potentiel, <strong>jamais une garantie</strong>.</div>
+          <div>{view === 'regime'
+            ? <>C'est exactement ce que montre le <strong>skew</strong> juste au-dessus (la courbe « selon le scénario ») : le marché price déjà <strong>bien plus de corrélation sur la baisse</strong> (les puts, à −10 %) qu'à la monnaie. En vendant de la dispersion, vous êtes donc <strong>short ce risque de krach corrélé</strong> — vous touchez une prime pour porter précisément ce danger. Une prime positive est un point d'entrée potentiel, <strong>jamais une garantie</strong>.</>
+            : <>C'est le <strong>skew</strong> de corrélation (écran <strong>Régime &amp; Structure</strong>) qui le montre : le marché price déjà <strong>bien plus de corrélation sur la baisse</strong> qu'à la monnaie. En vendant de la dispersion, vous êtes <strong>short ce risque de krach corrélé</strong> — une prime positive est un point d'entrée potentiel, <strong>jamais une garantie</strong>.</>}</div>
         </div>
       </WarningPanel>
     </div>

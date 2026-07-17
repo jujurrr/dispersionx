@@ -1,5 +1,5 @@
 /* ─── DispersionX App: router + global state ─────────────────────── */
-const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs', 'privacy', 'legal', 'terms', 'sales', 'pricing'];
+const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'regime', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs', 'privacy', 'legal', 'terms', 'sales', 'pricing'];
 
 // Détection mobile (largeur ≤ 768px), réactive au redimensionnement/rotation.
 // Sert UNIQUEMENT à adapter la mise en page mobile ; sur PC, isMobile=false et
@@ -342,6 +342,9 @@ function App() {
       break;
     case 'corr':
       screenEl = <window.CorrelationLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
+      break;
+    case 'regime':
+      screenEl = <window.CorrelationLab view="regime" listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'vol':
       screenEl = <window.VolatilityLab mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} onNav={onNav} />;

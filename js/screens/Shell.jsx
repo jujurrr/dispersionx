@@ -285,6 +285,7 @@ const NAV = [
   // risque (Risk Lab).
   { group: 'Analyse', items: [
     { id: 'corr', label: 'Correlation Lab', icon: 'corr' },
+    { id: 'regime', label: 'Régime & Structure', icon: 'corr' },
     { id: 'vol', label: 'Volatility Lab', icon: 'vol' },
     { id: 'construction', label: 'Construction', icon: 'sizing' },
     { id: 'risk', label: 'Risk Lab', icon: 'risk' },
