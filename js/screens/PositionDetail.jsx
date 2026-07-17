@@ -245,6 +245,9 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
   const deltaInfo = liveOn && live.delta_dollar ? live.delta_dollar : null;
   const rebalance = liveOn && live.rebalance ? live.rebalance : null;
   const hedgePnl  = liveOn && typeof live.hedge_pnl === 'number' ? live.hedge_pnl : null;
+  // Couverture rééquilibrée à neutre (estimée) : le hedge_pnl statique ne reflète que
+  // la couverture d'entrée figée (minuscule) — pas les rééquilibrages réels de l'utilisateur.
+  const hedgePnlDyn = liveOn && typeof live.hedge_pnl_dyn === 'number' ? live.hedge_pnl_dyn : null;
   const straddlePnl = liveOn && typeof live.straddle_pnl === 'number' ? live.straddle_pnl : null;
   const hasGreeks = gEntry.vega != null || gEntry.theta != null || gEntry.gamma != null;
 
@@ -406,6 +409,15 @@ function PositionDetail({ positionId, onNav, addToast, mode }) {
           <span>Straddles : <strong style={{ color: straddlePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(straddlePnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(straddlePnl, pctBase)})</span>}</span>
           <span>· Couverture Δ (actions) : <strong style={{ color: hedgePnl >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(hedgePnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(hedgePnl, pctBase)})</span>}</span>
           <span>· Total : <strong style={{ color: 'var(--text)' }}>{dxCur(totalPnl)} {dxSym()}</strong>{pctBase && <span style={{ color: 'var(--text-dim)' }}> ({dxPct(totalPnl, pctBase)})</span>}</span>
+        </div>
+      )}
+
+      {/* Couverture Δ — lecture honnête : le hedge_pnl affiché est la couverture d'ENTRÉE figée
+          (minuscule car la dispersion part quasi delta-neutre). Si l'utilisateur rééquilibre à
+          neutre (recommandé), sa vraie couverture grossit avec le gamma → estimation dynamique. */}
+      {deltaInfo && deltaInfo.hedged && hedgePnlDyn != null && straddlePnl != null && Math.abs(hedgePnlDyn - (hedgePnl || 0)) >= 50 && (
+        <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.55, padding: '10px 12px', background: 'var(--bg-elevated)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)' }}>
+          <strong style={{ color: 'var(--text-soft)' }}>Couverture Δ — lecture honnête.</strong> La ligne de couverture est la <strong>couverture d'entrée figée</strong> ({dxCur(hedgePnl)} {dxSym()}) : une dispersion part quasi delta-neutre, elle est donc minuscule. Si vous <strong>rééquilibrez à neutre</strong> (recommandé, voir plus bas), votre couverture grossit avec la dérive du delta et son P&L est plutôt ~<strong style={{ color: hedgePnlDyn >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{dxCur(hedgePnlDyn)} {dxSym()}</strong> (total ~{dxCur(straddlePnl + hedgePnlDyn)} {dxSym()}). Estimation — le chiffre exact dépend de vos exécutions réelles.
         </div>
       )}
 

@@ -146,6 +146,7 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
       spot_change_pct: (mk && spotEntry) ? round1((mk.spot / spotEntry - 1) * 100) : null,
       spot_now: spotNow, spot_entry: spotEntry,
       bs_delta: (bsCur || bsE) ? (bsCur || bsE).delta : 0,   // delta straddle par action (courant)
+      d_entry: gE ? gE.delta : 0, d_cur: gC ? gC.delta : 0,  // delta $ /+1 % de la jambe (entrée / actuel)
       covered,
     });
   }
@@ -195,7 +196,40 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
     if (idxLeg && idxLeg.covered) hedge_pnl += s.hedgeUnits * (sN - sE) * CONTRACT;
   }
   hedge_pnl = round2(hedge_pnl);
+
+  // ── P&L de couverture DYNAMIQUE (estimé) ────────────────────────────────────
+  // `hedge_pnl` ci-dessus = couverture d'ENTRÉE figée. Une dispersion straddle/
+  // straddle part quasi delta-neutre → couverture d'entrée minuscule → P&L
+  // minuscule, alors que l'utilisateur qui SUIT les rééquilibrages recommandés
+  // détient une couverture bien plus grosse (le delta dérive avec le gamma).
+  // On estime le P&L d'une couverture RÉÉQUILIBRÉE À NEUTRE par intégration
+  // trapézoïdale entre l'entrée et maintenant : H(t) = −Δ_straddle(t)/(0.01·S)
+  // actions neutralisantes, P&L = ∫ H dS ≈ ½(H_e + H_c)(S_now − S_e). C'est une
+  // ESTIMATION (dépend des vrais fills) mais bornée [statique, actuel] et bien
+  // plus juste que le statique seul — cf. le cas réel NDX (5 → 301 actions).
+  let hedge_pnl_dyn = hedge_pnl;
+  if (s.deltaHedge === 'index') {
+    const il = legs.find(l => l.role === 'index');
+    if (il && il.covered) {
+      const sE = s.indexPrice || il.spot_entry || 0, sN = il.spot_now || sE;
+      const He = sE > 0 ? -accE.delta / (0.01 * sE) : 0;
+      const Hc = sN > 0 ? -accC.delta / (0.01 * sN) : 0;
+      hedge_pnl_dyn = 0.5 * (He + Hc) * (sN - sE);
+    }
+  } else if (s.deltaHedge === 'legs') {
+    let acc = 0;
+    for (const l of legs) {
+      if (!l.covered) continue;
+      const sE = l.spot_entry || 0, sN = l.spot_now || sE;
+      const He = sE > 0 ? -(l.d_entry || 0) / (0.01 * sE) : 0;
+      const Hc = sN > 0 ? -(l.d_cur || 0) / (0.01 * sN) : 0;
+      acc += 0.5 * (He + Hc) * (sN - sE);
+    }
+    hedge_pnl_dyn = acc;
+  }
+  hedge_pnl_dyn = round2(hedge_pnl_dyn);
   const total_pnl = round2(straddle_pnl + hedge_pnl);
+  const total_pnl_dyn = round2(straddle_pnl + hedge_pnl_dyn);
 
   const g = v => (v == null || !isFinite(v)) ? null : Math.round(v);
   const hedged = !!(s.deltaHedge && s.deltaHedge !== 'none');
@@ -230,6 +264,7 @@ export async function repriceStrategy(strategy, getMarket, now = Date.now()) {
     asof: new Date(now).toISOString(),
     dte: dteNow,
     total_pnl, straddle_pnl, hedge_pnl,
+    hedge_pnl_dyn, total_pnl_dyn,   // couverture rééquilibrée à neutre (estimée)
     net_vega: g(accC.vega), net_theta: g(accC.theta),   // rétro-compat snapshots
     greeks: {
       entry:   { vega: g(accE.vega), theta: g(accE.theta), gamma: g(accE.gamma) },

@@ -128,6 +128,26 @@ test('repriceStrategy : delta $ DÉRIVE avec le spot (Black-Scholes) + P&L couve
   assert.ok(Math.abs(v.total_pnl - (v.straddle_pnl + v.hedge_pnl)) < 1);
 });
 
+test('repriceStrategy : hedge_pnl_dyn (dynamique) capte la dérive du delta, pas la couverture d\'entrée figée', async () => {
+  const strategy = {
+    index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
+    builtAt: new Date().toISOString(), deltaHedge: 'legs',
+    portfolio: { idxPrem: 20000, idxIV: 20 },
+    // Couverture d'ENTRÉE minuscule (−3 actions) : la dispersion part quasi delta-neutre.
+    components: [{ ticker: 'AAPL', price: 200, iv: 30, premium: 6000, nContracts: 5, hedgeShares: -3 }],
+  };
+  // AAPL +10 % → le straddle long gagne beaucoup de delta + : il aurait fallu vendre BIEN plus.
+  const getMarket = async (sym) => ({ SPY: { spot: 500, iv: 20 }, AAPL: { spot: 220, iv: 30 } }[sym] || null);
+  const v = await repriceStrategy(strategy, getMarket);
+  // Statique = couverture d'entrée figée : −3 × (220−200) = −60.
+  assert.ok(Math.abs(v.hedge_pnl - (-60)) < 2, `hedge statique ${v.hedge_pnl}`);
+  // Dynamique = rééquilibré à neutre : magnitude bien plus grande (le delta a dérivé).
+  assert.equal(typeof v.hedge_pnl_dyn, 'number');
+  assert.ok(Math.abs(v.hedge_pnl_dyn) > Math.abs(v.hedge_pnl) * 2, `dyn ${v.hedge_pnl_dyn} doit dépasser le statique ${v.hedge_pnl}`);
+  assert.ok(v.hedge_pnl_dyn < 0, `couverture short qui grossit pendant la hausse → perte (${v.hedge_pnl_dyn})`);
+  assert.ok(Math.abs(v.total_pnl_dyn - (v.straddle_pnl + v.hedge_pnl_dyn)) < 1, 'total_pnl_dyn = straddle + hedge dynamique');
+});
+
 test('repriceStrategy : rééquilibrage delta (mode indice) — vendre si delta + ', async () => {
   const strategy = {
     index: 'SPX', indexEtf: 'SPY', indexPrice: 500, nIndex: 1, duration: 30,
