@@ -4,6 +4,9 @@ const ICONS = {
   lists:    'M4 6h16M4 12h16M4 18h10',
   dashboard:'M3 13h8V3H3v10Zm0 8h8v-6H3v6Zm10 0h8V11h-8v10Zm0-18v6h8V3h-8Z',
   builder:  'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z',
+  // « Mes stratégies » = collection de stratégies enregistrées → signet.
+  // Volontairement différent du crayon du Builder (qui, lui, en CRÉE une).
+  strategies:'M6 3h12a1 1 0 0 1 1 1v17l-7-5-7 5V4a1 1 0 0 1 1-1Z',
   corr:     'M3 3v18h18M7 14l3-3 3 3 5-6',
   regime:   'M12 3L3 8l9 5 9-5-9-5ZM3 13l9 5 9-5M3 17l9 5 9-5',
   vol:      'M3 12h4l3 8 4-16 3 8h4',
@@ -279,7 +282,7 @@ const NAV = [
   { group: 'Accueil', items: [
     { id: 'home', label: 'Indices', icon: 'home' },
     { id: 'lists', label: 'Mes listes', icon: 'lists' },
-    { id: 'strategies', label: 'Mes stratégies', icon: 'builder' },
+    { id: 'strategies', label: 'Mes stratégies', icon: 'strategies' },
     { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   ]},
   // Analyse : on étudie le marché (corrélation, vol), on dimensionne la

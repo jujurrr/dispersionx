@@ -134,6 +134,28 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
   // Total des lots long (composants), pour la phrase de synthèse.
   const totalLots = comps.reduce((a, c) => a + (c.nContracts || 0), 0);
 
+  // Barre d'actions — placée EN BAS de page : on lit d'abord ce qu'est la
+  // stratégie (phrase → chiffres → composition → structure), on agit ensuite.
+  const actionBar = (
+    <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+      {isProUser
+        ? <button onClick={follow} disabled={committing} style={{ ...btnPrimary, opacity: committing ? 0.6 : 1, cursor: committing ? 'not-allowed' : 'pointer' }}>
+            {committing ? '⏳ Création…' : '▶ Suivre cette position'}
+          </button>
+        : lockedBtn('Suivre cette position', "Le suivi de position est réservé à l'offre Pro")}
+      <button onClick={() => onNav('risk', { listId: s.listId })} style={btnAccent}>Risk Lab →</button>
+      <button onClick={() => onNav('construction', { listId: s.listId })} style={btnGhost}>Ajuster la construction</button>
+      {isProUser
+        ? <button onClick={() => setIbkrOpen(true)} title="CSV importable dans le Risk Navigator de TWS (What-If)" style={btnGhost}>⇪ Exporter IBKR</button>
+        : lockedBtn('Exporter IBKR', "Export IBKR réservé à l'offre Pro")}
+      {cloudOn && (isProUser
+        ? <button onClick={() => setShareFor({ id: s.listId, name: s.displayName })} style={btnGhost}>🔗 Partager</button>
+        : lockedBtn('Partager', "Partage réservé à l'offre Pro"))}
+      <span style={{ flex: 1 }} />
+      <button onClick={confirmDelete} style={btnDanger}>Supprimer</button>
+    </div>
+  );
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
       {/* ── En-tête : fil d'Ariane + nom éditable + statut ── */}
@@ -200,54 +222,6 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
 
       {m.alert && <WarningPanel tone={m.status === 'risque' ? 'neg' : 'warn'} title="À surveiller">{m.alert} — réévaluez dans le Risk Lab, ou ajustez le dimensionnement.</WarningPanel>}
 
-      {/* ── Barre d'actions ── */}
-      <div style={{ ...card, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-        {isProUser
-          ? <button onClick={follow} disabled={committing} style={{ ...btnPrimary, opacity: committing ? 0.6 : 1, cursor: committing ? 'not-allowed' : 'pointer' }}>
-              {committing ? '⏳ Création…' : '▶ Suivre cette position'}
-            </button>
-          : lockedBtn('Suivre cette position', "Le suivi de position est réservé à l'offre Pro")}
-        <button onClick={() => onNav('risk', { listId: s.listId })} style={btnAccent}>Risk Lab →</button>
-        <button onClick={() => onNav('construction', { listId: s.listId })} style={btnGhost}>Ajuster la construction</button>
-        {isProUser
-          ? <button onClick={() => setIbkrOpen(true)} title="CSV importable dans le Risk Navigator de TWS (What-If)" style={btnGhost}>⇪ Exporter IBKR</button>
-          : lockedBtn('Exporter IBKR', "Export IBKR réservé à l'offre Pro")}
-        {cloudOn && (isProUser
-          ? <button onClick={() => setShareFor({ id: s.listId, name: s.displayName })} style={btnGhost}>🔗 Partager</button>
-          : lockedBtn('Partager', "Partage réservé à l'offre Pro"))}
-        <span style={{ flex: 1 }} />
-        <button onClick={confirmDelete} style={btnDanger}>Supprimer</button>
-      </div>
-
-      {/* ── Structure choisie + couverture ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
-        <div style={card}>
-          <div style={cardTitle}>Structure choisie</div>
-          <Row k="Structure" v={sizingLabel} hint={neutralised ? `${neutralised} net neutralisé — les autres grecs sont libres` : 'Répartition uniforme des lots'} />
-          <Row k="Pondération" v={WEIGHT_LABEL[s.weightBasis] || s.weightBasis || '—'} />
-          <Row k="Jambe indice" v={`${s.nIndex || 1} straddle${(s.nIndex || 1) > 1 ? 's' : ''} vendu${(s.nIndex || 1) > 1 ? 's' : ''}`} hint={idxLabel} />
-          <Row k="Composants" v={`${comps.length} · ${totalLots} lots achetés`} />
-          <Row k="Échéance" v={expiryTxt} hint={`${m.dte} DTE restant · ${s.duration || 30} j à la construction`} last />
-        </div>
-
-        <div style={card}>
-          <div style={cardTitle}>Couverture du delta</div>
-          <Row k="Méthode" v={HEDGE_LABEL[s.deltaHedge] || 'Aucune'} />
-          {s.deltaHedge && s.deltaHedge !== 'none' ? (
-            <>
-              <Row k="Quantité" v={`${Math.round(s.hedgeUnits || 0)} unité${Math.abs(Math.round(s.hedgeUnits || 0)) > 1 ? 's' : ''}`}
-                hint={s.deltaHedge === 'index' ? "Futures / parts d'ETF sur l'indice" : 'Actions des sous-jacents'} />
-              <Row k="Notionnel couvert" v={fmtS(s.hedgeNotional || 0) + ' ' + dxSym()} />
-              <Row k="Delta résiduel" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}
-                hint="La couverture est figée à la construction : elle dérive quand le marché bouge." last />
-            </>
-          ) : (
-            <Row k="Delta net" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}
-              hint="Sans couverture, la position a une exposition directionnelle résiduelle." last />
-          )}
-        </div>
-      </div>
-
       {/* ── Composition : la jambe indice puis chaque composant ── */}
       <section style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Composition</h2>
@@ -303,6 +277,37 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
           </p>
         )}
       </section>
+
+      {/* ── Structure choisie + couverture ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, alignItems: 'start' }}>
+        <div style={card}>
+          <div style={cardTitle}>Structure choisie</div>
+          <Row k="Structure" v={sizingLabel} hint={neutralised ? `${neutralised} net neutralisé — les autres grecs sont libres` : 'Répartition uniforme des lots'} />
+          <Row k="Pondération" v={WEIGHT_LABEL[s.weightBasis] || s.weightBasis || '—'} />
+          <Row k="Jambe indice" v={`${s.nIndex || 1} straddle${(s.nIndex || 1) > 1 ? 's' : ''} vendu${(s.nIndex || 1) > 1 ? 's' : ''}`} hint={idxLabel} />
+          <Row k="Composants" v={`${comps.length} · ${totalLots} lots achetés`} />
+          <Row k="Échéance" v={expiryTxt} hint={`${m.dte} DTE restant · ${s.duration || 30} j à la construction`} last />
+        </div>
+
+        <div style={card}>
+          <div style={cardTitle}>Couverture du delta</div>
+          <Row k="Méthode" v={HEDGE_LABEL[s.deltaHedge] || 'Aucune'} />
+          {s.deltaHedge && s.deltaHedge !== 'none' ? (
+            <>
+              <Row k="Quantité" v={`${Math.round(s.hedgeUnits || 0)} unité${Math.abs(Math.round(s.hedgeUnits || 0)) > 1 ? 's' : ''}`}
+                hint={s.deltaHedge === 'index' ? "Futures / parts d'ETF sur l'indice" : 'Actions des sous-jacents'} />
+              <Row k="Notionnel couvert" v={fmtS(s.hedgeNotional || 0) + ' ' + dxSym()} />
+              <Row k="Delta résiduel" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}
+                hint="La couverture est figée à la construction : elle dérive quand le marché bouge." last />
+            </>
+          ) : (
+            <Row k="Delta net" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}
+              hint="Sans couverture, la position a une exposition directionnelle résiduelle." last />
+          )}
+        </div>
+      </div>
+
+      {actionBar}
 
       {shareFor && window.ShareDialog && (
         <window.ShareDialog list={shareFor} kind="construction" onClose={() => setShareFor(null)} addToast={addToast} />

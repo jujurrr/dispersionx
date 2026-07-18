@@ -94,6 +94,24 @@ test('StrategyDetail : récapitule la construction sans planter', () => {
   assert.ok(html.includes('18.5%'), "IV d'entrée de l'indice");
 });
 
+test("StrategyDetail : l'ordre des sections va du quoi vers l'action", () => {
+  const html = renderDetail(seeded(), { pro: true });
+  // Ordre voulu : phrase → chiffres clés → composition → structure/couverture → actions.
+  const at = needle => { const i = html.indexOf(needle); assert.notEqual(i, -1, `introuvable : ${needle}`); return i; };
+  const phrase      = at('La stratégie en une phrase');
+  const chiffres    = at('Prime nette');
+  const composition = at('>Composition<');
+  const structure   = at('Structure choisie');
+  const couverture  = at('Couverture du delta');
+  const actions     = at('Suivre cette position');
+
+  assert.ok(phrase < chiffres,       'la phrase précède les chiffres clés');
+  assert.ok(chiffres < composition,  'les chiffres clés précèdent la composition');
+  assert.ok(composition < structure, 'la composition précède la structure');
+  assert.ok(structure < couverture,  'structure et couverture restent côte à côte, dans cet ordre');
+  assert.ok(couverture < actions,    'les actions ferment la page');
+});
+
 test('StrategyDetail : les fonctions payantes sont verrouillées hors Pro', () => {
   const env = seeded();
   const pro  = renderDetail(env, { pro: true });
