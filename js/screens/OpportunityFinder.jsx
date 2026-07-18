@@ -7,6 +7,32 @@
 
 const OPP_POOL_MAX = 25;     // vivier max (= limite de l'endpoint de corrélation)
 const OPP_SIZE_MIN = 5;
+
+/* ── Porte de coût : ne proposer que des paniers EXÉCUTABLES ────────────────
+   Le score classe la qualité BRUTE d'un composant. Il ne connaît pas le coût —
+   et c'est délibéré : mettre le coût DANS le score dégrade son pouvoir de
+   classement (testé), et la forme de V2 a été backtestée sans lui. On ne touche
+   donc pas au score : on restreint l'UNIVERS auquel il s'applique.
+
+   Sans cette porte, l'auto-chercheur proposait les noms les plus volatils de
+   l'indice — précisément ceux dont les options coûtent le plus cher. Mesuré sur
+   la table ThetaData : un panier « vol maximale » coûte 6,3 points de vol
+   round-trip, quand la prime de dispersion disponible plafonne vers 3-4 points.
+   Ces paniers étaient donc perdants par construction, quoi que fasse le marché.
+
+   Seuil : 2 points de vol. Mesuré comme la zone où la couverture du spread est
+   maximale (31 % contre 21-24 % sans porte) — ce n'est PAS la rentabilité, mais
+   c'est le meilleur arbitrage constatable entre prime et coût.
+
+   Un nom ABSENT de la table passe la porte : sans mesure, pas de verdict (même
+   règle que le panneau de coût). Et si la porte laisse trop peu de noms, elle est
+   levée plutôt que de casser la recherche. */
+const OPP_COST_GATE = 2.0;   // coût round-trip max, en points de vol (tenor 30)
+const oppCostOf = t => {
+  const e = (window.DXCostComp || {})[t];
+  const c = e && Array.isArray(e.cv) ? e.cv[0] : null;
+  return (typeof c === 'number' && isFinite(c) && c > 0) ? c : null;
+};
 const OPP_SIZE_MAX = 20;
 const OPP_DUR = 30;          // échéance de référence pour les scores
 const OPP_TOP = 5;           // nombre d'opportunités affichées
@@ -169,8 +195,19 @@ async function oppGather(index, dur) {
   const comps = d.components || [];
   const scores = window.DXStore.getScores(index, dur) || {};
   const scored = comps.map(c => c.ticker).filter(t => scores[t] != null).sort((a, b) => scores[b] - scores[a]);
-  const poolTickers = scored.slice(0, OPP_POOL_MAX);
+
+  // Porte de coût AVANT le classement par score : on restreint l'univers aux noms
+  // exécutables, puis le score choisit librement à l'intérieur. Le score lui-même
+  // est inchangé (cf. OPP_COST_GATE).
+  const tradable = scored.filter(t => { const c = oppCostOf(t); return c == null || c <= OPP_COST_GATE; });
+  const excluded = scored.length - tradable.length;
+  // Fail-safe : une porte qui vide le vivier casserait la recherche pour les indices
+  // dont les composants ne sont pas dans la table (NDX partiel, CAC, DAX). Mieux vaut
+  // un résultat sans porte qu'aucun résultat — mais on le SIGNALE.
+  const gateOn = tradable.length >= Math.max(OPP_SIZE_MIN * 2, 10);
+  const poolTickers = (gateOn ? tradable : scored).slice(0, OPP_POOL_MAX);
   if (poolTickers.length < OPP_SIZE_MIN) throw new Error('pas assez d\'actions scorées pour cet indice — réessayez dans quelques secondes (scoring en cours).');
+  const gate = { on: gateOn, excluded: gateOn ? excluded : 0, threshold: OPP_COST_GATE, scanned: scored.length };
 
   const wMap = {};
   comps.forEach(c => { if (c.ticker) wMap[c.ticker] = (c.weight != null ? c.weight : null); });
@@ -200,7 +237,7 @@ async function oppGather(index, dur) {
   const pool = mt.filter(t => hv[t] != null && scores[t] != null);
   if (pool.length < OPP_SIZE_MIN) throw new Error('vivier trop maigre (données de vol manquantes) — réessayez.');
   return {
-    index, pool, corr, hv, iv, beta, vega, score: scores, price, sector, sigmaIdx,
+    index, pool, corr, hv, iv, beta, vega, score: scores, price, sector, sigmaIdx, gate,
     rhoImplPool: (implData && implData.rho_impl != null) ? implData.rho_impl : null,
     implMethod: implData?.method || null,
     indexPrice: (d.snap && (d.snap.etf_price || d.snap.price)) || 100,
@@ -682,6 +719,27 @@ function OpportunityFinder({ onNav, lists, addToast, pro, mode }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Porte de coût : une exclusion silencieuse serait une décision cachée. On dit
+          combien de noms ont été écartés, et pourquoi. */}
+      {!running && results && results.length > 0 && ctx?.gate && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 14px', background: 'var(--bg-elevated)', border: '1px dashed var(--border-strong)', borderRadius: 'var(--radius-lg)' }}>
+          <span style={{ font: '13px/1.3 var(--font-sans)', flexShrink: 0 }}>⚖</span>
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+            {ctx.gate.on ? (
+              <>
+                <strong style={{ color: 'var(--text-soft)' }}>{ctx.gate.excluded} action{ctx.gate.excluded > 1 ? 's' : ''} écartée{ctx.gate.excluded > 1 ? 's' : ''}</strong> sur {ctx.gate.scanned} :
+                leurs options coûtent plus de <strong style={{ color: 'var(--text-soft)' }}>{ctx.gate.threshold} points de vol</strong> à l'aller-retour,
+                soit davantage que la prime de dispersion disponible. Elles sont souvent bien classées par le score — qui mesure la qualité
+                <em> brute</em> — mais perdantes une fois le spread payé. Le classement reste inchangé à l'intérieur des noms exécutables.
+              </>
+            ) : (
+              <>Porte de coût <strong style={{ color: 'var(--text-soft)' }}>inactive</strong> sur cet indice : trop peu de composants figurent dans la table
+              de coûts mesurés pour filtrer sans vider le vivier. Vérifiez le panneau « Coût réel » avant d'engager un panier.</>
+            )}
+          </div>
         </div>
       )}
 
