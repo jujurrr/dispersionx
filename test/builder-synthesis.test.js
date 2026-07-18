@@ -17,6 +17,10 @@ import vm from 'node:vm';
 function loadBuilder() {
   const win = {
     React, DXMoney: null, DXCloud: { pro: true },
+    // Le module s'abonne à `dx-auth-change` au chargement pour purger son
+    // brouillon : sans ces méthodes, le stub casse là où le navigateur, lui,
+    // les fournit toujours.
+    addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
     DXExpiry: { fmtExpiry: d => d, dteTo: () => 30 },
     DispersionXDesignSystem_cb86be: {
       Badge: ({ children }) => React.createElement('span', null, children),

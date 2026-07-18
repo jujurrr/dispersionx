@@ -152,6 +152,16 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
 // ciblé (on charge alors cette liste, pas le brouillon).
 let _builderDraft = null;
 
+// ⚠ Ce brouillon vit en MÉMOIRE DE MODULE : la purge des caches à la déconnexion
+// (purgeLocalStrategies & co, src/cloud.js) ne l'atteint pas, et la déconnexion ne
+// recharge PAS la page. Sans ce nettoyage, le brouillon d'un compte — ses
+// identifiants de liste et ses tickers sélectionnés — réapparaissait dans la
+// session suivante (autre compte ou invité), exactement ce que le reste du code
+// s'applique à empêcher.
+if (typeof window !== 'undefined') {
+  window.addEventListener('dx-auth-change', () => { _builderDraft = null; });
+}
+
 /* Formatage monétaire — au niveau MODULE : `Builder` ET `TradeBrief` (composant
    distinct, plus bas) s'en servent. Définis dans `Builder`, ils étaient hors de
    portée de `TradeBrief`, qui plantait donc sur `ReferenceError: dxMag is not

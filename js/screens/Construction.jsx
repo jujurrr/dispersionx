@@ -23,7 +23,15 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const CONTRACT  = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
-  const fmtMoney  = (window.DXRisk && window.DXRisk.fmtMoney) || (n => Math.round(n).toLocaleString('fr-FR') + ' $');
+  // Formatage monétaire LOCAL. Il empruntait celui du Risk Lab, avec un repli qui
+  // ne convertissait pas et écrivait « $ » en dur : si ce module n'était pas encore
+  // chargé, la prime s'affichait en dollars bruts au milieu de valeurs en euros.
+  // Aucune raison de dépendre d'un autre écran pour formater un montant.
+  const fmtMoney  = n => {
+    const M = window.DXMoney;
+    const v = M ? M.convert(n) : n;
+    return Math.round(v).toLocaleString('fr-FR') + ' ' + (M ? M.symbol() : '$');
+  };
   const fmtNot    = v => { const c = window.DXMoney ? window.DXMoney.convert(v) : v; const y = window.DXMoney ? window.DXMoney.symbol() : '$'; return Math.abs(c) >= 1e6 ? (c / 1e6).toFixed(2) + ' M' + y : Math.round(c / 1000) + ' k' + y; };
   const fmtS      = n => { const v = window.DXMoney ? window.DXMoney.convert(n) : n; return (v >= 0 ? '+' : '−') + Math.abs(Math.round(v)); };
   const dxSym     = () => window.DXMoney ? window.DXMoney.symbol() : '$';
@@ -812,9 +820,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
       {/* ── Récap grecs ── */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12 }}>
-        <MetricCard label="Vega net" value={fmtS(sized.netVega) + ' $/1%'} hint={sizing === 'vega_neutral' ? (Math.abs(sized.netVega) < 60 ? 'Quasi-neutre ✓' : 'À rééquilibrer') : 'Libre (structure ≠ vega)'} accent={sizing === 'vega_neutral' ? (Math.abs(sized.netVega) < 60 ? 'var(--pos)' : 'var(--warn)') : 'var(--text-soft)'} />
-        <MetricCard label="Delta net" value={fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta) + ' $/1%'} hint={deltaHedge === 'index' ? 'Couvert · ETF indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(sized.netDelta) < 50 ? 'Résidu faible' : 'Non couvert')} accent={deltaHedge !== 'none' || Math.abs(sized.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
-        <MetricCard label="Theta net /jour" value={fmtS(sized.netTheta) + ' $'} hint={sized.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
+        <MetricCard label="Vega net" value={fmtS(sized.netVega) + ' ' + dxSym() + '/1%'} hint={sizing === 'vega_neutral' ? (Math.abs(sized.netVega) < 60 ? 'Quasi-neutre ✓' : 'À rééquilibrer') : 'Libre (structure ≠ vega)'} accent={sizing === 'vega_neutral' ? (Math.abs(sized.netVega) < 60 ? 'var(--pos)' : 'var(--warn)') : 'var(--text-soft)'} />
+        <MetricCard label="Delta net" value={fmtS(deltaHedge !== 'none' ? 0 : sized.netDelta) + ' ' + dxSym() + '/1%'} hint={deltaHedge === 'index' ? 'Couvert · ETF indice' : deltaHedge === 'legs' ? 'Couvert · par jambe' : (Math.abs(sized.netDelta) < 50 ? 'Résidu faible' : 'Non couvert')} accent={deltaHedge !== 'none' || Math.abs(sized.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'} />
+        <MetricCard label="Theta net /jour" value={fmtS(sized.netTheta) + ' ' + dxSym()} hint={sized.netTheta >= 0 ? 'Portage positif' : 'Coût de portage'} accent="var(--warn)" />
         <MetricCard label="Prime nette" value={fmtMoney(sized.netPremium)} hint={sized.netPremium >= 0 ? 'Crédit net' : 'Débit net'} accent="var(--accent)" />
         <MetricCard label="Lots composants" value={String(sized.totalLots)} hint={'Notionnel ' + fmtNot(sized.compNotional)} accent="var(--info)" />
       </div>

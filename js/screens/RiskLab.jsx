@@ -512,7 +512,14 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
     }
     let cancelled = false;
     setLoading(true);
-    const indexSym = strategy?.index || ctx.listIndex || 'SPX';
+    // Même règle qu'en Construction : quand la liste ouverte n'a PAS encore de
+    // stratégie construite, l'indice doit venir d'ELLE — pas du contexte, qui peut
+    // décrire la liste précédente et ferait analyser le nouveau panier contre le
+    // mauvais sous-jacent.
+    const listMeta = (lists || []).find(l => String(l.id) === String(listId));
+    const ctxIsThisList = ctx.listId != null && String(ctx.listId) === String(listId);
+    const indexSym = strategy?.index || listMeta?.index_symbol
+      || (ctxIsThisList ? ctx.listIndex : null) || 'SPX';
     // Avancée du temps : les grecs sont calculés sur le DTE RESTANT, pas sur
     // la durée initiale — une stratégie à 30j n'a plus les mêmes valeurs à J+10.
     // Priorité à la vraie date d'échéance (expiry) ; repli : builtAt + durée.

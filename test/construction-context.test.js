@@ -70,6 +70,14 @@ function loadConstruction(seen) {
     DXMock: { getComponents: () => [], synthVol: () => ({ iv_est: 30, hv30: 27, beta: 1 }) },
     // Interface réelle de window.DXExpiry (js/data.js) : un stub partiel ferait
     // planter le module au rendu, pas révéler un défaut du code testé.
+    // Devise d'affichage en EUROS : les valeurs doivent être converties ET
+    // étiquetées avec le bon symbole.
+    DXMoney: {
+      symbol: () => '€',
+      convert: n => n * 0.9,
+      value: (n, o) => ((o && o.sign === false) ? '' : (n >= 0 ? '+' : '−')) + Math.abs(Math.round(n * 0.9)),
+      format: n => Math.round(n * 0.9) + ' €',
+    },
     DXExpiry: {
       dteTo: () => 30,
       fmtExpiry: d => String(d),
@@ -175,6 +183,23 @@ test("la structure choisie survit à un aller-retour sans enregistrement", async
   });
   assert.equal(localStorage.getItem('dx-sizing-B'), 'theta_flat', 'pas de retour silencieux au vega-neutre');
   await React.act(async () => { again.root.unmount(); });
+});
+
+test("en euros, aucune valeur convertie n'est étiquetée en dollars", async () => {
+  // Les cartes vega / delta / theta convertissaient bien le MONTANT mais gardaient
+  // un « $ » écrit en dur — juste à côté de « Prime nette », elle correctement en €.
+  store.clear();
+  const C = loadConstruction({ snapshot: [], vol: [], impl: [] });
+  const { container, root } = await mount(C, {
+    listId: 'B', moduleCtx: STALE_CTX, onModuleCtx: () => {}, lists: LISTS,
+    onNav: () => {}, addToast: () => {}, mode: 'Avancé',
+  });
+  const html = container.innerHTML;
+
+  assert.match(html, /Vega net/, 'les cartes de synthèse sont rendues');
+  assert.doesNotMatch(html, /\$\/1%/, "plus de « $/1% » alors que la devise est l'euro");
+  assert.doesNotMatch(html, /\d\s?\$/, 'aucun montant suivi du symbole dollar');
+  await React.act(async () => { root.unmount(); });
 });
 
 test('chaque liste garde SA structure', async () => {
