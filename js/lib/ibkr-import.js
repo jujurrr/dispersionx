@@ -55,18 +55,27 @@
      libellé exact garantissait l'échec sur la moitié des fichiers réels.
      On normalise donc l'en-tête (minuscules, sans espaces ni ponctuation) et on
      accepte tous les alias connus. */
-  const norm = h => String(h || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Les accents doivent tomber AVANT le filtrage : « Évalué » deviendrait sinon
+  // « valu » (le É et le é ne sont pas dans a-z), et aucun alias ne matcherait.
+  // TWS existe en français, en allemand, etc. — les en-têtes sont traduits.
+  const norm = h => String(h || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')   // é→e, Δ reste hors a-z et sera filtré
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
   // Trois exports IBKR différents nomment les mêmes colonnes de trois façons :
   //   Trade Log (TWS)      : Underlying · Price · Action · Commission · Type · Right
   //   Flex Query (portail) : Underlying Symbol · Trade Price · IB Commission · Asset Class · Put/Call
   //   Relevé d'activité    : Symbol · T. Price · Comm/Fee · Asset Category
   const ALIASES = {
-    symbol:     ['symbol', 'description', 'contract', 'financialinstrument'],
-    underlying: ['underlyingsymbol', 'underlying', 'undsymbol'],
+    symbol:     ['symbol', 'description', 'contract', 'financialinstrument', 'instrumentfinancier', 'instrument'],
+    underlying: ['underlyingsymbol', 'underlying', 'undsymbol', 'sousjacent', 'profondeurdesousjacent'],
+    // Valeur TOTALE de la position (« Évalué » du Risk Navigator), à ne pas
+    // confondre avec un prix unitaire : elle vaut déjà quantité × 100 × prix.
+    // Les mélanger fausserait la comparaison d'un facteur qty × 100.
+    value:      ['value', 'marketvalue', 'positionvalue', 'evalue', 'valeur', 'evaluation', 'mktvalue', 'valeurdemarche'],
     right:      ['putcall', 'right', 'putorcall', 'callput'],
     strike:     ['strike', 'strikeprice'],
     expiry:     ['expiry', 'expirationdate', 'lasttradingdayorcontractmonth', 'maturity', 'lasttradingday'],
-    qty:        ['quantity', 'qty', 'shares', 'position', 'pos', 'netposition', 'positionquantity', 'currentposition'],
+    qty:        ['quantity', 'qty', 'shares', 'position', 'pos', 'netposition', 'positionquantity', 'currentposition', 'quantite'],
     // Un rapport de RISQUE n'a pas de « prix de transaction » : il valorise au
     // marché. D'où les alias de marque (Last, Mark, Close…), sans lesquels un
     // export Risk Navigator était rejeté faute de colonne de prix.
@@ -139,12 +148,28 @@
     // Filtre actions : soit la colonne le dit, soit on s'appuie sur le symbole.
     if (asset && !asset.includes('option') && !asset.includes('opt')) return;
 
+    const gRaw = k => { const v = num(rd.get(f, k)); return v == null ? undefined : v; };
+    const anyGreek = ['delta', 'gamma', 'vega', 'theta'].some(k => gRaw(k) !== undefined);
+    const valueTot = num(rd.get(f, 'value'));
+
     let meta = null;
     const und = rd.get(f, 'underlying'), rightRaw = rd.get(f, 'right');
     const r = String(rightRaw || '').trim().toUpperCase()[0];
     if (und && (r === 'C' || r === 'P')) {
       meta = { underlying: String(und).toUpperCase(), right: r,
         expiry: rd.get(f, 'expiry') || null, strike: num(rd.get(f, 'strike')) };
+    } else if (und && (anyGreek || valueTot != null)) {
+      /* Ligne AGRÉGÉE PAR SOUS-JACENT — la vue par défaut du Risk Navigator, qui
+         replie les jambes sous leur sous-jacent. Il n'y a alors ni call/put, ni
+         strike : la ligne EST déjà le total du straddle. C'est exploitable, et
+         même directement comparable à nos jambes, qui sont elles aussi un
+         straddle par sous-jacent. Exiger un détail par option aurait rejeté le
+         rapport le plus courant. */
+      const q = num(rd.get(f, 'qty'));
+      legs.push({ underlying: String(und).toUpperCase().trim(), right: null, aggregate: true,
+        qty: q == null ? 0 : q, price: null, value: valueTot, comm: 0,
+        delta: gRaw('delta'), gamma: gRaw('gamma'), vega: gRaw('vega'), theta: gRaw('theta') });
+      return;
     } else {
       const sym = rd.get(f, 'symbol');
       if (!sym) return;
@@ -174,9 +199,8 @@
     const isSell = /^(SELL|SLD|S)\b/.test(sideCol) || sideCol === 'SELL';
     const isBuy  = /^(BUY|BOT|B)\b/.test(sideCol) || sideCol === 'BUY';
     const dir = isSell ? -1 : isBuy ? 1 : (qty < 0 ? -1 : 1);
-    const g = k => { const v = num(rd.get(f, k)); return v == null ? undefined : v; };
     legs.push({ ...meta, qty: Math.abs(qty) * dir, price, comm: Math.abs(num(rd.get(f, 'comm')) || 0),
-      delta: g('delta'), gamma: g('gamma'), vega: g('vega'), theta: g('theta') });
+      value: valueTot, delta: gRaw('delta'), gamma: gRaw('gamma'), vega: gRaw('vega'), theta: gRaw('theta') });
   }
 
   // Relevé d'activité : fichier à SECTIONS ; on ne lit que « Trades / Data ».
@@ -212,7 +236,13 @@
       if (score > best.score) best = { score, i, delim, cols, rd };
     }
     const { rd, delim, cols } = best;
-    if (!rd || rd.map.qty < 0 || rd.map.price < 0) {
+    /* Un rapport de RISQUE n'a pas de prix de transaction : il porte des grecs et
+       une valeur de position. Exiger une colonne de prix rejetait donc l'export
+       le plus courant du Risk Navigator. On n'exige le prix que pour un relevé
+       d'exécutions — là, sans prix, il n'y a effectivement rien à mesurer. */
+    const riskCols = rd && (['delta', 'gamma', 'vega', 'theta'].some(k => rd.map[k] >= 0) || rd.map.value >= 0);
+    const missing = !rd || rd.map.qty < 0 || (!riskCols && rd.map.price < 0);
+    if (missing) {
       // On RESTITUE les colonnes lues : sans elles, l'utilisateur (et nous) ne
       // pouvons pas savoir ce que contient le fichier. Un message d'échec qui
       // n'aide pas à diagnostiquer est un cul-de-sac.
@@ -228,8 +258,7 @@
     // Un week-end, IBKR n'a pas de données de marché et les grecs sortent en
     // « N/A » : se fier aux valeurs classerait alors le rapport comme un relevé
     // d'exécutions, ce qu'il n'est pas.
-    const hasGreekCols = ['delta', 'gamma', 'vega', 'theta'].some(k => rd.map[k] >= 0);
-    return { legs, warnings, delim, columns: cols, hasGreekCols };
+    return { legs, warnings, delim, columns: cols, hasGreekCols: !!riskCols };
   }
 
   // ── Point d'entrée : texte du fichier → jambes d'options ──────────────────
@@ -271,7 +300,21 @@
   function toStraddles(legs) {
     const acc = {};
     const blank = () => ({ C: { q: 0, notional: 0 }, P: { q: 0, notional: 0 }, comm: 0, g: {} });
-    for (const l of legs) {
+    // Lignes AGRÉGÉES par sous-jacent (Risk Navigator replié) : elles sont déjà
+    // le total du straddle, il n'y a rien à réapparier. On les traite à part,
+    // sinon la logique call/put les rejetterait faute de `right`.
+    const out0 = {};
+    for (const l of legs.filter(x => x.aggregate)) {
+      const k = l.underlying;
+      const g = {};
+      for (const key of ['delta', 'gamma', 'vega', 'theta']) if (l[key] !== undefined) g[key] = l[key];
+      out0[k] = { underlying: k, aggregate: true, complete: true,
+        price: null, value: l.value, qty: Math.abs(l.qty) || null, comm: 0,
+        greeks: Object.keys(g).length ? g : null, expiries: [], strikes: [],
+        buy: null, sell: null, unbalanced: false, roundTrip: false };
+    }
+
+    for (const l of legs.filter(x => !x.aggregate)) {
       const k = l.underlying;
       acc[k] = acc[k] || { underlying: k, buy: blank(), sell: blank(), expiries: new Set(), strikes: new Set() };
       const bag = acc[k][l.qty < 0 ? 'sell' : 'buy'];
@@ -303,7 +346,7 @@
         unbalanced: complete && b.C.q !== b.P.q, comm: b.comm,
         greeks: Object.keys(b.g).length ? b.g : null };
     };
-    const out = {};
+    const out = { ...out0 };   // les agrégats d'abord ; un détail par jambe, s'il existe, les affine
     for (const [k, a] of Object.entries(acc)) {
       const buy = shape(a.buy), sell = shape(a.sell);
       // Vue par défaut : le sens qui a réellement été exécuté (ou l'achat si les
@@ -335,11 +378,17 @@
       // On retient le sens qui correspond à la jambe : les composants ont été
       // ACHETÉS à l'ouverture, la jambe indice VENDUE. Si le rapport contient
       // aussi la clôture, elle est ainsi écartée du prix d'entrée.
-      const dir = side === 'sell' ? rec.sell : rec.buy;
+      // Une ligne agrégée n'a pas de sens (ni achat ni vente distincts) : elle est
+      // le total tel quel. Sinon on retient le sens qui correspond à la jambe.
+      const dir = rec.aggregate ? null : (side === 'sell' ? rec.sell : rec.buy);
       const f = (dir && dir.qty > 0) ? { ...rec, ...dir } : rec;
       // Les commissions sont un coût dans les DEUX sens : elles s'ajoutent à ce
       // qu'on paie, et se retranchent de ce qu'on encaisse.
-      const gross = f.complete ? f.price * f.qty * CS : null;
+      // Le rapport de risque donne la VALEUR totale de la position (« Évalué »),
+      // pas un prix unitaire. La prendre pour un prix fausserait tout d'un facteur
+      // quantité × 100 — on l'utilise donc telle quelle quand le prix manque.
+      const gross = (f.price != null && f.qty > 0) ? f.price * f.qty * CS
+        : (f.value != null ? Math.abs(f.value) : null);
       const realTotal = gross == null ? null : (side === 'sell' ? gross - f.comm : gross + f.comm);
       const ecart = (realTotal != null && planTotal != null)
         ? (side === 'sell' ? planTotal - realTotal : realTotal - planTotal)

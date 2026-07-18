@@ -357,3 +357,59 @@ test('BOM UTF-8 en tête de fichier', () => {
   ].join('\n');
   assert.equal(IMP.toStraddles(IMP.parse(bom).legs).AAPL.price, 8);
 });
+
+// ── Risk Navigator en FRANÇAIS, agrégé par sous-jacent ─────────────────────
+// Colonnes réelles remontées par un utilisateur (TWS en français). Trois pièges
+// cumulés : en-têtes traduits, accents, et un rapport REPLIÉ par sous-jacent —
+// donc sans call/put ni strike, et sans prix unitaire (« Évalué » est un TOTAL).
+const RN_FR = [
+  'Profondeur de Sous-jacent,Sous-jacent,Position,Évalué,P&L non réalisé,DeltaDollars,VaR,Delta (Δ),Gamma (Γ),Vega (ν),Theta (Θ),Trade',
+  '0,AAPL,6,2404.50,0,120,-450,0.04,0.042,28.2,-6.1,',
+  '0,QQQ,-4,-3497.00,0,-80,-820,-0.02,-0.016,-61.5,12.2,',
+].join('\n');
+
+test('Risk Navigator FR : en-têtes traduits et accentués reconnus', () => {
+  const r = IMP.parse(RN_FR);
+  assert.equal(r.legs.length, 2, 'les deux sous-jacents doivent être lus');
+  assert.equal(r.kind, 'risk');
+  assert.deepEqual(r.warnings, [], 'aucun avertissement sur un fichier valide');
+});
+
+test("Risk Navigator FR : « Évalué » est une VALEUR totale, pas un prix unitaire", () => {
+  // La confondre avec un prix aurait faussé la comparaison d'un facteur qty × 100.
+  const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
+  assert.equal(s.AAPL.aggregate, true);
+  assert.equal(s.AAPL.price, null, 'aucun prix unitaire dans ce rapport');
+  assert.equal(s.AAPL.value, 2404.5);
+
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200, vega: 2820 }],
+    portfolio: { idxPrem: 3400, idxVega: 6150 } };
+  const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'AAPL');
+  assert.equal(row.realTotal, 2404.5, 'la valeur est reprise telle quelle');
+  assert.equal(Math.round(row.ecart * 10) / 10, 204.5);
+});
+
+test('Risk Navigator FR : les grecs remontent pour comparaison', () => {
+  const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
+  assert.equal(s.AAPL.greeks.vega, 28.2);
+  assert.equal(s.QQQ.greeks.vega, -61.5, 'la jambe vendue garde son signe négatif');
+
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200, vega: 2820 }],
+    portfolio: { idxPrem: 3400, idxVega: 6150 } };
+  const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'AAPL');
+  assert.equal(row.greeks.vega, 28.2);
+  assert.equal(row.plan.vega, 2820);
+});
+
+test('un rapport agrégé N\'EST PAS confondu avec un aller-retour', () => {
+  // Position négative = jambe vendue, pas une clôture. Confondre les deux
+  // écarterait la jambe indice du rapprochement.
+  const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
+  assert.equal(s.QQQ.roundTrip, false);
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2, components: [], portfolio: { idxPrem: 3400 } };
+  const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'QQQ');
+  assert.equal(row.matched, true, 'la jambe vendue doit être rapprochée');
+  assert.equal(row.realTotal, 3497);
+});
