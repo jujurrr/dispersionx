@@ -22,6 +22,10 @@
   const PRELOAD_DUR = 30; // durée par défaut (= valeur initiale de l'app)
   const QUOTE_CHUNK = 40;
   const SCORE_BATCH = 5;
+  // Délai avant de retenter le calcul de la corrélation implicite d'un indice.
+  // Sans réessai, un seul échec réseau figeait l'indice sur le repli 0,65 et
+  // rendait ses scores incomparables à ceux des autres indices.
+  const RHO_RETRY_MS = 60000;
 
   const state = {
     started: false,
@@ -114,8 +118,14 @@
     if (!d.scores[dur]) d.scores[dur] = {};
     const scores = d.scores[dur];
 
-    const tickers = d.components.map(c => c.ticker).filter(t => scores[t] == null);
-    if (!tickers.length) { d.scoring[dur] = false; emitIndex(symbol); return; }
+    /* Raccourci « tout est déjà scoré » — MAIS pas quand les scores en place ont
+       été calculés sans la vraie ancre. Sinon l'indice sortait ici avant même
+       d'atteindre la logique de réessai, et restait figé sur le repli 0,65 pour
+       toujours : le correctif du réessai n'aurait jamais été atteint. */
+    const pending = d.components.map(c => c.ticker).filter(t => scores[t] == null);
+    if (!pending.length && !(d.rhoImplFallback && d.rhoImplFallback[dur])) {
+      d.scoring[dur] = false; emitIndex(symbol); return;
+    }
 
     d.scoring[dur] = true;
 
@@ -124,9 +134,21 @@
     // passée comme ANCRE à chaque score (remplace la constante 0.65). Ce calcul
     // réchauffe aussi le cache IV du panier. Non-bloquant : garde-fou timeout +
     // repli null → les scores retombent proprement sur 0.65.
-    if (!d.rhoImpl) { d.rhoImpl = {}; d.rhoImplMeta = {}; }
-    if (d.rhoImpl[dur] === undefined) {
-      d.rhoImpl[dur] = null;
+    if (!d.rhoImpl) { d.rhoImpl = {}; d.rhoImplMeta = {}; d.rhoImplTried = {}; d.rhoImplFallback = {}; }
+    if (!d.rhoImplTried) { d.rhoImplTried = {}; d.rhoImplFallback = {}; }
+
+    /* RÉESSAI de l'ancre tant qu'elle n'est pas résolue.
+       Avant, un `=== undefined` ne tentait le calcul QU'UNE FOIS : un seul échec
+       réseau ou un dépassement des 12 s figeait l'indice sur le repli 0,65 pour
+       toute la session. Conséquence mesurée : avec V2 (porte multiplicative), la
+       même action score ~65 sur l'indice retombé au repli et ~0 sur celui qui a
+       la vraie ρ — et le résultat dépend de quel appel a abouti, donc change
+       d'une session à l'autre. On retente, avec un délai de garde pour ne pas
+       marteler l'API quand elle est réellement indisponible. */
+    const now = Date.now();
+    if (d.rhoImpl[dur] == null && (now - (d.rhoImplTried[dur] || 0)) > RHO_RETRY_MS) {
+      d.rhoImplTried[dur] = now;
+      if (d.rhoImpl[dur] === undefined) d.rhoImpl[dur] = null;
       try {
         const allT = d.components.map(c => c.ticker).filter(Boolean);
         const allW = d.components.map(c => (c.weight != null ? c.weight : null));
@@ -138,6 +160,25 @@
       } catch {}
     }
     const rhoImpl = d.rhoImpl[dur];
+
+    /* L'ancre vient d'arriver alors que des scores avaient été calculés SANS elle :
+       ils reposent sur le repli 0,65 et ne sont pas comparables aux nouveaux. On
+       les jette pour qu'ils soient recalculés — garder un mélange des deux, c'est
+       exactement ce qui rendait les scores incohérents d'un indice à l'autre. */
+    if (rhoImpl != null && d.rhoImplFallback[dur]) {
+      d.rhoImplFallback[dur] = false;
+      // Vidage SUR PLACE : `scores` est une référence prise plus haut. Réaffecter
+      // `d.scores[dur] = {}` laisserait cette référence sur l'ancien objet, et le
+      // recalcul ne se déclencherait jamais — le correctif serait inopérant sans
+      // que rien ne le signale.
+      for (const k of Object.keys(scores)) delete scores[k];
+    }
+    // Scores calculés sans ancre : marqués comme provisoires, à refaire.
+    if (rhoImpl == null) d.rhoImplFallback[dur] = true;
+
+    // Recalculé APRÈS l'ancre : le nettoyage ci-dessus a pu vider les scores.
+    const tickers = d.components.map(c => c.ticker).filter(t => scores[t] == null);
+    if (!tickers.length) { d.scoring[dur] = false; emitIndex(symbol); return; }
 
     queue(tickers.length);
     for (let i = 0; i < tickers.length; i += SCORE_BATCH) {
