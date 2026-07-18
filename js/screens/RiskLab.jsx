@@ -473,6 +473,18 @@ function RiskLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleC
   const listId = listIdParam || moduleCtx?.listId || null;
   const ctx    = moduleCtx || {};
   const hasCtx = !!listId;
+
+  // Synchronise la barre de contexte avec la liste RÉELLEMENT affichée (cf. même
+  // patron dans Construction et le Correlation Lab) : sinon le titre reste sur la
+  // liste précédente pendant que le module analyse la nouvelle.
+  React.useEffect(() => {
+    if (embedded || !onModuleCtx || !listIdParam) return;
+    const l = (lists || []).find(x => x.id === listIdParam);
+    if (!l) return;
+    if (ctx.listId !== listIdParam || ctx.listName !== l.name) {
+      onModuleCtx({ listId: listIdParam, listName: l.name, listIndex: l.index_symbol || 'SPX', index: l.index_symbol || 'SPX', ticker: null });
+    }
+  }, [listIdParam, lists, embedded]);   // eslint-disable-line react-hooks/exhaustive-deps
   const DEMO = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
 
   // Charge la stratégie construite dans le Builder (ou la réinitialise si la

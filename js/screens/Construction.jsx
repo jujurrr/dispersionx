@@ -33,12 +33,41 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
   const listId  = listIdParam || moduleCtx?.listId || null;
   const ctx     = moduleCtx || {};
   const hasCtx  = !!listId;
-  const indexSym = indexOverride || ctx.listIndex || ctx.index || 'SPX';
+  // `listId` privilégie le PARAMÈTRE, donc l'indice doit venir de la MÊME liste.
+  // Il était lu sur le contexte, qui peut encore décrire la liste précédente :
+  // on analysait alors le nouveau panier contre l'ancien indice (jambe indice,
+  // poids et ρ implicite faux). On ne retient le contexte que s'il parle bien de
+  // cette liste-ci.
+  const listMeta = (lists || []).find(l => String(l.id) === String(listId));
+  const ctxIsThisList = ctx.listId != null && String(ctx.listId) === String(listId);
+  const indexSym = indexOverride || listMeta?.index_symbol
+    || (ctxIsThisList ? (ctx.listIndex || ctx.index) : null) || 'SPX';
 
   const [loading,  setLoading]  = React.useState(true);
   const [base,     setBase]     = React.useState(null);
   const [nIndex,   setNIndex]   = React.useState(1);
-  const [sizing,   setSizing]   = React.useState(['vega_neutral', 'gamma_flat', 'theta_flat', 'premium_neutral', 'equal_weight'].includes(sizingOverride) ? sizingOverride : 'vega_neutral');
+  /* Structure choisie POUR CETTE LISTE, mémorisée. La consigne venue du playbook
+     Régime (« Construire en theta-flat ») n'existait que le temps de la navigation :
+     un aller-retour par le menu la perdait et on retombait en vega-neutre sans
+     rien dire, alors que la stratégie n'était simplement pas encore enregistrée.
+     Priorité : consigne explicite > dernier choix pour cette liste > structure de
+     la stratégie enregistrée > défaut. */
+  const SIZINGS = ['vega_neutral', 'gamma_flat', 'theta_flat', 'premium_neutral', 'equal_weight'];
+  const sizingKey = id => 'dx-sizing-' + id;
+  const rememberedSizing = React.useMemo(() => {
+    if (!listId) return null;
+    try { const v = localStorage.getItem(sizingKey(listId)); return SIZINGS.includes(v) ? v : null; } catch { return null; }
+  }, [listId]);   // eslint-disable-line react-hooks/exhaustive-deps
+  const [sizing, setSizing] = React.useState(
+    SIZINGS.includes(sizingOverride) ? sizingOverride : (rememberedSizing || 'vega_neutral'));
+  // Une liste change → reprendre SA structure, pas celle de la liste précédente.
+  React.useEffect(() => {
+    if (SIZINGS.includes(sizingOverride)) setSizing(sizingOverride);
+    else if (rememberedSizing) setSizing(rememberedSizing);
+  }, [listId, sizingOverride, rememberedSizing]);   // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (listId) { try { localStorage.setItem(sizingKey(listId), sizing); } catch {} }
+  }, [listId, sizing]);   // eslint-disable-line react-hooks/exhaustive-deps
   const [weightBasis, setWeightBasis] = React.useState('capped');  // capped (défaut) | index (w_i) | variance (w_i²) | equal
   // Échéances proposées : les 4 dates réelles (les plus proches de 15/30/45/60 j)
   // COTÉES PAR TOUS les sous-jacents du panier — calculées une fois au chargement
@@ -79,7 +108,12 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       if (raw) {
         const s = JSON.parse(raw);
         if (s) {
-          setNIndex(s.nIndex || 1); setSizing(s.sizingMethod || 'vega_neutral');
+          setNIndex(s.nIndex || 1);
+          // Une structure imposée à l'arrivée (playbook Régime → « Construire en
+          // theta-flat ») est une CONSIGNE : elle doit primer sur la structure
+          // d'une construction antérieure, sinon on retombait silencieusement en
+          // vega-neutre. Même règle que `durationOverride` juste en dessous.
+          if (!sizingOverride && !rememberedSizing) setSizing(s.sizingMethod || 'vega_neutral');
           if (s.weightBasis) setWeightBasis(s.weightBasis);
           if (s.deltaHedge) setDeltaHedge(s.deltaHedge);
           if (!durationOverride) {
@@ -114,19 +148,24 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
     (async () => {
       const sg = window.DXRisk && window.DXRisk.straddleGreeks;
       if (!sg) { if (!cancelled) setLoading(false); return; }
-      let tickers = []; const weightMap = {};
+      let tickers = []; const weightMap = {}; let listIdx = null;
       try {
         const list = await DXApi.getList(listId);
         const items = list?.items || [];
         tickers = items.map(i => i.ticker).filter(Boolean);
         items.forEach(i => { if (i.ticker) weightMap[i.ticker] = i.weight ?? null; });
+        listIdx = list?.index_symbol || null;
       } catch {}
       if (!tickers.length) tickers = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META'];
+      // Source AUTORITAIRE de l'indice : la liste qu'on vient de charger. Les props
+      // (`lists`) peuvent ne pas encore contenir une liste tout juste créée, et le
+      // contexte peut retarder — composants et indice viennent ainsi du même objet.
+      const idxSym = indexOverride || listIdx || indexSym;
 
       // Cache : signature basée sur la liste RÉELLE (composants + poids) + indice
       // + durée. Si identique et fraîche (< 15 min), on réutilise → on saute le
       // fetch COÛTEUX (prix, market caps, vol). La liste (léger) est déjà chargée.
-      const _sig = listId + '|' + indexSym + '|' + duration + '|' + tickers.map(t => t + ':' + (weightMap[t] ?? '')).join(',');
+      const _sig = listId + '|' + idxSym + '|' + duration + '|' + tickers.map(t => t + ':' + (weightMap[t] ?? '')).join(',');
       const _cached = _constrCache[listId];
       if (_cached && _cached.sig === _sig && Date.now() - _cached.at < CONSTR_TTL) {
         if (!cancelled) { setBase(_cached.base); setLoading(false); }
@@ -135,15 +174,15 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
 
       // Prix négociable de l'indice = ETF proxy (QQQ, SPY…), pas le niveau
       // d'indice synthétique : primes, notionnels et hedge collent au broker.
-      let indexPrice = 600, indexIV = 18, indexEtf = indexSym, indexSpreadPct = null;
+      let indexPrice = 600, indexIV = 18, indexEtf = idxSym, indexSpreadPct = null;
       try {
-        const sn = await DXApi.getSnapshot(indexSym);
+        const sn = await DXApi.getSnapshot(idxSym);
         if (sn) {
           indexIV = sn.iv_est || indexIV;
           // Spread bid/ask réel du straddle ATM de l'ETF proxy — la jambe BON MARCHÉ de la
           // dispersion. Sert au panneau « Coût réel ». null si non coté → repli sur la table.
           indexSpreadPct = sn.atm_spread_pct ?? null;
-          const tr = window.DXProxy ? window.DXProxy.tradableIndex(sn, indexSym) : null;
+          const tr = window.DXProxy ? window.DXProxy.tradableIndex(sn, idxSym) : null;
           if (tr && tr.price) { indexPrice = tr.price; indexEtf = tr.etf; }
           else if (sn.price) indexPrice = sn.price;
         }
@@ -156,10 +195,10 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       const [quotes, mcaps, volBatch, impl] = await Promise.all([
         DXApi.batchQuotes(tickers).catch(() => null),
         DXApi.getMarketCaps(tickers).catch(() => null),
-        DXApi.getBatchVol(tickers, indexSym).catch(() => null),
+        DXApi.getBatchVol(tickers, idxSym).catch(() => null),
         // IV d'option RÉELLE Cboe par composant (même source que le reprix du suivi & le score).
         // Sert d'IV d'entrée → le mark-to-market compare enfin réel↔réel, plus proxy-HV↔réel.
-        (DXApi.impliedCorrelation ? DXApi.impliedCorrelation(indexSym, tickers, null, duration).catch(() => null) : Promise.resolve(null)),
+        (DXApi.impliedCorrelation ? DXApi.impliedCorrelation(idxSym, tickers, null, duration).catch(() => null) : Promise.resolve(null)),
       ]);
       (quotes || []).forEach(r => { if (r?.ticker) priceMap[r.ticker] = parseFloat(r.price) || null; });
       (mcaps || []).forEach(r => { if (r?.ticker && r.mcap != null && r.mcap > 0) mcapMap[r.ticker] = r.mcap; });
@@ -169,12 +208,12 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       if (impl && Array.isArray(impl.per_name)) impl.per_name.forEach(p => { if (p && p.ticker && p.iv > 0) realIvMap[p.ticker] = p.iv; });
 
       // Poids indice connu (composition réelle) — repli quand pas de market cap.
-      const idxComps = window.DXMock?.getComponents ? window.DXMock.getComponents(indexSym) : [];
+      const idxComps = window.DXMock?.getComponents ? window.DXMock.getComponents(idxSym) : [];
       const idxWeights = {}; idxComps.forEach(c => { if (c.ticker && c.weight != null) idxWeights[c.ticker] = c.weight; });
 
       const idxG = sg(indexPrice, indexIV, duration);
       const perTicker = tickers.map(t => {
-        const v = window.DXMock?.synthVol ? window.DXMock.synthVol(t, indexSym) : {};
+        const v = window.DXMock?.synthVol ? window.DXMock.synthVol(t, idxSym) : {};
         const live = volLive[t];
         if (live) ['iv_est', 'hv30', 'beta'].forEach(k => { if (live[k] != null) v[k] = live[k]; });
         const price = priceMap[t] || 100;
@@ -188,7 +227,9 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         // à ~30 j. null si le nom n'est pas coté → le panneau de coût se replie sur DXCostComp.
         return { ticker: t, price, iv, hv, beta, mcap, sector: v.sector || 'Autre', weight, g: sg(price, iv, duration), spreadPct: live?.spread_pct ?? null };
       });
-      if (!cancelled) { const _b = { indexSym, indexEtf, indexPrice, indexIV, indexSpreadPct, idxG, perTicker }; _constrCache[listId] = { sig: _sig, base: _b, at: Date.now() }; setBase(_b); setLoading(false); }
+      // La clé reste `indexSym` : c'est sous ce nom que le reste du module lit
+      // l'indice de la base (`base.indexSym`).
+      if (!cancelled) { const _b = { indexSym: idxSym, indexEtf, indexPrice, indexIV, indexSpreadPct, idxG, perTicker }; _constrCache[listId] = { sig: _sig, base: _b, at: Date.now() }; setBase(_b); setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [listId, indexSym, duration]);

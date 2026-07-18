@@ -801,6 +801,19 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
   const tickerMode = !listId && !!ctx.ticker;
   const hasCtx    = !!listId || tickerMode;
 
+  // Synchronise la barre de contexte avec la liste RÉELLEMENT affichée. Sans ça,
+  // arriver ici avec un `listId` explicite (fiche liste, Opportunités, Builder)
+  // laissait la barre sur la liste PRÉCÉDENTE : le titre annonçait un panier et
+  // le contenu en montrait un autre. Même patron que Construction.
+  React.useEffect(() => {
+    if (embedded || !onModuleCtx || !listIdParam) return;
+    const l = (lists || []).find(x => x.id === listIdParam);
+    if (!l) return;   // liste pas encore chargée → on retentera au prochain `lists`
+    if (ctx.listId !== listIdParam || ctx.listName !== l.name) {
+      onModuleCtx({ listId: listIdParam, listName: l.name, listIndex: l.index_symbol || 'SPX', index: l.index_symbol || 'SPX', ticker: null });
+    }
+  }, [listIdParam, lists, embedded]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   const DEMO_TICKERS = ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN'];
 
   // Hook de chargement liste — toujours appelé, garde conditionnelle à l'intérieur
