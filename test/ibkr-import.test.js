@@ -261,3 +261,49 @@ test('exécutions du fichier sans jambe correspondante : remontées', () => {
   const { unmatched } = IMP.matchStrategy(s, strategy, 100);
   assert.deepEqual(unmatched, ['AAPL'], "on ne fait pas disparaître une exécution qu'on n'a pas su rattacher");
 });
+
+// ── Risk Navigator : le SEUL export disponible en What-If ───────────────────
+// En What-If aucun ordre n'est passé, donc aucune transaction n'existe. Le
+// rapport de risque est alors la seule façon de faire revenir les chiffres
+// d'IBKR : positions valorisées au marché + grecs. Il ne mesure PAS un coût
+// d'exécution — il permet de confronter nos maths à celles d'un outil pro.
+const RISKNAV = [
+  'Financial Instrument,Position,Price,Delta,Gamma,Vega,Theta',
+  'AAPL 15AUG25 230 C,3,4.25,0.52,0.021,14.2,-3.1',
+  'AAPL 15AUG25 230 P,3,3.75,-0.48,0.021,14.0,-3.0',
+  'QQQ 15AUG25 480 C,-2,9.10,-0.51,-0.008,-31.0,6.2',
+  'QQQ 15AUG25 480 P,-2,8.40,0.49,-0.008,-30.5,6.0',
+  'AAPL,0,230.00,,,,',
+].join('\n');
+
+test('Risk Navigator : reconnu comme rapport de RISQUE, pas comme exécutions', () => {
+  const r = IMP.parse(RISKNAV);
+  assert.equal(r.kind, 'risk', "la présence des grecs distingue les deux natures de fichier");
+  assert.equal(r.legs.length, 4, 'la ligne de sous-total du sous-jacent est ignorée');
+});
+
+test('Risk Navigator : les grecs du straddle sont la SOMME des deux jambes', () => {
+  const s = IMP.toStraddles(IMP.parse(RISKNAV).legs);
+  assert.equal(s.AAPL.price, 8, 'prix de marché du straddle');
+  assert.equal(Math.round(s.AAPL.greeks.vega * 10) / 10, 28.2, 'vega call + put');
+  // Delta d'un straddle ATM ≈ 0 : call +0,52 et put −0,48.
+  assert.equal(Math.round(s.AAPL.greeks.delta * 100) / 100, 0.04);
+  assert.equal(s.QQQ.sell.complete, true, 'la jambe vendue est classée en vente (position négative)');
+});
+
+test('Risk Navigator : nos grecs sont confrontés aux leurs', () => {
+  const strategy = {
+    index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200, vega: 2820, theta: -610, gamma: 4200 }],
+    portfolio: { idxPrem: 3400, idxVega: 6150, idxTheta: 1220, idxGamma: 1600 },
+  };
+  const s = IMP.toStraddles(IMP.parse(RISKNAV).legs);
+  const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'AAPL');
+  assert.ok(row.greeks, "les grecs d'IBKR sont remontés");
+  assert.ok(row.plan, 'les nôtres aussi, pour comparaison');
+  assert.equal(row.plan.vega, 2820);
+  // Le RAPPORT est ce qui compte : ~100 ici, donc IBKR publie un vega par action
+  // là où nous raisonnons par contrat. C'est l'écart d'échelle qu'on veut voir,
+  // pas une conversion supposée qui l'aurait masqué.
+  assert.equal(Math.round(row.plan.vega / row.greeks.vega), 100);
+});

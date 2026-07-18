@@ -27,6 +27,9 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
     return o;
   });
   const [source, setSource] = React.useState(strategy?.fills?.source || null);
+  // Nature du fichier lu : 'executions' (ce que j'ai payé) ou 'risk' (portefeuille
+  // valorisé + grecs IBKR — le seul export disponible en What-If).
+  const [kind, setKind] = React.useState('executions');
   const [warnings, setWarnings] = React.useState([]);
   const [manual, setManual] = React.useState(() => {
     const seed = {};
@@ -47,11 +50,14 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
     r.onload = () => {
       const parsed = IMP.parse(String(r.result || ''));
       setWarnings(parsed.warnings || []);
-      if (!parsed.legs.length) { setStraddles(null); addToast && addToast('Aucune exécution d\'option lue — voir le détail.', 'error'); return; }
+      if (!parsed.legs.length) { setStraddles(null); addToast && addToast('Aucune option lue — voir le détail.', 'error'); return; }
       const s = IMP.toStraddles(parsed.legs);
       setStraddles(s);
-      setSource('ibkr');
-      addToast && addToast(`${parsed.legs.length} exécutions lues (${Object.keys(s).length} sous-jacents).`);
+      setKind(parsed.kind);
+      setSource(parsed.kind === 'risk' ? 'risknav' : 'ibkr');
+      addToast && addToast(parsed.kind === 'risk'
+        ? `Portefeuille lu : ${Object.keys(s).length} sous-jacents, avec les grecs d'IBKR.`
+        : `${parsed.legs.length} exécutions lues (${Object.keys(s).length} sous-jacents).`);
     };
     r.onerror = () => addToast && addToast('Lecture du fichier impossible.', 'error');
     r.readAsText(file);
@@ -127,10 +133,15 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
               style={{ padding: '22px 16px', textAlign: 'center', border: '1px dashed var(--border-strong)', borderRadius: 'var(--radius-lg)', cursor: 'pointer', background: 'var(--bg-elevated)' }}>
               <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>Déposez votre rapport IBKR, ou cliquez pour le choisir</div>
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', marginTop: 8, lineHeight: 1.65, textAlign: 'left', maxWidth: 520, margin: '8px auto 0' }}>
-                <strong style={{ color: 'var(--accent-hover)' }}>Le plus simple — depuis TWS :</strong><br />
+                <strong style={{ color: 'var(--accent-hover)' }}>Vous analysez en What-If ?</strong><br />
+                Aucun ordre n'étant passé, il n'existe aucune transaction. Exportez le portefeuille :
+                {' '}<strong>Risk Navigator</strong> ▸ menu <strong>Rapport</strong> ▸ <strong>Exporter</strong> ▸ <strong>CSV</strong>.
+                {' '}On compare alors nos primes et nos <strong>grecs</strong> à ceux d'IBKR.
+              </div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', marginTop: 8, lineHeight: 1.65, textAlign: 'left', maxWidth: 520, margin: '8px auto 0' }}>
+                <strong style={{ color: 'var(--accent-hover)' }}>Vous avez réellement exécuté ?</strong><br />
                 Bouton <strong>Compte</strong> (ou Nouvelle fenêtre) ▸ <strong>Trade History</strong> ▸ menu <strong>Fichier</strong> ▸
-                {' '}<em>Exporter les rapports du jour</em>, et choisissez <strong>Extended Form</strong>.
-                {' '}Trois clics, rien à configurer.
+                {' '}<em>Exporter les rapports du jour</em>, en <strong>Extended Form</strong>. Trois clics, rien à configurer.
               </div>
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 8, lineHeight: 1.6, textAlign: 'left', maxWidth: 520, margin: '8px auto 0' }}>
                 Autres sources acceptées : un <strong>Flex Query</strong> (Portail client ▸ Performance &amp; Rapports ▸ Flex Queries,
@@ -217,13 +228,62 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
               </tfoot>
             </table>
             <div style={{ padding: '10px 12px', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.6, borderTop: '1px solid var(--border-subtle)' }}>
-              {attendu > 0 && (
-                <>Spread <strong style={{ color: 'var(--text-soft)' }}>attendu</strong> à l'entrée sur les jambes achetées, d'après la table de coûts mesurée : <strong style={{ color: 'var(--text-soft)' }}>{fmt(attendu)}</strong>. </>
+              {kind === 'risk' ? (
+                <>Ce fichier est un <strong style={{ color: 'var(--text-soft)' }}>rapport de risque</strong> (Risk Navigator), pas un relevé d'exécutions —
+                {' '}normal en What-If, où aucun ordre n'est passé. L'écart ci-dessus compare donc notre prime théorique au
+                {' '}<strong>prix de marché</strong> retenu par IBKR : c'est une mesure de l'écart de notre modèle au marché,
+                {' '}pas de votre coût d'exécution. Ce dernier ne pourra être mesuré qu'une fois les ordres réellement passés.</>
+              ) : (
+                <>
+                  {attendu > 0 && (
+                    <>Spread <strong style={{ color: 'var(--text-soft)' }}>attendu</strong> à l'entrée sur les jambes achetées, d'après la table de coûts mesurée : <strong style={{ color: 'var(--text-soft)' }}>{fmt(attendu)}</strong>. </>
+                  )}
+                  L'écart ci-dessus compare votre exécution à la prime <strong>théorique</strong> du modèle : il mêle le spread payé,
+                  les commissions et l'écart du modèle au marché. Isoler le seul dérapage d'exécution demanderait le prix de marché
+                  à la seconde de l'ordre — ce n'est pas ce qui est mesuré ici.
+                </>
               )}
-              L'écart ci-dessus compare votre exécution à la prime <strong>théorique</strong> du modèle : il mêle le spread payé,
-              les commissions et l'écart du modèle au marché. Isoler le seul dérapage d'exécution demanderait le prix de marché
-              à la seconde de l'ordre — ce n'est pas ce qui est mesuré ici.
             </div>
+
+            {/* Grecs : nos maths confrontées à celles d'IBKR. Le RAPPORT est la
+                colonne qui compte — un facteur ~100 signale une convention d'unité
+                différente (par action vs par contrat), pas une erreur de calcul. */}
+            {kind === 'risk' && rows.some(r => r.greeks && r.plan) && (
+              <div style={{ borderTop: '1px solid var(--border)' }}>
+                <div style={{ padding: '9px 12px', font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', background: 'var(--bg-elevated)' }}>
+                  Nos grecs vs ceux d'IBKR
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr style={{ background: 'var(--bg-elevated)' }}>
+                    {['Jambe', 'Grec', 'Nous', 'IBKR', 'Rapport'].map((h, i) => <th key={h} style={{ ...th, textAlign: i ? 'right' : 'left' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {rows.filter(r => r.greeks && r.plan).flatMap(r => (
+                      ['vega', 'theta', 'gamma'].filter(g => r.plan[g] != null && r.greeks[g] != null).map(g => {
+                        const ratio = r.greeks[g] !== 0 ? Math.abs(r.plan[g] / r.greeks[g]) : null;
+                        const proche = ratio != null && ratio > 0.8 && ratio < 1.25;
+                        return (
+                          <tr key={r.ticker + g} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                            <td style={{ ...td, color: 'var(--text)' }}>{r.ticker}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{g}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{Math.round(r.plan[g] * 100) / 100}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{Math.round(r.greeks[g] * 100) / 100}</td>
+                            <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: proche ? 'var(--pos-bright)' : 'var(--warn)' }}>
+                              {ratio == null ? '—' : '×' + (ratio >= 10 ? Math.round(ratio) : ratio.toFixed(2))}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ))}
+                  </tbody>
+                </table>
+                <div style={{ padding: '10px 12px', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                  Un rapport proche de <strong style={{ color: 'var(--pos-bright)' }}>×1</strong> valide nos calculs. Un facteur
+                  {' '}<strong>×100</strong> traduit une convention d'unité différente (par action chez IBKR, par contrat chez nous),
+                  {' '}pas une erreur. Tout autre écart mérite un examen : le dimensionnement de vos structures repose sur ces grecs.
+                </div>
+              </div>
+            )}
           </div>
         )}
 

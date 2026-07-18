@@ -71,6 +71,12 @@
     comm:       ['ibcommission', 'commfee', 'commission', 'commissions', 'comm'],
     asset:      ['assetclass', 'assetcategory', 'securitytype', 'sectype', 'type'],
     side:       ['buysell', 'side', 'action'],
+    // Colonnes propres au Risk Navigator (Rapport ▸ Exporter ▸ CSV). Leur présence
+    // signale un rapport de RISQUE — des positions valorisées, pas des exécutions.
+    delta:      ['delta'],
+    gamma:      ['gamma'],
+    vega:       ['vega'],
+    theta:      ['theta'],
   };
 
   // Le Trade Log de TWS exporte en .txt avec un séparateur CONFIGURABLE (virgule,
@@ -164,7 +170,9 @@
     const isSell = /^(SELL|SLD|S)\b/.test(sideCol) || sideCol === 'SELL';
     const isBuy  = /^(BUY|BOT|B)\b/.test(sideCol) || sideCol === 'BUY';
     const dir = isSell ? -1 : isBuy ? 1 : (qty < 0 ? -1 : 1);
-    legs.push({ ...meta, qty: Math.abs(qty) * dir, price, comm: Math.abs(num(rd.get(f, 'comm')) || 0) });
+    const g = k => { const v = num(rd.get(f, k)); return v == null ? undefined : v; };
+    legs.push({ ...meta, qty: Math.abs(qty) * dir, price, comm: Math.abs(num(rd.get(f, 'comm')) || 0),
+      delta: g('delta'), gamma: g('gamma'), vega: g('vega'), theta: g('theta') });
   }
 
   // Relevé d'activité : fichier à SECTIONS ; on ne lit que « Trades / Data ».
@@ -202,10 +210,20 @@
     if (!lines.length) return { legs: [], warnings: ['fichier vide'] };
     const isActivity = lines.some(l => l.startsWith('Trades,Header,') || l.startsWith('Trades,Data,'));
     const r = isActivity ? parseActivityStatement(lines) : parseFlat(lines);
+
+    /* Deux natures de fichier, deux usages — il faut les distinguer, car ils ne
+       répondent PAS à la même question :
+       · « executions » (Trade History, Flex Query, relevé) : ce que j'ai PAYÉ.
+       · « risk » (Risk Navigator ▸ Rapport ▸ Exporter) : des positions VALORISÉES
+         au marché, avec les grecs d'IBKR. En What-If, aucun ordre n'est passé —
+         il n'existe donc aucune transaction, et c'est le seul export disponible.
+       On reconnaît le second à la présence des colonnes de grecs. */
+    const hasGreeks = r.legs.some(l => l.vega !== undefined || l.delta !== undefined);
+    const kind = hasGreeks ? 'risk' : 'executions';
     if (!r.legs.length && !r.warnings.length) {
-      r.warnings.push("aucune exécution d'option trouvée — vérifiez que le fichier contient bien des transactions sur options (Trade Log en « Extended Form », Flex Query section Trades, ou relevé d'activité).");
+      r.warnings.push("aucune option trouvée — pour des exécutions : Trade History en « Extended Form » ; pour un portefeuille What-If : Risk Navigator ▸ Rapport ▸ Exporter ▸ CSV.");
     }
-    return { ...r, format: isActivity ? 'activity' : 'flat' };
+    return { ...r, kind, format: isActivity ? 'activity' : 'flat' };
   }
 
   // ── Recoller les straddles ────────────────────────────────────────────────
@@ -219,7 +237,7 @@
   // sens qui correspond à la jambe (composants achetés, indice vendu).
   function toStraddles(legs) {
     const acc = {};
-    const blank = () => ({ C: { q: 0, notional: 0 }, P: { q: 0, notional: 0 }, comm: 0 });
+    const blank = () => ({ C: { q: 0, notional: 0 }, P: { q: 0, notional: 0 }, comm: 0, g: {} });
     for (const l of legs) {
       const k = l.underlying;
       acc[k] = acc[k] || { underlying: k, buy: blank(), sell: blank(), expiries: new Set(), strikes: new Set() };
@@ -229,6 +247,14 @@
       const q = Math.abs(l.qty);
       leg.q += q; leg.notional += q * l.price;
       bag.comm += l.comm || 0;
+      // Grecs (Risk Navigator) : un straddle = call + put, donc ses grecs
+      // s'ADDITIONNENT sur les deux jambes. On somme tel quel, sans reconvertir :
+      // la convention d'unité d'IBKR est affichée telle quelle et comparée à la
+      // nôtre par un RAPPORT — c'est le rapport qui révèle un éventuel écart
+      // d'échelle, plutôt qu'une conversion supposée qui le masquerait.
+      for (const key of ['delta', 'gamma', 'vega', 'theta']) {
+        if (l[key] !== undefined) bag.g[key] = (bag.g[key] || 0) + l[key];
+      }
       if (l.expiry) acc[k].expiries.add(String(l.expiry).slice(0, 10));
       if (l.strike != null) acc[k].strikes.add(l.strike);
     }
@@ -241,7 +267,8 @@
       return { complete, callPrice: cP, putPrice: pP,
         price: complete ? cP + pP : null,                    // prix du straddle, par contrat
         qty: complete ? Math.min(b.C.q, b.P.q) : (b.C.q || b.P.q),
-        unbalanced: complete && b.C.q !== b.P.q, comm: b.comm };
+        unbalanced: complete && b.C.q !== b.P.q, comm: b.comm,
+        greeks: Object.keys(b.g).length ? b.g : null };
     };
     const out = {};
     for (const [k, a] of Object.entries(acc)) {
@@ -289,13 +316,20 @@
         realQty: f.qty, realPrice: f.price, realTotal, gross,
         comm: f.comm, complete: f.complete, unbalanced: f.unbalanced,
         qtyMismatch: planQty != null && f.qty !== planQty,
-        ecart,
+        ecart, greeks: f.greeks || null, plan: planGreeks[String(ticker || '').toUpperCase()] || null,
       });
     };
+    // Nos grecs, pour la confrontation avec ceux d'IBKR.
+    const planGreeks = {};
     if (strategy) {
-      const idxSym = strategy.indexEtf || strategy.index;
       const p = strategy.portfolio || {};
-      add(idxSym, strategy.nIndex || 1, p.idxPrem != null ? Math.abs(p.idxPrem) : null, 'index', 'sell');
+      const idxSym = String(strategy.indexEtf || strategy.index || '').toUpperCase();
+      if (idxSym) planGreeks[idxSym] = { vega: p.idxVega, theta: p.idxTheta, gamma: p.idxGamma };
+      for (const c of strategy.components || []) {
+        planGreeks[String(c.ticker).toUpperCase()] = { vega: c.vega, theta: c.theta, gamma: c.gamma, delta: c.delta };
+      }
+      const idx = strategy.indexEtf || strategy.index;
+      add(idx, strategy.nIndex || 1, p.idxPrem != null ? Math.abs(p.idxPrem) : null, 'index', 'sell');
       for (const c of strategy.components || []) add(c.ticker, c.nContracts, c.premium != null ? Math.abs(c.premium) : null, 'composant', 'buy');
     }
     for (const k of Object.keys(straddles)) if (!seen.has(k)) unmatched.push(k);
