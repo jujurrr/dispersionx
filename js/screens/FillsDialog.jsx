@@ -295,6 +295,11 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
                   Un rapport proche de <strong style={{ color: 'var(--pos-bright)' }}>×1</strong> valide nos calculs. Un facteur
                   {' '}<strong>×100</strong> traduit une convention d'unité différente (par action chez IBKR, par contrat chez nous),
                   {' '}pas une erreur. Tout autre écart mérite un examen : le dimensionnement de vos structures repose sur ces grecs.
+                  <br /><br />
+                  <strong style={{ color: 'var(--text-soft)' }}>Gamma</strong> : nous stockons un coefficient de convexité
+                  {' '}(P&amp;L = γ·(ΔS/S)²), IBKR publie le Γ standard (variation du delta pour +1 $). La conversion
+                  {' '}<strong>Γ = 2·γ/S²</strong> est appliquée ici pour comparer ce qui est comparable — sans elle, le
+                  {' '}rapport valait S²/2, soit un facteur différent pour chaque sous-jacent.
                 </div>
               </div>
             )}

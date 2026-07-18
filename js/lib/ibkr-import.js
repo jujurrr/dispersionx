@@ -444,14 +444,32 @@
         ecart, greeks: f.greeks || null, plan: planGreeks[String(ticker || '').toUpperCase()] || null,
       });
     };
-    // Nos grecs, pour la confrontation avec ceux d'IBKR.
+    /* Nos grecs, pour la confrontation avec ceux d'IBKR.
+
+       ⚠ LE GAMMA N'A PAS LA MÊME DÉFINITION DES DEUX CÔTÉS.
+       Nous stockons un COEFFICIENT DE CONVEXITÉ : P&L = gammaK · (ΔS/S)².
+       IBKR publie le Γ standard : variation du delta pour +1 $ de sous-jacent.
+       En repartant des formules (gammaK = φ(0)·S/(σ√T)·CONTRACT et
+       Γ_straddle = 2·φ(0)/(S·σ√T)·CONTRACT), il vient :
+
+            gammaK = Γ · S² / 2      donc      Γ = 2 · gammaK / S²
+
+       Le facteur dépend du CARRÉ du prix : ×26 450 pour un titre à 230 $, ×115 200
+       pour un ETF à 480 $. Comparer les deux bruts donnait donc des écarts énormes
+       ET différents à chaque ligne — ce n'était pas une erreur de calcul, mais une
+       comparaison de deux grandeurs distinctes. On convertit ici pour comparer ce
+       qui est comparable. */
+    const toStdGamma = (gammaK, spot) =>
+      (gammaK != null && spot > 0) ? 2 * gammaK / (spot * spot) : null;
     const planGreeks = {};
     if (strategy) {
       const p = strategy.portfolio || {};
       const idxSym = String(strategy.indexEtf || strategy.index || '').toUpperCase();
-      if (idxSym) planGreeks[idxSym] = { vega: p.idxVega, theta: p.idxTheta, gamma: p.idxGamma };
+      if (idxSym) planGreeks[idxSym] = { vega: p.idxVega, theta: p.idxTheta,
+        gamma: toStdGamma(p.idxGamma, strategy.indexPrice), gammaK: p.idxGamma };
       for (const c of strategy.components || []) {
-        planGreeks[String(c.ticker).toUpperCase()] = { vega: c.vega, theta: c.theta, gamma: c.gamma, delta: c.delta };
+        planGreeks[String(c.ticker).toUpperCase()] = { vega: c.vega, theta: c.theta, delta: c.delta,
+          gamma: toStdGamma(c.gamma, c.price), gammaK: c.gamma };
       }
       const idx = strategy.indexEtf || strategy.index;
       add(idx, strategy.nIndex || 1, p.idxPrem != null ? Math.abs(p.idxPrem) : null, 'index', 'sell');

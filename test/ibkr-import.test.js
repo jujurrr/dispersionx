@@ -498,3 +498,37 @@ test("une jambe VRAIMENT absente du fichier reste distinguée", () => {
   assert.equal(rows.find(r => r.ticker === 'AAPL').matched, false);
   assert.equal(rows.find(r => r.ticker === 'QQQ').realSigned, 3497, 'QQQ, lui, est valorisé');
 });
+
+test('gamma : converti au Γ STANDARD avant comparaison avec IBKR', () => {
+  /* Notre gamma est un coefficient de convexité (P&L = gammaK·(ΔS/S)²), celui
+     d'IBKR est le Γ standard (Δdelta pour +1 $). Relation démontrée depuis les
+     formules : gammaK = Γ · S²/2. Le facteur dépend du CARRÉ du prix, donc
+     comparer les bruts donnait des écarts énormes ET variables — ce que
+     l'utilisateur observait. */
+  const S = 230, gammaK = 26450 * 0.9;          // Γ voulu = 0,9 pour S = 230
+  const strategy = {
+    index: 'NDX', indexEtf: 'QQQ', nIndex: 2, indexPrice: 480,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200, price: S, vega: 2820, gamma: gammaK }],
+    portfolio: { idxPrem: 3400, idxVega: 6150, idxGamma: 115200 * 1.4 },
+  };
+  const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
+  const { rows } = IMP.matchStrategy(s, strategy, 100);
+
+  const aapl = rows.find(r => r.ticker === 'AAPL');
+  assert.equal(Math.round(aapl.plan.gamma * 1000) / 1000, 0.9, 'Γ = 2·gammaK/S²');
+  assert.equal(aapl.plan.gammaK, gammaK, 'le coefficient brut reste accessible');
+
+  const qqq = rows.find(r => r.ticker === 'QQQ');
+  assert.equal(Math.round(qqq.plan.gamma * 1000) / 1000, 1.4, "la jambe indice utilise SON prix (480), pas celui d'un composant");
+});
+
+test('gamma : sans prix stocké, on ne convertit pas au hasard', () => {
+  // Une vieille stratégie peut ne pas avoir `price` par composant. Convertir avec
+  // un prix supposé donnerait un Γ faux — mieux vaut ne rien afficher.
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 1,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200, gamma: 26450 }],
+    portfolio: { idxPrem: 3400 } };
+  const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
+  const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'AAPL');
+  assert.equal(row.plan.gamma, null);
+});
