@@ -327,8 +327,17 @@ function PositionCard({ pos, onNav, lists, onGroup }) {
   const pctBase = pos.entry_prem_gross;   // prime brute engagée → base du %
   const pct = (pnl != null && pctBase > 0) ? (pnl / pctBase * 100) : null;
   const date = (pos.committed_at || pos.opened || '').slice(0, 10);
-  // Nom de la liste d'origine (si la position en vient) — repère de contexte.
-  const listName = (lists || []).find(l => String(l.id) === String(pos.list_id))?.name;
+  // Repère de contexte : le nom de la STRATÉGIE d'origine (propre si renommée,
+  // sinon hérité de la liste) — résolu au rendu, donc un renommage se propage
+  // ici sans toucher aux positions déjà committées (qui gardent leur `pos.name`).
+  const srcList = (lists || []).find(l => String(l.id) === String(pos.list_id));
+  let listName = srcList?.name;
+  if (pos.list_id && window.DXApi && DXApi.strategyName) {
+    try {
+      const raw = JSON.parse(localStorage.getItem('dx-strategy-' + pos.list_id) || 'null');
+      if (raw) listName = DXApi.strategyName(raw, srcList?.name);
+    } catch {}
+  }
 
   return (
     <div

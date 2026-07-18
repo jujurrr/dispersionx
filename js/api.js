@@ -430,11 +430,43 @@
         const listId = k.slice('dx-strategy-'.length);
         let s; try { s = JSON.parse(localStorage.getItem(k)); } catch { continue; }
         if (!s || !s.components) continue;
-        out.push({ ...s, listId, listName: byId[listId] ? byId[listId].name : null });
+        const listName = byId[listId] ? byId[listId].name : null;
+        out.push({ ...s, listId, listName, displayName: strategyName(s, listName) });
       }
     } catch {}
     out.sort((a, b) => String(b.builtAt || '').localeCompare(String(a.builtAt || '')));
     return out;
+  }
+  // Nom AFFICHÉ d'une stratégie — résolution UNIQUE, utilisée partout (écran
+  // Mes stratégies, Strategy Monitor, Suivi). Par défaut la stratégie HÉRITE du
+  // nom de sa liste source (résolu au rendu → un renommage de liste se propage) ;
+  // dès que l'utilisateur la renomme, son `name` propre prend le dessus et devient
+  // indépendant de la liste. Repli sur l'indice pour ne jamais afficher de vide.
+  function strategyName(s, listName) {
+    const own = s && s.name ? String(s.name).trim() : '';
+    if (own) return own;
+    return listName || (s && s.listName) || (s && s.index) || 'Stratégie';
+  }
+  // Renomme une stratégie (nom propre). '' / null → retour à l'héritage du nom de liste.
+  function renameStrategy(listId, name) {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem('dx-strategy-' + listId) || 'null'); } catch {}
+    if (!s) return { success: false };
+    const nm = String(name || '').trim();
+    if (nm) s.name = nm; else delete s.name;
+    saveStrategy(listId, s);
+    return { success: true, name: nm || null };
+  }
+  // Range une stratégie dans un groupe (ou null). Stocké DANS le blob de stratégie →
+  // suit le write-through cloud de saveStrategy, sans schéma ni migration Supabase.
+  function setStrategyGroup(listId, group_name) {
+    let s = null;
+    try { s = JSON.parse(localStorage.getItem('dx-strategy-' + listId) || 'null'); } catch {}
+    if (!s) return { success: false };
+    const g = String(group_name || '').trim();
+    if (g) s.group_name = g; else delete s.group_name;
+    saveStrategy(listId, s);
+    return { success: true, group_name: g || null };
   }
   // Sauvegarde d'une stratégie construite (une par liste). localStorage reste la
   // source SYNCHRONE de la session ; si le cloud est actif, on écrit AUSSI côté
@@ -487,8 +519,11 @@
     else if (netTheta < -150)   { status = 'surveiller'; alert = 'Coût de portage élevé'; }
     const nComp = (s.components || []).length;
     const idxLabel = (s.indexEtf && s.indexEtf !== s.index) ? s.indexEtf + ' (' + (s.index || '') + ')' : (s.index || 'SPX');
+    // Libellé : le nom de la stratégie (propre ou hérité de la liste) porte l'identité ;
+    // l'indice/durée restent en préfixe technique lisible.
+    const label = strategyName(s, s.listName);
     return { dte, daysSince, netVega, netTheta, netPremium, netDelta, status, alert, nComp,
-      name: idxLabel + ' ' + (s.duration || 30) + 'j · dispersion' + (s.listName ? ' · ' + s.listName : '') };
+      name: idxLabel + ' ' + (s.duration || 30) + 'j · dispersion' + (label ? ' · ' + label : '') };
   }
 
   /* ── Volatility (par ticker ou batch) ───────────────────────── */
@@ -616,7 +651,7 @@
   function _defaultPositionName(s) {
     if (!s) return null;
     const d = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
-    return (s.listName || s.index || 'Position') + ' · ' + d;
+    return strategyName(s, s.listName) + ' · ' + d;
   }
   async function commitPosition(list_id, name) {
     let s = null;
@@ -768,6 +803,7 @@
     getTickerVol, getBatchVol,
     buildStrategy, getSavedStrategy,
     localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
+    strategyName, renameStrategy, setStrategyGroup,
     getRisk,
     getChecklist, commitPosition,
     getPositions, getPosition, snapshotPosition, closePosition, deletePosition, reprice, renamePosition,

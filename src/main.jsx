@@ -71,6 +71,7 @@ import '../js/screens/Home.jsx';
 import '../js/screens/IndexDetail.jsx';
 import '../js/screens/ScoreModal.jsx';
 import '../js/screens/Lists.jsx';
+import '../js/screens/Strategies.jsx';
 import '../js/screens/ListDetail.jsx';
 import '../js/screens/Dashboard.jsx';
 import '../js/screens/CorrelationLab.jsx';

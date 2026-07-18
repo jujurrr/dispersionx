@@ -1,5 +1,5 @@
 /* ─── DispersionX App: router + global state ─────────────────────── */
-const HASH_SCREENS = ['landing', 'home', 'lists', 'dashboard', 'corr', 'regime', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs', 'privacy', 'legal', 'terms', 'sales', 'pricing'];
+const HASH_SCREENS = ['landing', 'home', 'lists', 'strategies', 'dashboard', 'corr', 'regime', 'vol', 'construction', 'risk', 'builder', 'monitor', 'docs', 'privacy', 'legal', 'terms', 'sales', 'pricing'];
 
 // Détection mobile (largeur ≤ 768px), réactive au redimensionnement/rotation.
 // Sert UNIQUEMENT à adapter la mise en page mobile ; sur PC, isMobile=false et
@@ -294,6 +294,7 @@ function App() {
     'index-detail': ['Accueil', params.symbol || ''],
     lists: ['Mes listes'],
     'list-detail': ['Mes listes', '…'],
+    strategies: ['Mes stratégies'],
     dashboard: ['Dashboard'],
     corr: ['Correlation Lab'],
     vol: ['Volatility Lab'],
@@ -333,6 +334,9 @@ function App() {
       break;
     case 'lists':
       screenEl = <window.Lists onNav={onNav} onListsChange={setLists} addToast={addToast} />;
+      break;
+    case 'strategies':
+      screenEl = <window.Strategies onNav={onNav} lists={lists} addToast={addToast} />;
       break;
     case 'list-detail':
       screenEl = <window.ListDetail listId={params.listId} onNav={onNav} onScore={onScore} addToast={addToast} mode={mode} scoreCache={scoreCache} />;
