@@ -7,6 +7,18 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
   const { MetricCard, Badge, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [strats, setStrats] = React.useState(null);
   const [sel, setSel] = React.useState(0);
+  /* Vue du Monitor — RÉVERSIBLE en un clic.
+     'compare' (défaut) : le Monitor se recentre sur ce qu'il est seul à faire —
+       comparer et agréger TOUTES les stratégies. Le détail d'une stratégie vit
+       sur sa propre page (StrategyDetail), qui le fait mieux et sans doublon.
+     'detail' : l'ancien comportement, détail embarqué sous le tableau.
+     Le doublon a un coût réel : chaque correctif (devise, alerte vega…) devait
+     être appliqué DEUX fois. Une fois la vue comparative adoptée, supprimer la
+     branche 'detail' clôt le sujet — d'ici là, le retour arrière est immédiat. */
+  const [view, setView] = React.useState(() => {
+    try { return localStorage.getItem('dx-monitor-view') === 'detail' ? 'detail' : 'compare'; } catch { return 'compare'; }
+  });
+  React.useEffect(() => { try { localStorage.setItem('dx-monitor-view', view); } catch {} }, [view]);
   const [shareFor, setShareFor] = React.useState(null);   // liste de la construction à partager
   const [ibkrOpen, setIbkrOpen] = React.useState(false);   // export IBKR (What-If) — Pro
   const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
@@ -60,12 +72,29 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
       <div>
         <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Strategy Monitor</h1>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 660 }}>
-          Suivi de vos stratégies de dispersion construites : composition, grecs nets, prime et échéance. Outil d'aide à la décision, sans exécution automatique.
+          {view === 'compare'
+            ? "Toutes vos dispersions côte à côte : exposition agrégée, grecs nets et échéances. Ouvrez-en une pour le détail complet."
+            : "Suivi de vos stratégies de dispersion construites : composition, grecs nets, prime et échéance. Outil d'aide à la décision, sans exécution automatique."}
         </p>
       </div>
-      {rows.length > 0 && onNav && (
-        <button onClick={() => onNav('builder')} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>+ Nouvelle stratégie</button>
-      )}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {rows.length > 0 && (
+          <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 3 }}>
+            {[['compare', '▤ Comparatif'], ['detail', '▦ Détail intégré']].map(([k, label]) => (
+              <button key={k} onClick={() => setView(k)}
+                title={k === 'detail' ? "Ancienne vue : le détail d'une stratégie sous le tableau" : 'Toutes les stratégies côte à côte'}
+                style={{
+                  font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
+                  background: view === k ? 'var(--accent)' : 'transparent', color: view === k ? '#fff' : 'var(--text-muted)',
+                  transition: 'all var(--dur-fast) var(--ease)',
+                }}>{label}</button>
+            ))}
+          </div>
+        )}
+        {rows.length > 0 && onNav && (
+          <button onClick={() => onNav('builder')} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>+ Nouvelle stratégie</button>
+        )}
+      </div>
     </div>
   );
 
@@ -111,7 +140,7 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
         <MetricCard label="Vega net cumulé" value={fmtS(totalVega) + ' ' + dxSym() + '/1%'} accent={Math.abs(totalVega) < VEGA_NEUTRAL ? 'var(--pos)' : 'var(--warn)'}
           hint="Sensibilité totale à la volatilité, en $ pour +1 point d'IV. Proche de 0 = position équilibrée en vol ; élevé = exposée à un mouvement de volatilité." />
         <MetricCard label="Alertes actives" value={String(nAlerts)} accent={nAlerts ? 'var(--warn)' : 'var(--pos)'}
-          hint="Nombre de stratégies avec un signal à surveiller : theta critique, vega déséquilibré ou échéance proche." />
+          hint="Nombre de stratégies avec un signal à surveiller : échéance proche, coût de portage élevé, ou grec censé être neutralisé qui ne l'est pas." />
       </div>
 
       {/* Tableau des stratégies */}
@@ -119,7 +148,7 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
           <thead>
             <tr style={{ background: 'var(--bg-elevated)' }}>
-              {['Stratégie', 'Comp.', 'DTE', 'Prime nette', 'Vega net', 'Theta/j', 'Delta', 'État'].map((h, i) => (
+              {['Stratégie', 'Comp.', 'DTE', 'Prime nette', 'Vega net', 'Theta/j', 'Delta', 'État', ...(view === 'compare' ? [''] : [])].map((h, i) => (
                 <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '11px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
@@ -128,7 +157,11 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
             {rows.map((r, i) => {
               const m = r.m;
               return (
-                <tr key={r.s.listId || i} onClick={() => setSel(i)} style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: sel === i ? 'var(--bg-hover)' : 'transparent' }}>
+                <tr key={r.s.listId || i}
+                  // Comparatif : la ligne OUVRE la stratégie (son détail vit sur sa
+                  // propre page). Détail intégré : elle sélectionne, comme avant.
+                  onClick={() => (view === 'compare' && onNav) ? onNav('strategy-detail', { listId: r.s.listId }) : setSel(i)}
+                  style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: (view === 'detail' && sel === i) ? 'var(--bg-hover)' : 'transparent' }}>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ font: 'var(--type-title)', fontWeight: 700, color: 'var(--accent-hover)' }}>{m.name}</div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
@@ -144,6 +177,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.netTheta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netTheta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netDelta) < 50 ? 'var(--text-soft)' : 'var(--warn)' }}>{fmtS(m.netDelta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}><Badge tone={statusTone[m.status] || 'neutral'} dot>{m.status}</Badge></td>
+                  {view === 'compare' && (
+                    <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-body-sm)', color: 'var(--accent-hover)', whiteSpace: 'nowrap' }}>Ouvrir →</td>
+                  )}
                 </tr>
               );
             })}
@@ -151,8 +187,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
         </table>
       </div>
 
-      {/* Détail de la stratégie sélectionnée */}
-      {cur && (
+      {/* Détail de la stratégie sélectionnée — vue 'detail' UNIQUEMENT.
+          En comparatif, ce bloc ferait doublon avec la page StrategyDetail. */}
+      {view === 'detail' && cur && (
         <section>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
             <div>
