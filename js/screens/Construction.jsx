@@ -489,6 +489,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         idxDelta: sized.idxDelta, compDelta: sized.compDelta,
         netDelta: deltaHedge !== 'none' ? 0 : sized.netDelta,
         netDeltaRaw: sized.netDelta,
+        idxGamma: sized.idxGamma,   // référence de la jambe indice → mesure du résidu gamma-flat
         idxVegaPerLot: base.idxG.vega, idxThetaPerLot: -base.idxG.theta, idxPremPerLot: base.idxG.premium,
         idxIV: base.indexIV,   // IV d'entrée de l'indice — pour la reprise réelle (mark-to-market)
       },
@@ -581,7 +582,15 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       <window.DXLoader title="Construction de la stratégie" steps={[
         'Récupération des cours et de la volatilité réelle (Cboe)…',
         'Calcul des grecs de chaque jambe (indice + composants)…',
-        'Dimensionnement vega-neutre du panier…',
+        // Le dimensionnement dépend de la STRUCTURE choisie : annoncer « vega-neutre »
+        // en gamma-flat ou theta-flat décrivait un calcul qui n'a pas lieu.
+        ({
+          vega_neutral:    'Dimensionnement vega-neutre — égalisation du vega…',
+          gamma_flat:      'Dimensionnement gamma-flat — égalisation de la convexité…',
+          theta_flat:      'Dimensionnement theta-flat — égalisation du portage…',
+          premium_neutral: 'Dimensionnement premium-neutral — égalisation des primes…',
+          equal_weight:    'Répartition à 1 lot par composant…',
+        }[sizing]) || 'Dimensionnement du panier…',
         'Recherche des échéances cotées par tous les sous-jacents…',
       ]} />
     ) : (

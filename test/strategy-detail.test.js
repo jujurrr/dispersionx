@@ -29,7 +29,10 @@ function makeEnv() {
     DXMock: { strategy: {} }, React,
     // Doublures du design system : on teste l'écran, pas le rendu des briques.
     DispersionXDesignSystem_cb86be: {
-      MetricCard: ({ label, value, unit }) => React.createElement('div', null, `${label}: ${value}${unit || ''}`),
+      // `hint` DOIT être rendu : le vrai MetricCard l'affiche, et c'est là que
+      // vivent les explications qu'on veut vérifier. Un stub qui l'ignore rendrait
+      // toute assertion sur ces textes silencieusement inobservable.
+      MetricCard: ({ label, value, unit, hint }) => React.createElement('div', null, `${label}: ${value}${unit || ''}`, hint),
       Badge: ({ children }) => React.createElement('span', null, children),
       WarningPanel: ({ title, children }) => React.createElement('div', null, title, children),
       EmptyState: ({ title, description, action }) => React.createElement('div', null, title, description, action),
@@ -106,6 +109,15 @@ test('StrategyDetail : IV et poids affichés SANS ×100 parasite', () => {
   assert.ok(html.includes('28.0%'), 'IV du composant');
   assert.ok(html.includes('22.0%'), 'poids du composant');
   assert.doesNotMatch(html, /1850\.0%|2800\.0%|2200\.0%/, 'aucune valeur centuplée');
+});
+
+test('StrategyDetail : un vega libre par structure est présenté comme tel', () => {
+  // La stratégie de référence est theta-flat avec un vega net non nul : la page
+  // ne doit pas le présenter comme un déséquilibre, mais comme un choix.
+  const html = renderDetail(seeded(), { pro: true });
+  assert.match(html, /Libre ici/, 'le vega est annoncé libre');
+  assert.match(html, /neutralise le theta/, 'le grec réellement neutralisé est nommé');
+  assert.doesNotMatch(html, /Vega déséquilibré/, "pas d'alerte vega sur une theta-flat");
 });
 
 test("StrategyDetail : l'ordre des sections va du quoi vers l'action", () => {

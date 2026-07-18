@@ -583,16 +583,61 @@
     const netTheta = Math.round((p.netTheta || 0) / k);
     const netPremium = Math.round(p.netPremium || 0);   // prime d'entrée — figée
     const netDelta = Math.round((p.netDelta != null ? p.netDelta : (p.netDeltaRaw || 0)) * k);
+    /* ── Santé : contrôler le grec que la STRUCTURE prétend neutraliser ──────
+       Les 4 structures de dimensionnement neutralisent chacune un grec différent,
+       et laissent les autres LIBRES par choix (cf. Construction : « ça change
+       l'exposition, pas l'edge net »). Contrôler le vega d'une theta-flat était
+       donc un faux positif PERMANENT : toute stratégie non vega-neutre restait
+       marquée « Vega déséquilibré » à vie, ce qui décrédibilise les vraies alertes. */
+    const SIZING_TARGET = { vega_neutral: 'vega', gamma_flat: 'gamma', theta_flat: 'theta', premium_neutral: 'premium' };
+    const sizing = s.sizingMethod || 'vega_neutral';   // défaut historique des stratégies d'avant les structures
+    const target = SIZING_TARGET[sizing] || null;      // equal_weight (« 1 lot ») ne neutralise rien
+    const VEGA_ALERT = (window.DXRisk && window.DXRisk.VEGA_ALERT) || 250;
+    const sym = (window.DXMoney && window.DXMoney.symbol) ? window.DXMoney.symbol() : '$';
+    const cur = n => (window.DXMoney && window.DXMoney.value) ? window.DXMoney.value(n) : String(n);
+
+    // Résidu du grec neutralisé, RELATIF à la jambe indice : la structure promet
+    // Σ(composants) = indice, donc le net doit être petit devant cette référence.
+    // Sans unité → indépendant de la taille de position. Mesuré sur les valeurs de
+    // CONSTRUCTION : la neutralisation est une propriété du montage, pas du temps.
+    // Tolérance 25 % : l'ordre de grandeur du seuil vega déjà en place (250 $ pour
+    // une jambe indice de ~1 000-3 000 $ de vega). Le résidu vient surtout de
+    // l'arrondi aux contrats entiers (plancher à 1 lot) — c'est précisément ce
+    // qu'il est utile de signaler : la structure ne tient pas sa promesse.
+    const FLAT_TOL = 0.25;
+    const REF = { gamma: p.idxGamma, theta: p.idxTheta, premium: p.idxPrem };
+    const NET = { gamma: p.netGamma, theta: p.netTheta, premium: p.netPremium };
+    const GREEK_LABEL = { gamma: 'Gamma', theta: 'Theta', premium: 'Prime' };
+    function structuralAlert() {
+      if (!target) return null;                                   // rien de promis, rien à contrôler
+      if (target === 'vega') {
+        return Math.abs(netVega) > VEGA_ALERT ? 'Vega déséquilibré (' + cur(netVega) + ' ' + sym + '/1%)' : null;
+      }
+      const ref = Math.abs(REF[target]);
+      const net = Math.abs(NET[target]);
+      // Référence absente (stratégie construite avant qu'on stocke idxGamma) →
+      // on se TAIT plutôt que d'inventer un verdict sur une donnée manquante.
+      if (!isFinite(ref) || ref <= 0 || !isFinite(net)) return null;
+      const residual = net / ref;
+      return residual > FLAT_TOL
+        ? GREEK_LABEL[target] + ' non neutralisé (résidu ' + Math.round(residual * 100) + ' % de la jambe indice)'
+        : null;
+    }
+
     let status = 'sain', alert = null;
-    if (dte <= 7)               { status = 'risque';     alert = 'Theta critique · ' + dte + ' DTE'; }
-    else if (Math.abs(netVega) > 250) { status = 'surveiller'; alert = 'Vega déséquilibré (' + netVega + ' $/1%)'; }
-    else if (netTheta < -150)   { status = 'surveiller'; alert = 'Coût de portage élevé'; }
+    if (dte <= 7) { status = 'risque'; alert = 'Theta critique · ' + dte + ' DTE'; }
+    else {
+      const st = structuralAlert();
+      if (st)                   { status = 'surveiller'; alert = st; }
+      else if (netTheta < -150) { status = 'surveiller'; alert = 'Coût de portage élevé'; }
+    }
     const nComp = (s.components || []).length;
     const idxLabel = (s.indexEtf && s.indexEtf !== s.index) ? s.indexEtf + ' (' + (s.index || '') + ')' : (s.index || 'SPX');
     // Libellé : le nom de la stratégie (propre ou hérité de la liste) porte l'identité ;
     // l'indice/durée restent en préfixe technique lisible.
     const label = strategyName(s, s.listName);
     return { dte, daysSince, netVega, netTheta, netPremium, netDelta, status, alert, nComp,
+      sizing, neutralised: target,   // structure et grec neutralisé — source unique pour les écrans
       name: idxLabel + ' ' + (s.duration || 30) + 'j · dispersion' + (label ? ' · ' + label : '') };
   }
 

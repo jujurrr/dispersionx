@@ -222,8 +222,15 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <MetricCard label="Prime nette" value={fmtS(m.netPremium) + ' ' + dxSym()} accent="var(--accent)"
           hint={m.netPremium >= 0 ? "Crédit reçu à l'ouverture." : "Débit payé pour être long dispersion."} />
-        <MetricCard label="Vega net" value={fmtS(m.netVega) + ' ' + dxSym() + '/1%'} accent={Math.abs(m.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'}
-          hint="Gain/perte pour +1 point de volatilité implicite. Proche de 0 = équilibré." />
+        {/* Le vega n'est « déséquilibré » que si la structure prétend le neutraliser.
+            En theta-flat/gamma-flat/premium-neutral il est libre PAR CHOIX : le
+            colorer en alerte contredirait la structure choisie (même règle que
+            Construction, qui affiche « Libre (structure ≠ vega) »). */}
+        <MetricCard label="Vega net" value={fmtS(m.netVega) + ' ' + dxSym() + '/1%'}
+          accent={m.neutralised !== 'vega' ? 'var(--text-soft)' : (Math.abs(m.netVega) < 60 ? 'var(--pos)' : 'var(--warn)')}
+          hint={m.neutralised !== 'vega'
+            ? `Gain/perte pour +1 point de volatilité implicite. Libre ici : la structure ${sizingLabel.toLowerCase()} neutralise le ${neutralised}, pas le vega.`
+            : 'Gain/perte pour +1 point de volatilité implicite. Proche de 0 = équilibré.'} />
         <MetricCard label="Theta /jour" value={fmtS(m.netTheta) + ' ' + dxSym()} accent="var(--warn)"
           hint="Valeur temps perdue (ou gagnée) chaque jour qui passe." />
         <MetricCard label="Delta net" value={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'} accent={Math.abs(m.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}

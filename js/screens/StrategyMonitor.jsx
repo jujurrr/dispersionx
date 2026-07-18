@@ -134,7 +134,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: 'var(--text-soft)' }}>{m.nComp}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.dte < 12 ? 'var(--neg-bright)' : 'var(--text-soft)' }}>{m.dte}j</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data)', color: m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netPremium)} {dxSym()}</td>
-                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netVega) > VEGA_ALERT ? 'var(--warn)' : 'var(--text-soft)' }}>{fmtS(m.netVega)}</td>
+                  {/* Vega en alerte SEULEMENT si la structure prétend le neutraliser
+                      (sinon il est libre par choix — cf. strategyMetrics.neutralised). */}
+                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: (m.neutralised === 'vega' && Math.abs(m.netVega) > VEGA_ALERT) ? 'var(--warn)' : 'var(--text-soft)' }}>{fmtS(m.netVega)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.netTheta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netTheta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netDelta) < 50 ? 'var(--text-soft)' : 'var(--warn)' }}>{fmtS(m.netDelta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}><Badge tone={statusTone[m.status] || 'neutral'} dot>{m.status}</Badge></td>
