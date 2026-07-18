@@ -219,9 +219,10 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
                       {r.unbalanced && <span title="call et put en quantités différentes" style={{ color: 'var(--warn)' }}> ⚠</span>}
                     </td>
                     <td style={{ ...td, textAlign: 'right', color: r.side === 'sell' ? 'var(--neg-bright)' : 'var(--pos-bright)' }}>{r.side === 'sell' ? 'Vendu' : 'Acheté'}</td>
-                    <td style={{ ...td, textAlign: 'right' }}>{fmt(r.planTotal)}</td>
-                    <td style={{ ...td, textAlign: 'right', color: r.matched ? 'var(--text)' : 'var(--text-dim)' }}>
-                      {r.matched ? (r.complete ? fmt(r.realTotal) : 'jambe incomplète') : 'non exécutée'}
+                    {/* Signé comme partout ailleurs : indice encaissé (+), composants payés (−). */}
+                    <td style={{ ...td, textAlign: 'right', color: (r.planSigned ?? 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmt(r.planSigned)}</td>
+                    <td style={{ ...td, textAlign: 'right', color: !r.matched ? 'var(--text-dim)' : ((r.realSigned ?? 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)') }}>
+                      {r.matched ? (r.realSigned != null ? fmt(r.realSigned) : 'jambe incomplète') : 'non exécutée'}
                     </td>
                     <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: r.ecart == null ? 'var(--text-dim)' : r.ecart > 0 ? 'var(--neg-bright)' : 'var(--pos-bright)' }}>
                       {r.ecart == null ? '—' : (r.ecart > 0 ? '+' : '') + fmt(r.ecart)}

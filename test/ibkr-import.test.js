@@ -413,3 +413,51 @@ test('un rapport agrégé N\'EST PAS confondu avec un aller-retour', () => {
   assert.equal(row.matched, true, 'la jambe vendue doit être rapprochée');
   assert.equal(row.realTotal, 3497);
 });
+
+test('lignes de TOTAL et places de cotation écartées / nettoyées', () => {
+  // Cas réels remontés : « TOUS LES SOUS-JACENTS » (ligne de total) apparaissait
+  // comme un sous-jacent fantôme, et « QQQ <NASDAQ>. » ne se rapprochait d'aucune
+  // jambe à cause de la place de cotation accolée au ticker.
+  const withNoise = [
+    'Sous-jacent,Position,Évalué,Delta (Δ),Vega (ν)',
+    'TOUS LES SOUS-JACENTS,2,-1092.50,0.02,-33.3',
+    'QQQ <NASDAQ>.,-4,-3497.00,-0.02,-61.5',
+    'AAPL,6,2404.50,0.04,28.2',
+  ].join('\n');
+  const s = IMP.toStraddles(IMP.parse(withNoise).legs);
+
+  assert.ok(!Object.keys(s).some(k => /TOUS/i.test(k)), 'la ligne de total ne doit pas devenir un sous-jacent');
+  assert.ok(s.QQQ, '« QQQ <NASDAQ>. » doit être ramené à « QQQ »');
+  assert.equal(s.QQQ.value, -3497);
+
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200 }], portfolio: { idxPrem: 3400 } };
+  const { rows, unmatched } = IMP.matchStrategy(s, strategy, 100);
+  assert.deepEqual(unmatched, [], 'plus rien ne doit rester non rapproché');
+  assert.equal(rows.find(r => r.ticker === 'QQQ').matched, true);
+});
+
+test('signe des jambes : indice encaissé (+), composants payés (−)', () => {
+  // Le dialogue affichait tout en positif, à rebours de la table de composition
+  // de la stratégie — où un composant acheté est un débit.
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200 }], portfolio: { idxPrem: 3400 } };
+  const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
+  const { rows } = IMP.matchStrategy(s, strategy, 100);
+
+  const qqq = rows.find(r => r.ticker === 'QQQ');
+  const aapl = rows.find(r => r.ticker === 'AAPL');
+  assert.ok(qqq.planSigned > 0, "la jambe indice est VENDUE : prime encaissée, donc positive");
+  assert.ok(aapl.planSigned < 0, 'un composant est ACHETÉ : prime payée, donc négative');
+  assert.ok(qqq.realSigned > 0 && aapl.realSigned < 0, 'même convention sur le réel');
+  // L'écart, lui, garde SA convention : positif = défavorable, dans les deux sens.
+  assert.ok(aapl.ecart > 0, 'payé plus cher que prévu → écart positif');
+});
+
+test('une jambe non exécutée garde le bon signe', () => {
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 1,
+    components: [{ ticker: 'ABSENT', nContracts: 1, premium: 500 }], portfolio: { idxPrem: 1000 } };
+  const row = IMP.matchStrategy({}, strategy, 100).rows.find(r => r.ticker === 'ABSENT');
+  assert.equal(row.matched, false);
+  assert.equal(row.planSigned, -500, 'un composant reste un débit même sans exécution');
+});

@@ -46,6 +46,22 @@
   }
 
   const MONTHS = { JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6, JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12 };
+
+  /* Le Risk Navigator DÉCORE le sous-jacent avec sa place de cotation :
+     « QQQ <NASDAQ>. » — qui n'est pas le ticker, et ne se rapprochait donc
+     d'aucune jambe. Il insère aussi des lignes de TOTAL, à écarter : les compter
+     comme un sous-jacent ferait apparaître une position fantôme. */
+  const TOTAL_ROWS = new Set([
+    'TOUSLESSOUSJACENTS', 'ALLUNDERLYINGS', 'TOTAL', 'TOTAUX', 'GRANDTOTAL',
+    'ALLPOSITIONS', 'TOUTESLESPOSITIONS', 'SUMMARY', 'RESUME',
+  ]);
+  function cleanUnderlying(raw) {
+    const s = String(raw || '').replace(/<[^>]*>/g, '')   // « <NASDAQ> »
+      .replace(/[.\s]+$/, '').trim().toUpperCase();
+    if (!s) return null;
+    if (TOTAL_ROWS.has(norm(s).toUpperCase())) return null;   // ligne de total
+    return s;
+  }
   const num = v => { const n = parseFloat(String(v ?? '').replace(/[\s,]/g, '')); return isFinite(n) ? n : null; };
 
   /* ── Colonnes : reconnaissance TOLÉRANTE ─────────────────────────────────
@@ -156,7 +172,9 @@
     const und = rd.get(f, 'underlying'), rightRaw = rd.get(f, 'right');
     const r = String(rightRaw || '').trim().toUpperCase()[0];
     if (und && (r === 'C' || r === 'P')) {
-      meta = { underlying: String(und).toUpperCase(), right: r,
+      const u0 = cleanUnderlying(und);
+      if (!u0) return;
+      meta = { underlying: u0, right: r,
         expiry: rd.get(f, 'expiry') || null, strike: num(rd.get(f, 'strike')) };
     } else if (und && (anyGreek || valueTot != null)) {
       /* Ligne AGRÉGÉE PAR SOUS-JACENT — la vue par défaut du Risk Navigator, qui
@@ -165,8 +183,10 @@
          même directement comparable à nos jambes, qui sont elles aussi un
          straddle par sous-jacent. Exiger un détail par option aurait rejeté le
          rapport le plus courant. */
+      const u = cleanUnderlying(und);
+      if (!u) return;   // ligne de total (« TOUS LES SOUS-JACENTS »)
       const q = num(rd.get(f, 'qty'));
-      legs.push({ underlying: String(und).toUpperCase().trim(), right: null, aggregate: true,
+      legs.push({ underlying: u, right: null, aggregate: true,
         qty: q == null ? 0 : q, price: null, value: valueTot, comm: 0,
         delta: gRaw('delta'), gamma: gRaw('gamma'), vega: gRaw('vega'), theta: gRaw('theta') });
       return;
@@ -373,7 +393,12 @@
     // alors qu'ils vous coûtent tous les deux.
     const add = (ticker, planQty, planTotal, role, side) => {
       const rec = straddles[String(ticker || '').toUpperCase()];
-      if (!rec) { rows.push({ ticker, role, side, planQty, planTotal, matched: false }); return; }
+      if (!rec) {
+        const sgn0 = side === 'sell' ? 1 : -1;
+        rows.push({ ticker, role, side, planQty, planTotal,
+          planSigned: planTotal == null ? null : sgn0 * Math.abs(planTotal), matched: false });
+        return;
+      }
       seen.add(rec.underlying);
       // On retient le sens qui correspond à la jambe : les composants ont été
       // ACHETÉS à l'ouverture, la jambe indice VENDUE. Si le rapport contient
@@ -393,8 +418,15 @@
       const ecart = (realTotal != null && planTotal != null)
         ? (side === 'sell' ? planTotal - realTotal : realTotal - planTotal)
         : null;
+      // Convention de SIGNE du site : la jambe indice est vendue, on encaisse
+      // (positif) ; les composants sont achetés, on décaisse (négatif). C'est
+      // celle de la table de composition — les montrer tous positifs ici
+      // contredisait la stratégie affichée deux écrans plus tôt.
+      const sgn = side === 'sell' ? 1 : -1;
       rows.push({
         ticker, role, side, planQty, planTotal, matched: true,
+        planSigned: planTotal == null ? null : sgn * Math.abs(planTotal),
+        realSigned: realTotal == null ? null : sgn * Math.abs(realTotal),
         realQty: f.qty, realPrice: f.price, realTotal, gross,
         comm: f.comm, complete: f.complete, unbalanced: f.unbalanced,
         qtyMismatch: planQty != null && f.qty !== planQty,
