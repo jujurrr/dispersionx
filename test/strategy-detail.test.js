@@ -219,3 +219,13 @@ test('StrategyDetail : blob minimal (champs absents) → aucun crash', () => {
   assert.ok(html.includes('AAPL'));
   assert.ok(html.length > 500, 'la page rend bien du contenu');
 });
+
+test('StrategyDetail : la convention de gamma est explicitée', () => {
+  // Un utilisateur qui compare ce chiffre à son courtier trouve un écart énorme
+  // et différent pour chaque titre (facteur S²/2). Ce n'est pas un bug — les deux
+  // grandeurs diffèrent. Le taire fait chercher un défaut inexistant.
+  const html = renderDetail(seeded(), { pro: true });
+  assert.match(html, /mouvement <strong>relatif<\/strong>/, 'la convention est nommée');
+  assert.match(html, /\+1 \$/, 'celle du courtier aussi');
+  assert.match(html, /S²\/2/, 'le facteur qui les sépare est donné');
+});

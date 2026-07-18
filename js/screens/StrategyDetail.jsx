@@ -265,6 +265,17 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
           {' '}<strong style={{ color: 'var(--text-soft)' }}>Theta</strong> = valeur temps par jour ·
           {' '}<strong style={{ color: 'var(--text-soft)' }}>Gamma</strong> = gain pour un mouvement de ±1 % du sous-jacent.
         </p>
+        {/* Piège vécu : comparer ce gamma à celui d'un courtier donne un écart
+            énorme et différent pour chaque titre (le facteur vaut S²/2). Ce n'est
+            pas une erreur — les deux mesurent autre chose. Le dire ici évite de
+            chercher un bug qui n'existe pas. */}
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: 0, lineHeight: 1.6 }}>
+          Notre <strong>gamma</strong> se rapporte à un mouvement <strong>relatif</strong> (±1 %), parce que c'est
+          {' '}ce qui compte pour une dispersion : il rend la position neutre quand tout bouge du même pourcentage.
+          {' '}Votre courtier affiche le Γ classique, rapporté à <strong>+1 $</strong> de sous-jacent. Les deux sont
+          {' '}justes mais ne se comparent pas directement — le rapport entre eux vaut S²/2, donc il diffère pour
+          {' '}chaque titre. L'écran « Mes exécutions » fait la conversion pour vous.
+        </p>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse' }}>
             <thead>
