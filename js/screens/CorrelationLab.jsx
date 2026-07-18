@@ -209,7 +209,7 @@ function CorrRegime({ premium, index, mode, onNav }) {
    + un arbitrage prime↔queue, jamais une promesse de gain.
    Entrées 100 % dérivées de ce que le Lab observe déjà : percentile de prime
    (régime), skew (ρ downside − ATM), pente de terme. Repli propre si absentes. */
-function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId, onStructure }) {
+function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId, onStructure, duration }) {
   // Structure recommandée → méthode de sizing Construction (propagation « câbler la structure »).
   const SIZING_OF = { equal: 'vega_neutral', theta: 'theta_flat', gamma: 'gamma_flat', premium: 'premium_neutral' };
   const pct        = (premiumPct != null && isFinite(premiumPct)) ? Math.round(premiumPct) : null;
@@ -286,7 +286,10 @@ function RegimePlaybook({ premiumPct, premium, skew, term, mode, onNav, listId, 
         <div style={{ font: '700 15px/1.2 var(--font-sans)', color: recKey === 'wait' ? 'var(--neg-bright)' : 'var(--pos-bright)', marginBottom: 6 }}>{recRow?.name}</div>
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', lineHeight: 1.55 }}>{why}</div>
         {onNav && listId && SIZING_OF[recKey] && (
-          <button onClick={() => onNav('construction', { listId, sizing: SIZING_OF[recKey] })}
+          // `duration` est transmise quand on arrive ici avec une échéance déjà
+          // choisie (auto-chercheur d'opportunités) : sans elle, la Construction
+          // retomberait sur sa durée par défaut et perdrait l'horizon retenu.
+          <button onClick={() => onNav('construction', { listId, sizing: SIZING_OF[recKey], ...(duration ? { duration } : {}) })}
             style={{ marginTop: 12, font: '600 12px/1 var(--font-sans)', padding: '9px 15px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
             Construire en {recRow?.name} →
           </button>
@@ -786,7 +789,7 @@ function SingleTickerCorr({ ctx, onCtx, lists, mode }) {
 // `view` : 'corr' (défaut) = matrice/prime/contribution/secteurs/historique ·
 //          'regime' = régime + structure recommandée + skew/terme (écran dédié).
 // Même pipeline de données, deux vues — on désengorge sans dupliquer la collecte.
-function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, view = 'corr', onStructure }) {
+function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, onModuleCtx, embedded, view = 'corr', onStructure, duration }) {
   const { MetricCard, Badge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [data, setData] = React.useState(null);
   const [loading, setLoading] = React.useState(true);
@@ -928,7 +931,7 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
         {/* Régime : la prime du jour située dans son historique */}
         <CorrRegime premium={(rhoImpl - rhoReal) * 100} index={ctx.listIndex || C.index} mode={mode} onNav={onNav} />
         {/* Playbook : structure recommandée selon le régime + checklist de pré-trade */}
-        <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} onNav={onNav} listId={ctx.listId} onStructure={onStructure} />
+        <RegimePlaybook premiumPct={rgPremiumPct} premium={rgPremiumPts} skew={rgMap?.skew} term={rgMap?.term} mode={mode} onNav={onNav} listId={ctx.listId} onStructure={onStructure} duration={duration} />
       </>)}
 
       {/* ── Écran « Correlation Lab » : matrice, contribution, secteurs, historique ── */}

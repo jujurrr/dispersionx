@@ -301,9 +301,14 @@ function OpportunityFinder({ onNav, lists, addToast, pro, mode }) {
       const l = await DXApi.createList(`Opportunité ${index} · ${o.k} actions`, index, 'Générée par l\'auto-chercheur d\'opportunités');
       for (const t of o.members) { await DXApi.addListItem(l.id, t, null); }
       window.dispatchEvent(new CustomEvent('dx-lists-changed'));
-      addToast && addToast('Liste créée — ouverture de la Construction.');
-      // Reporte l'échéance choisie ici (ex. 45 j) → Construction la présélectionne.
-      onNav('construction', { listId: l.id, duration });
+      addToast && addToast('Liste créée — structure recommandée selon le régime.');
+      // On passe par « Régime & Structure » AVANT la Construction : c'est lui qui
+      // détermine la structure de dispersion adaptée au régime (theta-flat,
+      // gamma-flat…). Aller droit à la Construction retombait sur le vega-neutre
+      // par défaut, quel que soit le régime — le même parcours que le Builder,
+      // dont l'étape « Structure » précède l'étape « Construction ».
+      // L'échéance choisie ici est reportée jusqu'à la Construction.
+      onNav('regime', { listId: l.id, duration });
     } catch (e) { addToast && addToast('Création impossible : ' + (e && e.message ? e.message : ''), 'error'); }
   }
 
@@ -533,9 +538,9 @@ function OpportunityFinder({ onNav, lists, addToast, pro, mode }) {
                     style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
                     Journaliser
                   </button>
-                  <button onClick={() => createAndBuild(o)}
+                  <button onClick={() => createAndBuild(o)} title="Crée la liste, puis détermine la structure adaptée au régime avant de dimensionner"
                     style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 16px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>
-                    Créer la liste & construire →
+                    Créer la liste & choisir la structure →
                   </button>
                 </div>
               </div>

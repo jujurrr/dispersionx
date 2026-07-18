@@ -352,7 +352,7 @@ function App() {
       screenEl = <window.CorrelationLab listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
       break;
     case 'regime':
-      screenEl = <window.CorrelationLab view="regime" listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
+      screenEl = <window.CorrelationLab view="regime" listId={params.listId} onNav={onNav} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} duration={params.duration} />;
       break;
     case 'vol':
       screenEl = <window.VolatilityLab mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} onNav={onNav} />;
