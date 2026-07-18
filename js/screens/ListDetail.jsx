@@ -267,6 +267,11 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: readOnly ? 'var(--text-dim)' : 'var(--text-soft)', cursor: readOnly ? 'not-allowed' : 'pointer', opacity: readOnly ? 0.5 : 1 }}>+ Ajouter</button>
           <button onClick={() => onNav('corr', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Corrélation</button>
+          {/* Placé entre Corrélation et Construction : c'est son rang réel dans le
+              parcours (il détermine la structure AVANT le dimensionnement), le même
+              que dans la barre latérale, le Builder et l'auto-chercheur. */}
+          <button onClick={() => onNav('regime', { listId })} title="Régime de marché et structure de dispersion recommandée"
+            style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Régime & Structure</button>
           <button onClick={() => onNav('risk', { listId })}
             style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Risk Lab</button>
           <button onClick={() => onNav('construction', { listId })}
