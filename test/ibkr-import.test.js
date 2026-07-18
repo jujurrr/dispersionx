@@ -586,3 +586,19 @@ test('fichier RÉEL : le Γ converti au spot IBKR retrouve celui du broker', () 
   // Sans conversion, le rapport valait 257 533 : c'est CE bug qui est verrouillé.
   assert.ok(qqq.planGammaAtSpot < 10, 'plus aucun facteur en centaines de milliers');
 });
+
+test('les deux écrans affichent le MÊME gamma, dans deux unités', () => {
+  /* Vérifié sur les chiffres réels de l'utilisateur : la page stratégie montre
+     « P&L pour ±1 % » et l'import montre le Γ du courtier. Ils diffèrent d'un
+     facteur S²/2·10⁻⁴, ce qui donne 5,33 d'un côté et 129 de l'autre pour QQQ —
+     d'où l'impression d'incohérence. Ce test verrouille la relation. */
+  const cas = [
+    ['QQQ', 5.33, 695.38, 129], ['AAPL', 2.38, 334.05, 13], ['COST', 1.08, 940.301, 48],
+    ['CSCO', 8.42, 112.097, 5], ['NFLX', 28.57, 69.125, 7], ['SBUX', 6.13, 105.552, 3],
+  ];
+  for (const [t, gammaStd, spot, pnl1pct] of cas) {
+    const recalc = gammaStd * spot * spot / 2 * 1e-4;
+    assert.ok(Math.abs(Math.round(recalc) - pnl1pct) <= 1,
+      `${t} : Γ ${gammaStd} au spot ${spot} donne ${recalc.toFixed(1)} — attendu ~${pnl1pct}`);
+  }
+});

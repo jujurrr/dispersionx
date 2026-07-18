@@ -274,7 +274,9 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
           {' '}ce qui compte pour une dispersion : il rend la position neutre quand tout bouge du même pourcentage.
           {' '}Votre courtier affiche le Γ classique, rapporté à <strong>+1 $</strong> de sous-jacent. Les deux sont
           {' '}justes mais ne se comparent pas directement — le rapport entre eux vaut S²/2, donc il diffère pour
-          {' '}chaque titre. L'écran « Mes exécutions » fait la conversion pour vous.
+          {' '}chaque titre. L'écran <strong>« Mes exécutions »</strong> affiche donc le Γ du courtier, un nombre bien
+          {' '}plus petit : <strong>Γ = P&amp;L(±1 %) · 2 / S² · 10⁴</strong>. Ce n'est pas une contradiction, c'est la
+          {' '}même convexité vue sous deux unités.
         </p>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse' }}>

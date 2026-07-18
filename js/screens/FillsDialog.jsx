@@ -282,7 +282,12 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
                         return (
                           <tr key={r.ticker + g} style={{ borderTop: '1px solid var(--border-subtle)' }}>
                             <td style={{ ...td, color: 'var(--text)' }}>{r.ticker}</td>
-                            <td style={{ ...td, textAlign: 'right' }}>{g}</td>
+                            {/* L'unité DOIT figurer : la page de la stratégie affiche
+                                le même gamma en $ pour ±1 %, soit un nombre très
+                                différent. Sans le préciser, on croit à une incohérence. */}
+                            <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                              {{ vega: `vega (${sym()}/1 pt IV)`, theta: `theta (${sym()}/j)`, gamma: 'Γ (par +1 ' + sym() + ')' }[g]}
+                            </td>
                             <td style={{ ...td, textAlign: 'right' }}>{Math.round(ours * 100) / 100}</td>
                             <td style={{ ...td, textAlign: 'right' }}>{Math.round(r.greeks[g] * 100) / 100}</td>
                             <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: proche ? 'var(--pos-bright)' : 'var(--warn)' }}>
@@ -303,6 +308,11 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
                   {' '}(P&amp;L = γ·(ΔS/S)²), IBKR publie le Γ standard (variation du delta pour +1 $). La conversion
                   {' '}<strong>Γ = 2·γ/S²</strong> est appliquée ici pour comparer ce qui est comparable — sans elle, le
                   {' '}rapport valait S²/2, soit un facteur différent pour chaque sous-jacent.
+                  <br /><br />
+                  ⚠ La page de la stratégie affiche <strong>ce même gamma</strong> dans une autre unité : en
+                  {' '}{sym()} de gain pour un mouvement de <strong>±1 %</strong>, pour rester comparable au vega et au theta
+                  {' '}de sa table. Le passage de l'un à l'autre est <strong>P&amp;L(±1 %) = Γ·S²/2·10⁻⁴</strong> — les deux
+                  {' '}chiffres diffèrent beaucoup sans être contradictoires.
                 </div>
               </div>
             )}
