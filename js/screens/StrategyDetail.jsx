@@ -56,6 +56,14 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
 
   const fmtS  = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
   const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
+  // Magnitude CONVERTIE (sans signe) : la table porte son propre signe (+ acheté /
+  // − vendu). Sans passer par DXMoney, le corps de table resterait en dollars
+  // pendant que la ligne « Net » se convertirait → un total ≠ somme des lignes.
+  const fmtMag = n => window.DXMoney ? window.DXMoney.value(Math.abs(n || 0), { sign: false }) : Math.abs(Math.round(n || 0)).toLocaleString('fr-FR');
+  // IV et poids sont stockés en POURCENTAGE par Construction (`indexIV = 18`,
+  // `weightUsed = … * 100`, et `sigma: c.iv / 100` côté maths) → afficher tel quel.
+  const pct1 = v => (v != null && isFinite(v)) ? v.toFixed(1) + '%' : '—';
+  const CONTRACT = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
   const statusTone = { sain: 'pos', surveiller: 'warn', risque: 'neg' };
   const statusRisk = { sain: 'faible', surveiller: 'modéré', risque: 'élevé' };
 
@@ -232,7 +240,7 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
           <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-                {['Jambe', 'Sens', 'Lots', 'Poids', 'IV', 'Vega $/1%', 'Prime $'].map((h, i) => (
+                {['Jambe', 'Sens', 'Lots', 'Poids', 'IV', `Vega ${dxSym()}/1%`, `Prime ${dxSym()}`].map((h, i) => (
                   <th key={h} style={{ padding: '9px 14px', textAlign: i === 0 ? 'left' : 'right', font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -244,19 +252,19 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
                 <td style={{ padding: '10px 14px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--neg-bright)' }}>Vendu</td>
                 <td style={{ padding: '10px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>{s.nIndex || 1}</td>
                 <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-dim)' }}>—</td>
-                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{p.idxIV != null ? (p.idxIV * 100).toFixed(1) + '%' : '—'}</td>
-                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{Math.round(p.idxVega || 0)}</td>
-                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>+{Math.round(p.idxPrem || 0)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{pct1(p.idxIV)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{fmtMag(p.idxVega)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>+{fmtMag(p.idxPrem)}</td>
               </tr>
               {comps.map((c, i) => (
                 <tr key={c.ticker} style={{ borderBottom: i < comps.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
                   <td style={{ padding: '9px 14px', font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker}</td>
                   <td style={{ padding: '9px 14px', textAlign: 'right', font: 'var(--type-caption)', color: 'var(--pos-bright)' }}>Acheté</td>
                   <td style={{ padding: '9px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: 'var(--accent)' }}>{c.nContracts}</td>
-                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{c.weight != null ? (c.weight * 100).toFixed(1) + '%' : '—'}</td>
-                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{c.iv != null ? (c.iv * 100).toFixed(1) + '%' : '—'}</td>
-                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>+{Math.round(c.vega || 0)}</td>
-                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{Math.round(c.premium || 0)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{(c.weightEst ? '~' : '') + pct1(c.weight)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{pct1(c.iv)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>+{fmtMag(c.vega)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{fmtMag(c.premium)}</td>
                 </tr>
               ))}
             </tbody>
@@ -271,11 +279,15 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
             </tfoot>
           </table>
         </div>
-        {mode === 'Débutant' && (
-          <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: 0 }}>
-            Les grecs affichés sont ramenés au DTE restant (vega ∝ √T, theta ∝ 1/√T) : ils reflètent la position d'aujourd'hui, pas celle du jour de construction.
-          </p>
-        )}
+        {/* Honnêteté sur la nature des chiffres : ce sont les grecs de CONSTRUCTION
+            vieillis du temps écoulé, PAS une reprise au marché. Seul le Suivi
+            (api/_lib/reprice.js) recalcule avec le spot et l'IV du jour. Le taire
+            reviendrait à présenter une estimation comme une mesure. */}
+        <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: 0, lineHeight: 1.6 }}>
+          Ces chiffres sont ceux de la <strong>construction</strong>, seulement vieillis du temps écoulé
+          (vega ∝ √T, theta ∝ 1/√T). Ils ne tiennent pas compte des mouvements de prix ni de volatilité
+          depuis {builtTxt} — pour une valorisation au marché du jour, suivez la position.
+        </p>
       </section>
 
       {/* ── Structure choisie + couverture ── */}
@@ -292,13 +304,26 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
         <div style={card}>
           <div style={cardTitle}>Couverture du delta</div>
           <Row k="Méthode" v={HEDGE_LABEL[s.deltaHedge] || 'Aucune'} />
-          {s.deltaHedge && s.deltaHedge !== 'none' ? (
+          {s.deltaHedge === 'index' ? (
             <>
-              <Row k="Quantité" v={`${Math.round(s.hedgeUnits || 0)} unité${Math.abs(Math.round(s.hedgeUnits || 0)) > 1 ? 's' : ''}`}
-                hint={s.deltaHedge === 'index' ? "Futures / parts d'ETF sur l'indice" : 'Actions des sous-jacents'} />
+              {/* `hedgeUnits` est en LOTS ; l'ordre réel se passe en actions (× CONTRACT). */}
+              <Row k="Ordre de couverture" v={`${s.hedgeUnits >= 0 ? 'Acheter' : 'Vendre'} ${Math.round(Math.abs(s.hedgeUnits || 0) * CONTRACT).toLocaleString('fr-FR')} ${s.indexEtf || s.index || 'actions'}`}
+                hint={`soit ${Math.abs(s.hedgeUnits || 0).toFixed(2)} lot(s) de ${CONTRACT}`} />
               <Row k="Notionnel couvert" v={fmtS(s.hedgeNotional || 0) + ' ' + dxSym()} />
-              <Row k="Delta résiduel" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}
-                hint="La couverture est figée à la construction : elle dérive quand le marché bouge." last />
+              <Row k="Delta à la construction" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}
+                hint="Couverture FIGÉE à l'entrée : le delta réel dérive ensuite avec le marché. Le Suivi le recalcule au prix du jour." last />
+            </>
+          ) : s.deltaHedge === 'legs' ? (
+            <>
+              {/* Mode « legs » : chaque composant est couvert par SON sous-jacent
+                  (c.hedgeShares) et la jambe indice par l'indice (s.hedgeUnits, en lots).
+                  Les deux ne sont pas la même unité — ne pas les fusionner. */}
+              <Row k="Composants couverts" v={`${comps.filter(c => c.hedgeShares).length} / ${comps.length}`}
+                hint="chaque straddle neutralisé par son propre sous-jacent" />
+              <Row k="Jambe indice" v={`${s.hedgeUnits >= 0 ? 'Acheter' : 'Vendre'} ${Math.round(Math.abs(s.hedgeUnits || 0) * CONTRACT).toLocaleString('fr-FR')} ${s.indexEtf || s.index || 'actions'}`} />
+              <Row k="Notionnel total" v={fmtS(s.hedgeNotional || 0) + ' ' + dxSym()} hint="composants + jambe indice" />
+              <Row k="Delta à la construction" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}
+                hint="Couverture FIGÉE à l'entrée : le delta réel dérive ensuite avec le marché. Le Suivi le recalcule au prix du jour." last />
             </>
           ) : (
             <Row k="Delta net" v={fmtS(m.netDelta) + ' ' + dxSym() + '/1%'}

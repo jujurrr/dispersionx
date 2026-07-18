@@ -59,13 +59,17 @@ const STRAT = {
   duration: 30, expiry: '2026-08-21', builtAt: '2026-07-15T10:00:00Z',
   nIndex: 2, sizingMethod: 'theta_flat', weightBasis: 'capped', deltaHedge: 'index',
   hedgeUnits: 12, hedgeNotional: 57600,
+  // ⚠ UNITÉS RÉELLES de Construction (vérifiées dans Construction.jsx) :
+  // `iv` et `weight` sont en POURCENTAGE (indexIV = 18, weightUsed = … * 100,
+  // et les maths font `sigma: c.iv / 100`). Des fixtures en fraction (0.28)
+  // masqueraient un ×100 à l'affichage — c'est exactement ce qui était arrivé.
   components: [
-    { ticker: 'AAPL', price: 230, iv: 0.28, weight: 0.22, nContracts: 3, vega: 140, theta: -12, premium: 900, delta: 5 },
-    { ticker: 'MSFT', price: 500, iv: 0.25, weight: 0.19, nContracts: 2, vega: 120, theta: -10, premium: 800, delta: 4 },
+    { ticker: 'AAPL', price: 230, iv: 28, weight: 22, nContracts: 3, vega: 140, theta: -12, premium: 900, delta: 5 },
+    { ticker: 'MSFT', price: 500, iv: 25, weight: 19, nContracts: 2, vega: 120, theta: -10, premium: 800, delta: 4 },
   ],
   portfolio: {
     idxVega: 300, idxTheta: 25, idxPrem: 2400, compVega: 260, compTheta: -22, compPrem: 1700,
-    netVega: -40, netTheta: 3, netGamma: 1, netPremium: 700, netDelta: 0, netDeltaRaw: 9, idxIV: 0.185,
+    netVega: -40, netTheta: 3, netGamma: 1, netPremium: 700, netDelta: 0, netDeltaRaw: 9, idxIV: 18.5,
   },
 };
 const LISTS = [{ id: 'L1', name: 'Tech NDX Core' }];
@@ -92,7 +96,16 @@ test('StrategyDetail : récapitule la construction sans planter', () => {
   assert.match(html, /theta-flat/i);
   assert.ok(html.includes('21 août'), 'échéance formatée via DXExpiry');
   assert.ok(html.includes('AAPL') && html.includes('MSFT'), 'composants listés');
-  assert.ok(html.includes('18.5%'), "IV d'entrée de l'indice");
+});
+
+test('StrategyDetail : IV et poids affichés SANS ×100 parasite', () => {
+  // Régression : la table remultipliait par 100 des valeurs déjà en pourcentage
+  // → une IV de 28 % s'affichait « 2800.0% » et un poids de 22 % « 2200.0% ».
+  const html = renderDetail(seeded(), { pro: true });
+  assert.ok(html.includes('18.5%'), "IV de l'indice");
+  assert.ok(html.includes('28.0%'), 'IV du composant');
+  assert.ok(html.includes('22.0%'), 'poids du composant');
+  assert.doesNotMatch(html, /1850\.0%|2800\.0%|2200\.0%/, 'aucune valeur centuplée');
 });
 
 test("StrategyDetail : l'ordre des sections va du quoi vers l'action", () => {
