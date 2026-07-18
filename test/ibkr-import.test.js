@@ -362,10 +362,13 @@ test('BOM UTF-8 en tête de fichier', () => {
 // Colonnes réelles remontées par un utilisateur (TWS en français). Trois pièges
 // cumulés : en-têtes traduits, accents, et un rapport REPLIÉ par sous-jacent —
 // donc sans call/put ni strike, et sans prix unitaire (« Évalué » est un TOTAL).
+// « Évalué » = PRIX DU SOUS-JACENT (vérifié sur fichier réel : DeltaDollars/Delta
+// le redonne). Une valeur de position, quand elle existe, vient d'une AUTRE
+// colonne — d'où « Valeur de marché » ici, pour tester les deux séparément.
 const RN_FR = [
-  'Profondeur de Sous-jacent,Sous-jacent,Position,Évalué,P&L non réalisé,DeltaDollars,VaR,Delta (Δ),Gamma (Γ),Vega (ν),Theta (Θ),Trade',
-  '0,AAPL,6,2404.50,0,120,-450,0.04,0.042,28.2,-6.1,',
-  '0,QQQ,-4,-3497.00,0,-80,-820,-0.02,-0.016,-61.5,12.2,',
+  'Profondeur de Sous-jacent,Sous-jacent,Position,Évalué,Valeur de marché,DeltaDollars,VaR,Delta (Δ),Gamma (Γ),Vega (ν),Theta (Θ),Trade',
+  '1,AAPL,6,334.05,2404.50,120,-450,0.04,0.042,28.2,-6.1,',
+  '1,QQQ,-4,695.38,-3497.00,-80,-820,-0.02,-0.016,-61.5,12.2,',
 ].join('\n');
 
 test('Risk Navigator FR : en-têtes traduits et accentués reconnus', () => {
@@ -375,12 +378,13 @@ test('Risk Navigator FR : en-têtes traduits et accentués reconnus', () => {
   assert.deepEqual(r.warnings, [], 'aucun avertissement sur un fichier valide');
 });
 
-test("Risk Navigator FR : « Évalué » est une VALEUR totale, pas un prix unitaire", () => {
-  // La confondre avec un prix aurait faussé la comparaison d'un facteur qty × 100.
+test("Risk Navigator FR : « Évalué » est le SPOT, la valeur vient d'ailleurs", () => {
+  // Confondre les deux comparait une action à 334 $ contre une prime de 2 404 $.
   const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
   assert.equal(s.AAPL.aggregate, true);
-  assert.equal(s.AAPL.price, null, 'aucun prix unitaire dans ce rapport');
-  assert.equal(s.AAPL.value, 2404.5);
+  assert.equal(s.AAPL.price, null, 'aucun prix d\'option dans ce rapport');
+  assert.equal(s.AAPL.spot, 334.05, '« Évalué » = prix du sous-jacent');
+  assert.equal(s.AAPL.value, 2404.5, 'la valeur de position vient de sa propre colonne');
 
   const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
     components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200, vega: 2820 }],
@@ -419,10 +423,10 @@ test('lignes de TOTAL et places de cotation écartées / nettoyées', () => {
   // comme un sous-jacent fantôme, et « QQQ <NASDAQ>. » ne se rapprochait d'aucune
   // jambe à cause de la place de cotation accolée au ticker.
   const withNoise = [
-    'Sous-jacent,Position,Évalué,Delta (Δ),Vega (ν)',
-    'TOUS LES SOUS-JACENTS,2,-1092.50,0.02,-33.3',
-    'QQQ <NASDAQ>.,-4,-3497.00,-0.02,-61.5',
-    'AAPL,6,2404.50,0.04,28.2',
+    'Sous-jacent,Position,Évalué,Valeur de marché,Delta (Δ),Vega (ν)',
+    'TOUS LES SOUS-JACENTS,2,0,-1092.50,0.02,-33.3',
+    'QQQ <NASDAQ>.,-4,695.38,-3497.00,-0.02,-61.5',
+    'AAPL,6,334.05,2404.50,0.04,28.2',
   ].join('\n');
   const s = IMP.toStraddles(IMP.parse(withNoise).legs);
 
@@ -491,7 +495,7 @@ test("marchés fermés : la raison est EXPLICITE, pas un « incomplet » muet", 
 test("une jambe VRAIMENT absente du fichier reste distinguée", () => {
   // « absent du fichier » et « pas de valorisation » sont deux problèmes
   // différents : les confondre enverrait sur une fausse piste.
-  const partial = 'Sous-jacent,Position,Évalué\nQQQ,-4,-3497.00';
+  const partial = 'Sous-jacent,Position,Valeur de marché\nQQQ,-4,-3497.00';
   const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
     components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200 }], portfolio: { idxPrem: 3400 } };
   const { rows } = IMP.matchStrategy(IMP.toStraddles(IMP.parse(partial).legs), strategy, 100);
@@ -531,4 +535,54 @@ test('gamma : sans prix stocké, on ne convertit pas au hasard', () => {
   const s = IMP.toStraddles(IMP.parse(RN_FR).legs);
   const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'AAPL');
   assert.equal(row.plan.gamma, null);
+});
+
+// ── Fichier RÉEL du Risk Navigator (extrait), TWS en français ───────────────
+// Colonnes et valeurs telles qu'exportées. Deux enseignements majeurs y sont
+// verrouillés : « Évalué » est le PRIX DU SOUS-JACENT (et non une valeur de
+// position), et « Position » est vide en vue repliée.
+const RN_REEL = [
+  '"Profondeur de Sous-jacent","Sous-jacent","","Position","Évalué","P&L non réalisé","DeltaDollars","VaR","Delta (Δ)","Gamma (Γ)","Vega (ν)","Theta (Θ)","Trade",',
+  '"0","Tous les sous-jacents","0"," ","","57","-11 880","","39","65","-53","-20","0",',
+  '"1","AAPL <NASDAQ>","0"," ","334.05","22","1 325","-2","4","2","90","-32","0",',
+  '"1","QQQ <NASDAQ>","0"," ","695.38","-286","-27 799","-4,870","-40","-5","-746","235","0",',
+].join('\n');
+
+test('fichier RÉEL : « Évalué » est le prix du sous-jacent, pas une valeur', () => {
+  // Vérifié sur les données : DeltaDollars / Delta redonne « Évalué ».
+  // Le confondre avec une valeur de position comparait une action à 334 $ contre
+  // une prime totale de 2 672 $ — d'où des écarts de coût absurdes.
+  const s = IMP.toStraddles(IMP.parse(RN_REEL).legs);
+  assert.equal(s.AAPL.spot, 334.05, 'lu comme SPOT');
+  assert.equal(s.AAPL.value, null, "et surtout PAS comme valeur de position");
+  assert.equal(s.QQQ.spot, 695.38);
+});
+
+test('fichier RÉEL : aucun montant inventé, et le motif est explicite', () => {
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 1, indexPrice: 695.38,
+    components: [{ ticker: 'AAPL', nContracts: 1, premium: 2672, price: 334.05, gamma: 133040.87, vega: 90.32 }],
+    portfolio: { idxPrem: 19171, idxVega: 752.7, idxGamma: 1287665.52 } };
+  const { rows, unmatched } = IMP.matchStrategy(IMP.toStraddles(IMP.parse(RN_REEL).legs), strategy, 100);
+  assert.deepEqual(unmatched, [], 'la ligne de total et les places de cotation sont gérées');
+  for (const r of rows) {
+    assert.equal(r.matched, true);
+    assert.equal(r.realTotal, null, 'aucun coût fabriqué à partir du spot');
+    assert.match(r.reason, /aucune valeur de position/);
+    assert.equal(r.qtyMismatch, false, '« Position » vide ne doit pas déclencher un ⚠');
+  }
+});
+
+test('fichier RÉEL : le Γ converti au spot IBKR retrouve celui du broker', () => {
+  // La validation qui compte : Γ = 2γ/S² sur les chiffres réels.
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 1, indexPrice: 695.38,
+    components: [{ ticker: 'AAPL', nContracts: 1, premium: 2672, price: 334.05, gamma: 133040.87 }],
+    portfolio: { idxPrem: 19171, idxGamma: 1287665.52 } };
+  const { rows } = IMP.matchStrategy(IMP.toStraddles(IMP.parse(RN_REEL).legs), strategy, 100);
+
+  const aapl = rows.find(r => r.ticker === 'AAPL');
+  assert.ok(Math.abs(aapl.planGammaAtSpot - 2.38) < 0.05, `Γ AAPL ≈ 2,4 contre 2 chez IBKR (arrondi) — obtenu ${aapl.planGammaAtSpot}`);
+  const qqq = rows.find(r => r.ticker === 'QQQ');
+  assert.ok(Math.abs(qqq.planGammaAtSpot - 5.33) < 0.05, `Γ QQQ ≈ 5,3 contre 5 chez IBKR — obtenu ${qqq.planGammaAtSpot}`);
+  // Sans conversion, le rapport valait 257 533 : c'est CE bug qui est verrouillé.
+  assert.ok(qqq.planGammaAtSpot < 10, 'plus aucun facteur en centaines de milliers');
 });

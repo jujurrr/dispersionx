@@ -84,10 +84,15 @@
   const ALIASES = {
     symbol:     ['symbol', 'description', 'contract', 'financialinstrument', 'instrumentfinancier', 'instrument'],
     underlying: ['underlyingsymbol', 'underlying', 'undsymbol', 'sousjacent', 'profondeurdesousjacent'],
-    // Valeur TOTALE de la position (« Évalué » du Risk Navigator), à ne pas
-    // confondre avec un prix unitaire : elle vaut déjà quantité × 100 × prix.
-    // Les mélanger fausserait la comparaison d'un facteur qty × 100.
-    value:      ['value', 'marketvalue', 'positionvalue', 'evalue', 'valeur', 'evaluation', 'mktvalue', 'valeurdemarche'],
+    // Valeur TOTALE d'une position (rapports de portefeuille).
+    value:      ['marketvalue', 'positionvalue', 'mktvalue', 'valeurdemarche', 'valeurposition'],
+    /* ⚠ « Évalué » du Risk Navigator N'EST PAS une valeur de position : c'est le
+       PRIX DU SOUS-JACENT retenu pour la valorisation. Vérifié sur données réelles :
+       DeltaDollars / Delta redonne exactement cette colonne. Le prendre pour une
+       valeur revenait à comparer une action à ~334 $ contre une prime totale de
+       ~2 672 $ — d'où des « coûts » absurdes. Il sert en revanche de spot fiable
+       pour convertir le gamma. */
+    spot:       ['evalue', 'evaluation', 'underlyingprice', 'undprice', 'prixsousjacent', 'valeur'],
     right:      ['putcall', 'right', 'putorcall', 'callput'],
     strike:     ['strike', 'strikeprice'],
     expiry:     ['expiry', 'expirationdate', 'lasttradingdayorcontractmonth', 'maturity', 'lasttradingday'],
@@ -167,6 +172,7 @@
     const gRaw = k => { const v = num(rd.get(f, k)); return v == null ? undefined : v; };
     const anyGreek = ['delta', 'gamma', 'vega', 'theta'].some(k => gRaw(k) !== undefined);
     const valueTot = num(rd.get(f, 'value'));
+    const spotRN = num(rd.get(f, 'spot'));   // prix du sous-jacent (« Évalué »)
 
     let meta = null;
     const und = rd.get(f, 'underlying'), rightRaw = rd.get(f, 'right');
@@ -176,7 +182,7 @@
       if (!u0) return;
       meta = { underlying: u0, right: r,
         expiry: rd.get(f, 'expiry') || null, strike: num(rd.get(f, 'strike')) };
-    } else if (und && (anyGreek || valueTot != null || num(rd.get(f, 'qty')) != null)) {
+    } else if (und && (anyGreek || valueTot != null || spotRN != null || num(rd.get(f, 'qty')) != null)) {
       /* La QUANTITÉ suffit à retenir la ligne. Exiger une valorisation ou un grec
          faisait disparaître SILENCIEUSEMENT toutes les positions quand le rapport
          est tiré marchés fermés : IBKR sort alors « N/A » partout, et les jambes
@@ -192,7 +198,7 @@
       if (!u) return;   // ligne de total (« TOUS LES SOUS-JACENTS »)
       const q = num(rd.get(f, 'qty'));
       legs.push({ underlying: u, right: null, aggregate: true,
-        qty: q == null ? 0 : q, price: null, value: valueTot, comm: 0,
+        qty: q == null ? 0 : q, price: null, value: valueTot, spot: spotRN, comm: 0,
         delta: gRaw('delta'), gamma: gRaw('gamma'), vega: gRaw('vega'), theta: gRaw('theta') });
       return;
     } else {
@@ -225,7 +231,7 @@
     const isBuy  = /^(BUY|BOT|B)\b/.test(sideCol) || sideCol === 'BUY';
     const dir = isSell ? -1 : isBuy ? 1 : (qty < 0 ? -1 : 1);
     legs.push({ ...meta, qty: Math.abs(qty) * dir, price, comm: Math.abs(num(rd.get(f, 'comm')) || 0),
-      value: valueTot, delta: gRaw('delta'), gamma: gRaw('gamma'), vega: gRaw('vega'), theta: gRaw('theta') });
+      value: valueTot, spot: spotRN, delta: gRaw('delta'), gamma: gRaw('gamma'), vega: gRaw('vega'), theta: gRaw('theta') });
   }
 
   // Relevé d'activité : fichier à SECTIONS ; on ne lit que « Trades / Data ».
@@ -334,7 +340,7 @@
       const g = {};
       for (const key of ['delta', 'gamma', 'vega', 'theta']) if (l[key] !== undefined) g[key] = l[key];
       out0[k] = { underlying: k, aggregate: true, complete: true,
-        price: null, value: l.value, qty: Math.abs(l.qty) || null, comm: 0,
+        price: null, value: l.value, spot: l.spot, qty: Math.abs(l.qty) || null, comm: 0,
         greeks: Object.keys(g).length ? g : null, expiries: [], strikes: [],
         buy: null, sell: null, unbalanced: false, roundTrip: false };
     }
@@ -424,7 +430,13 @@
       // Le cas le plus fréquent est un rapport tiré marchés FERMÉS — IBKR ne
       // valorise pas, tout sort en « N/A », et il n'y a rien à comparer.
       const reason = realTotal != null ? null
-        : (f.aggregate ? 'aucune valorisation (marchés fermés ?)'
+        : (f.aggregate ? (f.spot != null
+            // Le rapport de risque est bien lu (il donne le spot et les grecs),
+            // mais il ne contient AUCUN prix d'option ni valeur de position :
+            // il n'y a donc rien à confronter côté coût. Le dire, plutôt que
+            // d'afficher un montant fabriqué à partir d'autre chose.
+            ? 'rapport de risque : aucune valeur de position'
+            : 'aucune valorisation (marchés fermés ?)')
           : (f.complete ? 'ni prix ni valeur' : 'une seule jambe du straddle'));
       const ecart = (realTotal != null && planTotal != null)
         ? (side === 'sell' ? planTotal - realTotal : realTotal - planTotal)
@@ -439,8 +451,15 @@
         planSigned: planTotal == null ? null : sgn * Math.abs(planTotal),
         realSigned: realTotal == null ? null : sgn * Math.abs(realTotal),
         realQty: f.qty, realPrice: f.price, realTotal, gross,
-        comm: f.comm, complete: f.complete, unbalanced: f.unbalanced, reason,
-        qtyMismatch: planQty != null && f.qty !== planQty,
+        comm: f.comm, complete: f.complete, unbalanced: f.unbalanced, reason, spot: f.spot,
+        // Le Risk Navigator laisse la colonne « Position » VIDE en vue repliée :
+        // signaler un écart de quantité contre une quantité inconnue mettait un
+        // ⚠ sur toutes les lignes, pour rien.
+        qtyMismatch: planQty != null && f.qty > 0 && f.qty !== planQty,
+        // Γ recalculé avec le spot d'IBKR quand il est fourni : plus juste que
+        // notre prix de construction, qui peut dater.
+        planGammaAtSpot: (planGreeks[String(ticker || '').toUpperCase()]?.gammaK != null && f.spot > 0)
+          ? 2 * planGreeks[String(ticker || '').toUpperCase()].gammaK / (f.spot * f.spot) : null,
         ecart, greeks: f.greeks || null, plan: planGreeks[String(ticker || '').toUpperCase()] || null,
       });
     };

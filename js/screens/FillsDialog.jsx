@@ -273,21 +273,24 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
                   </tr></thead>
                   <tbody>
                     {rows.filter(r => r.greeks && r.plan).flatMap(r => (
-                      ['vega', 'theta', 'gamma'].filter(g => r.plan[g] != null && r.greeks[g] != null).map(g => {
-                        const ratio = r.greeks[g] !== 0 ? Math.abs(r.plan[g] / r.greeks[g]) : null;
+                      ['vega', 'theta', 'gamma'].map(g => {
+                        // Γ : on privilégie la conversion faite avec le spot d'IBKR.
+                        const ours = g === 'gamma' ? (r.planGammaAtSpot ?? r.plan.gamma) : r.plan[g];
+                        if (ours == null || r.greeks[g] == null) return null;
+                        const ratio = r.greeks[g] !== 0 ? Math.abs(ours / r.greeks[g]) : null;
                         const proche = ratio != null && ratio > 0.8 && ratio < 1.25;
                         return (
                           <tr key={r.ticker + g} style={{ borderTop: '1px solid var(--border-subtle)' }}>
                             <td style={{ ...td, color: 'var(--text)' }}>{r.ticker}</td>
                             <td style={{ ...td, textAlign: 'right' }}>{g}</td>
-                            <td style={{ ...td, textAlign: 'right' }}>{Math.round(r.plan[g] * 100) / 100}</td>
+                            <td style={{ ...td, textAlign: 'right' }}>{Math.round(ours * 100) / 100}</td>
                             <td style={{ ...td, textAlign: 'right' }}>{Math.round(r.greeks[g] * 100) / 100}</td>
                             <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: proche ? 'var(--pos-bright)' : 'var(--warn)' }}>
                               {ratio == null ? '—' : '×' + (ratio >= 10 ? Math.round(ratio) : ratio.toFixed(2))}
                             </td>
                           </tr>
                         );
-                      })
+                      }).filter(Boolean)
                     ))}
                   </tbody>
                 </table>
