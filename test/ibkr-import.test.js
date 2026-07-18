@@ -461,3 +461,40 @@ test('une jambe non exécutée garde le bon signe', () => {
   assert.equal(row.matched, false);
   assert.equal(row.planSigned, -500, 'un composant reste un débit même sans exécution');
 });
+
+test("marchés fermés : la raison est EXPLICITE, pas un « incomplet » muet", () => {
+  // Un rapport tiré le week-end : IBKR ne valorise rien, tout sort en « N/A ».
+  // Le fichier est valide, il n'y a simplement rien à comparer — et l'écran doit
+  // le dire, sinon l'utilisateur croit à un import raté.
+  const closed = [
+    'Sous-jacent,Position,Évalué,Delta (Δ),Vega (ν)',
+    'QQQ <NASDAQ>.,-4,N/A,N/A,N/A',
+    'AAPL,6,N/A,N/A,N/A',
+  ].join('\n');
+  const r = IMP.parse(closed);
+  assert.equal(r.kind, 'risk', 'la nature reste reconnue');
+  const s = IMP.toStraddles(r.legs);
+  assert.ok(s.QQQ && s.AAPL, 'les deux sous-jacents sont lus');
+
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200 }], portfolio: { idxPrem: 3400 } };
+  const { rows, unmatched } = IMP.matchStrategy(s, strategy, 100);
+  assert.deepEqual(unmatched, []);
+  for (const t of ['QQQ', 'AAPL']) {
+    const row = rows.find(x => x.ticker === t);
+    assert.equal(row.matched, true, `${t} doit être rapproché`);
+    assert.equal(row.realSigned, null);
+    assert.match(row.reason, /marchés fermés/, 'la cause doit être nommée');
+  }
+});
+
+test("une jambe VRAIMENT absente du fichier reste distinguée", () => {
+  // « absent du fichier » et « pas de valorisation » sont deux problèmes
+  // différents : les confondre enverrait sur une fausse piste.
+  const partial = 'Sous-jacent,Position,Évalué\nQQQ,-4,-3497.00';
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200 }], portfolio: { idxPrem: 3400 } };
+  const { rows } = IMP.matchStrategy(IMP.toStraddles(IMP.parse(partial).legs), strategy, 100);
+  assert.equal(rows.find(r => r.ticker === 'AAPL').matched, false);
+  assert.equal(rows.find(r => r.ticker === 'QQQ').realSigned, 3497, 'QQQ, lui, est valorisé');
+});

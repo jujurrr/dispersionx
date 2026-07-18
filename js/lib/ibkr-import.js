@@ -176,7 +176,12 @@
       if (!u0) return;
       meta = { underlying: u0, right: r,
         expiry: rd.get(f, 'expiry') || null, strike: num(rd.get(f, 'strike')) };
-    } else if (und && (anyGreek || valueTot != null)) {
+    } else if (und && (anyGreek || valueTot != null || num(rd.get(f, 'qty')) != null)) {
+      /* La QUANTITÉ suffit à retenir la ligne. Exiger une valorisation ou un grec
+         faisait disparaître SILENCIEUSEMENT toutes les positions quand le rapport
+         est tiré marchés fermés : IBKR sort alors « N/A » partout, et les jambes
+         apparaissaient comme « absentes du fichier » alors qu'elles y étaient.
+         Une position est une information en soi, indépendante du marché. */
       /* Ligne AGRÉGÉE PAR SOUS-JACENT — la vue par défaut du Risk Navigator, qui
          replie les jambes sous leur sous-jacent. Il n'y a alors ni call/put, ni
          strike : la ligne EST déjà le total du straddle. C'est exploitable, et
@@ -415,6 +420,12 @@
       const gross = (f.price != null && f.qty > 0) ? f.price * f.qty * CS
         : (f.value != null ? Math.abs(f.value) : null);
       const realTotal = gross == null ? null : (side === 'sell' ? gross - f.comm : gross + f.comm);
+      // Pourquoi il n'y a pas de montant : « incomplet » sans raison n'aide pas.
+      // Le cas le plus fréquent est un rapport tiré marchés FERMÉS — IBKR ne
+      // valorise pas, tout sort en « N/A », et il n'y a rien à comparer.
+      const reason = realTotal != null ? null
+        : (f.aggregate ? 'aucune valorisation (marchés fermés ?)'
+          : (f.complete ? 'ni prix ni valeur' : 'une seule jambe du straddle'));
       const ecart = (realTotal != null && planTotal != null)
         ? (side === 'sell' ? planTotal - realTotal : realTotal - planTotal)
         : null;
@@ -428,7 +439,7 @@
         planSigned: planTotal == null ? null : sgn * Math.abs(planTotal),
         realSigned: realTotal == null ? null : sgn * Math.abs(realTotal),
         realQty: f.qty, realPrice: f.price, realTotal, gross,
-        comm: f.comm, complete: f.complete, unbalanced: f.unbalanced,
+        comm: f.comm, complete: f.complete, unbalanced: f.unbalanced, reason,
         qtyMismatch: planQty != null && f.qty !== planQty,
         ecart, greeks: f.greeks || null, plan: planGreeks[String(ticker || '').toUpperCase()] || null,
       });

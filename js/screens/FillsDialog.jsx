@@ -222,7 +222,7 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
                     {/* Signé comme partout ailleurs : indice encaissé (+), composants payés (−). */}
                     <td style={{ ...td, textAlign: 'right', color: (r.planSigned ?? 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmt(r.planSigned)}</td>
                     <td style={{ ...td, textAlign: 'right', color: !r.matched ? 'var(--text-dim)' : ((r.realSigned ?? 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)') }}>
-                      {r.matched ? (r.realSigned != null ? fmt(r.realSigned) : 'jambe incomplète') : 'non exécutée'}
+                      {r.matched ? (r.realSigned != null ? fmt(r.realSigned) : (r.reason || 'incomplet')) : 'absent du fichier'}
                     </td>
                     <td style={{ ...td, textAlign: 'right', fontWeight: 700, color: r.ecart == null ? 'var(--text-dim)' : r.ecart > 0 ? 'var(--neg-bright)' : 'var(--pos-bright)' }}>
                       {r.ecart == null ? '—' : (r.ecart > 0 ? '+' : '') + fmt(r.ecart)}
@@ -303,8 +303,44 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
 
         {match?.unmatched?.length > 0 && (
           <div style={{ font: 'var(--type-caption)', color: 'var(--warn)' }}>
-            Exécutions lues sans jambe correspondante dans cette stratégie : {match.unmatched.join(', ')}.
+            Lues dans le fichier mais sans jambe correspondante : {match.unmatched.join(', ')}.
           </div>
+        )}
+
+        {/* Ce que le fichier contient RÉELLEMENT, ligne par ligne. Sans cela, un
+            « incomplet » ou un « absent » laisse l'utilisateur — et moi — sans
+            moyen de savoir ce qui a été lu. On montre plutôt que d'expliquer. */}
+        {active && Object.keys(active).length > 0 && (
+          <details>
+            <summary style={{ cursor: 'pointer', font: 'var(--type-caption)', color: 'var(--text-muted)' }}>
+              Ce qui a été lu dans le fichier ({Object.keys(active).length} sous-jacents)
+            </summary>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflowX: 'auto', marginTop: 8 }}>
+              <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse' }}>
+                <thead><tr style={{ background: 'var(--bg-elevated)' }}>
+                  {['Sous-jacent', 'Quantité', 'Prix', 'Valeur', 'Vega', 'Theta', 'Gamma'].map((h, i) => (
+                    <th key={h} style={{ ...th, textAlign: i ? 'right' : 'left' }}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {Object.values(active).map(v => (
+                    <tr key={v.underlying} style={{ borderTop: '1px solid var(--border-subtle)' }}>
+                      <td style={{ ...td, color: 'var(--text)' }}>{v.underlying}</td>
+                      {[v.qty, v.price, v.value, v.greeks?.vega, v.greeks?.theta, v.greeks?.gamma].map((x, i) => (
+                        <td key={i} style={{ ...td, textAlign: 'right', color: x == null ? 'var(--text-dim)' : 'var(--text-soft)' }}>
+                          {x == null ? '—' : (Math.round(x * 100) / 100).toLocaleString('fr-FR')}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 6, lineHeight: 1.6 }}>
+              Des tirets partout sur une ligne signifient qu'IBKR n'a rien valorisé — c'est le cas
+              {' '}<strong>marchés fermés</strong>. Le fichier est bien lu ; il n'y a simplement rien à comparer avant l'ouverture.
+            </div>
+          </details>
         )}
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
