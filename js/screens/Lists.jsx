@@ -353,9 +353,11 @@ function Lists({ onNav, onListsChange, addToast }) {
       {loading ? (
         <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>
       ) : lists.length === 0 ? (
-        <EmptyState icon="lists" title="Aucune liste" description="Créez votre première liste pour commencer à construire une stratégie de dispersion.">
-          <button onClick={() => setShowCreate(true)} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', marginTop: 12 }}>Créer une liste</button>
-        </EmptyState>
+        /* EmptyState rend la prop `action` (PAS les enfants) et `icon` comme NŒUD :
+           en enfant, le bouton « Créer une liste » n'était jamais rendu — un tout
+           premier écran sans aucune porte de sortie. */
+        <EmptyState icon="📋" title="Aucune liste" description="Créez votre première liste pour commencer à construire une stratégie de dispersion."
+          action={<button onClick={() => setShowCreate(true)} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Créer une liste</button>} />
       ) : view === 'grid' ? (
         /* ── Vue Grille (par défaut) ── */
         <div style={gridStyle}>{lists.map(cardOf)}</div>

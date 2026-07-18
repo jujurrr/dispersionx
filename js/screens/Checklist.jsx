@@ -31,14 +31,15 @@ function Checklist({ listId, onNav, addToast, mode, pro }) {
     try {
       const nm = (commitName || '').trim();
       await DXApi.commitPosition(listId, nm || null);
-      // Interconnexion des noms : si l'utilisateur a saisi un nom, renommer AUSSI
-      // la liste liée → le même nom se propage partout (liste, Strategy Monitor,
-      // suivi), exactement comme le renommage depuis le suivi.
-      if (nm) {
-        try {
-          const l = await DXApi.getList(listId);
-          if (l && l.id) { await DXApi.updateList(listId, nm, l.description || ''); window.dispatchEvent(new CustomEvent('dx-lists-changed')); }
-        } catch { /* liste absente → on garde le nom de la position seule */ }
+      // Interconnexion des noms : le nom saisi ici est celui de CETTE stratégie,
+      // pas celui du panier. On le pose donc sur la STRATÉGIE — il se propage au
+      // Strategy Monitor et au Suivi (résolution unique DXApi.strategyName), sans
+      // renommer la liste source.
+      // Avant, on renommait la liste : nommer une position rebaptisait le panier
+      // de l'utilisateur — et avec lui TOUTES les autres vues qui en héritent.
+      if (nm && DXApi.renameStrategy) {
+        try { DXApi.renameStrategy(listId, nm); }
+        catch { /* stratégie absente → la position garde son nom, seule */ }
       }
       addToast && addToast('Position créée et suivie.', 'ok');
       onNav('positions');

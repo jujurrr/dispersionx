@@ -358,10 +358,12 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
 
       {/* Items table */}
       {items.length === 0 ? (
-        <EmptyState icon="lists" title="Liste vide" description="Ajoutez des actions depuis l'Index Detail pour commencer.">
-          <button onClick={() => onNav('index-detail', { symbol: list.index_symbol })}
-            style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer', marginTop: 12 }}>Ajouter des actions</button>
-        </EmptyState>
+        /* EmptyState rend la prop `action` (PAS les enfants) et `icon` comme NŒUD,
+           pas comme nom d'icône : en enfant, le bouton était silencieusement perdu,
+           et icon="lists" affichait le mot « lists ». */
+        <EmptyState icon="📋" title="Liste vide" description="Ajoutez des actions depuis l'Index Detail pour commencer."
+          action={<button onClick={() => onNav('index-detail', { symbol: list.index_symbol })}
+            style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Ajouter des actions</button>} />
       ) : (
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>

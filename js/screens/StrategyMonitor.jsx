@@ -33,6 +33,10 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
 
   const fmtS  = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
   const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
+  // Magnitude CONVERTIE : la table porte son propre signe (+ long / − short). Sans
+  // ça, la composition restait en dollars pendant que les cartes au-dessus se
+  // convertissaient — deux devises sur le même écran.
+  const fmtMag = n => window.DXMoney ? window.DXMoney.value(Math.abs(n || 0), { sign: false }) : Math.abs(Math.round(n || 0)).toLocaleString('fr-FR');
   // Seuils partagés avec le Risk Lab / la Construction (mêmes couleurs partout)
   const VEGA_NEUTRAL = (window.DXRisk && window.DXRisk.VEGA_NEUTRAL) || 60;
   const VEGA_ALERT   = (window.DXRisk && window.DXRisk.VEGA_ALERT) || 250;
@@ -189,20 +193,20 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
               {/* Composition (jambes) */}
               <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 90px', padding: '9px 14px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-                  {['Jambe', 'Lots', 'Vega $/1%', 'Prime $'].map(h => <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Jambe' ? 'left' : 'right' }}>{h}</span>)}
+                  {['Jambe', 'Lots', `Vega ${dxSym()}/1%`, `Prime ${dxSym()}`].map(h => <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Jambe' ? 'left' : 'right' }}>{h}</span>)}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 90px', padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
                   <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>{cur.s.index} (short straddle)</span>
                   <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>{cur.s.nIndex || 1}</span>
-                  <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>−{Math.round((cur.s.portfolio && cur.s.portfolio.idxVega) || 0)}</span>
-                  <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>+{Math.round((cur.s.portfolio && cur.s.portfolio.idxPrem) || 0)}</span>
+                  <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>−{fmtMag(cur.s.portfolio && cur.s.portfolio.idxVega)}</span>
+                  <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>+{fmtMag(cur.s.portfolio && cur.s.portfolio.idxPrem)}</span>
                 </div>
                 {(cur.s.components || []).slice(0, 12).map((c, i) => (
                   <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 90px', padding: '8px 14px', borderBottom: i < Math.min(11, (cur.s.components || []).length - 1) ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
                     <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker} <span style={{ color: 'var(--text-dim)' }}>(long)</span></span>
                     <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{c.nContracts}</span>
-                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{Math.round(c.vega || 0)}</span>
-                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>−{Math.round(c.premium || 0)}</span>
+                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{fmtMag(c.vega)}</span>
+                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>−{fmtMag(c.premium)}</span>
                   </div>
                 ))}
                 {(cur.s.components || []).length > 12 && (
