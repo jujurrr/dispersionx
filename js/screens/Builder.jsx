@@ -152,18 +152,33 @@ function StepComposants({ components, index, selected, onToggle, onAdd, onSelect
 // ciblé (on charge alors cette liste, pas le brouillon).
 let _builderDraft = null;
 
+/* Formatage monétaire — au niveau MODULE : `Builder` ET `TradeBrief` (composant
+   distinct, plus bas) s'en servent. Définis dans `Builder`, ils étaient hors de
+   portée de `TradeBrief`, qui plantait donc sur `ReferenceError: dxMag is not
+   defined` dès qu'on ouvrait la Synthèse — écran figé, navigation morte, refresh
+   obligatoire. Ils ne lisent que `window.DXMoney` au moment de l'appel : aucune
+   raison d'être dans la portée du composant. */
+const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
+const dxA   = (n, o) => window.DXMoney ? window.DXMoney.value(n, o) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
+const dxMag = n => window.DXMoney ? window.DXMoney.value(Math.abs(n), { sign: false }) : Math.abs(Math.round(n)).toLocaleString('fr-FR');
+
 /* ─── Strategy Builder: 8-step wizard ──────────────────────────── */
 function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, pro }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
-  const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
-  const dxA   = (n, o) => window.DXMoney ? window.DXMoney.value(n, o) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
-  const dxMag = n => window.DXMoney ? window.DXMoney.value(Math.abs(n), { sign: false }) : Math.abs(Math.round(n)).toLocaleString('fr-FR');
   const { Stepper, Badge, ScoreBadge, MetricCard, CorrelationGauge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const STEPS = ['Indice', 'Échéance', 'Source', 'Composants', 'Corrélation', 'Structure', 'Construction', 'Risque', 'Synthèse'];
   const d0 = listId ? null : _builderDraft;   // brouillon à restaurer (hors entrée ciblée)
   const [step, setStep] = React.useState(d0 ? d0.step : (listId ? 3 : 0));
   const [list, setList] = React.useState(null);
-  const [stratData, setStratData] = React.useState(null);
+  // La stratégie est persistée par l'étape Construction. On la relit au montage :
+  // sinon, revenir sur le Builder alors que le brouillon pointe l'étape Synthèse
+  // rendait TradeBrief SANS stratégie — et il inventait alors des jambes de démo.
+  const [stratData, setStratData] = React.useState(() => {
+    const lid = listId || (d0 && (d0.sourceListId || d0.draftListId));
+    if (!lid) return null;
+    try { const raw = localStorage.getItem('dx-strategy-' + lid); return raw ? { strategy: JSON.parse(raw) } : null; }
+    catch { return null; }
+  });
   const [selectedIndex, setSelectedIndex] = React.useState(d0 ? d0.selectedIndex : 'SPX');
   const [selectedDuration, setSelectedDuration] = React.useState(d0 ? d0.selectedDuration : 30);
   const [idxComps, setIdxComps] = React.useState([]);  // constituants réels (objets) de l'indice
@@ -416,8 +431,11 @@ function Builder({ listId, onNav, onScore, mode, lists, moduleCtx, onModuleCtx, 
           {step < 7 ? (
             <button onClick={() => setStep(s => Math.min(7, s + 1))} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Continuer →</button>
           ) : (
+            /* La stratégie est DÉJÀ construite (étape Construction) : ce bouton ne
+               fait qu'assembler la synthèse. « Construire la stratégie » laissait
+               croire à une seconde construction. */
             <button onClick={handleBuild} disabled={building} style={{ font: '600 12px/1 var(--font-sans)', padding: '9px 20px', borderRadius: 'var(--radius)', border: 'none', background: building ? 'var(--text-dim)' : 'var(--accent)', color: '#fff', cursor: building ? 'not-allowed' : 'pointer' }}>
-              {building ? '⏳ Calcul en cours…' : 'Construire la stratégie →'}
+              {building ? '⏳ Préparation…' : 'Voir la synthèse →'}
             </button>
           )}
         </div>
@@ -679,7 +697,19 @@ function TradeBrief({ data, onNav, pro }) {
       })),
     };
   } else {
-    L = D.legs || { index: { t: 'SPX', strike: 'ATM', prime: '−', vega: '−', theta: '+', qty: 1, action: 'Vendre straddle', exp: '30 DTE' }, basket: [] };
+    // Aucune stratégie ET aucune donnée de démo : ne RIEN inventer. L'ancien repli
+    // fabriquait une jambe SPX fictive — une synthèse plausible mais fausse, sur
+    // laquelle l'utilisateur aurait pu croire lire sa position.
+    if (!D.legs) return (
+      <div style={{ padding: '48px 24px', textAlign: 'center', background: 'var(--bg-card)', border: '1px dashed var(--border)', borderRadius: 'var(--radius-lg)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        <div style={{ font: 'var(--type-title)', color: 'var(--text)' }}>Aucune stratégie à résumer</div>
+        <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', maxWidth: 420 }}>
+          Dimensionnez d'abord la position à l'étape <strong style={{ color: 'var(--text-soft)' }}>Construction</strong> : le module enregistre la répartition des contrats, et la synthèse s'appuie dessus.
+        </div>
+        {onNav && <button onClick={() => onNav('construction')} style={{ font: '600 12px/1 var(--font-sans)', padding: '10px 18px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Aller à la Construction →</button>}
+      </div>
+    );
+    L = D.legs;
   }
 
   const Section = ({ n, title, children }) => (

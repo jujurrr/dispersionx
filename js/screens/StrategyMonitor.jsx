@@ -1,28 +1,19 @@
-/* ─── Strategy Monitor: suivi des stratégies construites ──────────────
+/* ─── Strategy Monitor : vue comparative des stratégies construites ───
    Connecté aux VRAIES stratégies de l'utilisateur (Builder / Construction),
-   stockées en localStorage (dx-strategy-<listId>). Affiche leur composition,
-   grecs nets, prime, DTE restant et état dérivé. Aucune exécution auto. */
+   stockées en localStorage (dx-strategy-<listId>).
+
+   Le Monitor fait ce qu'il est SEUL à faire : comparer et agréger TOUTES les
+   stratégies (exposition de portefeuille, grecs nets, échéances). Le détail
+   d'une stratégie — composition, structure, actions — vit sur sa page dédiée
+   (StrategyDetail) ; une ligne du tableau y mène.
+
+   Il a longtemps embarqué ce détail en plus, en double de StrategyDetail : deux
+   implémentations à maintenir, et des correctifs (devise mixte, alerte vega) à
+   appliquer deux fois. Cette branche a été supprimée. */
 function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
-  const { MetricCard, Badge, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
+  const { MetricCard, BeginnerExplanationBox, Badge } = window.DispersionXDesignSystem_cb86be;
   const [strats, setStrats] = React.useState(null);
-  const [sel, setSel] = React.useState(0);
-  /* Vue du Monitor — RÉVERSIBLE en un clic.
-     'compare' (défaut) : le Monitor se recentre sur ce qu'il est seul à faire —
-       comparer et agréger TOUTES les stratégies. Le détail d'une stratégie vit
-       sur sa propre page (StrategyDetail), qui le fait mieux et sans doublon.
-     'detail' : l'ancien comportement, détail embarqué sous le tableau.
-     Le doublon a un coût réel : chaque correctif (devise, alerte vega…) devait
-     être appliqué DEUX fois. Une fois la vue comparative adoptée, supprimer la
-     branche 'detail' clôt le sujet — d'ici là, le retour arrière est immédiat. */
-  const [view, setView] = React.useState(() => {
-    try { return localStorage.getItem('dx-monitor-view') === 'detail' ? 'detail' : 'compare'; } catch { return 'compare'; }
-  });
-  React.useEffect(() => { try { localStorage.setItem('dx-monitor-view', view); } catch {} }, [view]);
-  const [shareFor, setShareFor] = React.useState(null);   // liste de la construction à partager
-  const [ibkrOpen, setIbkrOpen] = React.useState(false);   // export IBKR (What-If) — Pro
-  const cloudOn = !!(window.DXCloud && window.DXCloud.enabled);
-  const isProUser = !!(window.DXCloud && window.DXCloud.pro);   // partage + export IBKR réservés à Pro
 
   const reload = React.useCallback(() => {
     setStrats((window.DXApi && DXApi.localStrategies) ? DXApi.localStrategies(lists) : []);
@@ -35,15 +26,13 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
     return () => window.removeEventListener('dx-strategies-changed', onChg);
   }, [reload]);
 
-  // Entrée ciblée (sidebar « Stratégies » → onNav('monitor', { listId })) : on
-  // sélectionne la stratégie de cette liste. Sinon on garde la première.
+  // Entrée ciblée (`onNav('monitor', { listId })`) : le détail d'UNE stratégie a
+  // sa propre page — on y renvoie directement plutôt que de la présélectionner.
   React.useEffect(() => {
-    if (!listId || !strats) return;
-    const i = strats.findIndex(s => String(s.listId) === String(listId));
-    if (i >= 0) setSel(i);
-  }, [listId, strats]);
+    if (listId && onNav) onNav('strategy-detail', { listId });
+  }, [listId, onNav]);
 
-  const fmtS  = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
+  const fmtS = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
   const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   // Magnitude CONVERTIE : la table porte son propre signe (+ long / − short). Sans
   // ça, la composition restait en dollars pendant que les cartes au-dessus se
@@ -53,12 +42,6 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
   const VEGA_NEUTRAL = (window.DXRisk && window.DXRisk.VEGA_NEUTRAL) || 60;
   const VEGA_ALERT   = (window.DXRisk && window.DXRisk.VEGA_ALERT) || 250;
   const statusTone = { sain: 'pos', surveiller: 'warn', risque: 'neg' };
-  const statusRisk = { sain: 'faible', surveiller: 'modéré', risque: 'élevé' };
-
-  function del(listId) {
-    if (DXApi.deleteLocalStrategy) DXApi.deleteLocalStrategy(listId);
-    setSel(0); reload();
-  }
 
   if (strats == null) return window.DXLoader
     ? <window.DXLoader title="Chargement des stratégies" steps={['Récupération de vos constructions…', 'Grecs recalculés au DTE restant…']} />
@@ -72,29 +55,12 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
       <div>
         <h1 style={{ font: 'var(--type-h1)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Strategy Monitor</h1>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 660 }}>
-          {view === 'compare'
-            ? "Toutes vos dispersions côte à côte : exposition agrégée, grecs nets et échéances. Ouvrez-en une pour le détail complet."
-            : "Suivi de vos stratégies de dispersion construites : composition, grecs nets, prime et échéance. Outil d'aide à la décision, sans exécution automatique."}
+          Toutes vos dispersions côte à côte : exposition agrégée, grecs nets et échéances. Ouvrez-en une pour le détail complet.
         </p>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        {rows.length > 0 && (
-          <div style={{ display: 'flex', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)', padding: 3 }}>
-            {[['compare', '▤ Comparatif'], ['detail', '▦ Détail intégré']].map(([k, label]) => (
-              <button key={k} onClick={() => setView(k)}
-                title={k === 'detail' ? "Ancienne vue : le détail d'une stratégie sous le tableau" : 'Toutes les stratégies côte à côte'}
-                style={{
-                  font: '600 11px/1 var(--font-sans)', padding: '6px 12px', borderRadius: 'var(--radius-pill)', border: 'none', cursor: 'pointer',
-                  background: view === k ? 'var(--accent)' : 'transparent', color: view === k ? '#fff' : 'var(--text-muted)',
-                  transition: 'all var(--dur-fast) var(--ease)',
-                }}>{label}</button>
-            ))}
-          </div>
-        )}
-        {rows.length > 0 && onNav && (
-          <button onClick={() => onNav('builder')} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>+ Nouvelle stratégie</button>
-        )}
-      </div>
+      {rows.length > 0 && onNav && (
+        <button onClick={() => onNav('builder')} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>+ Nouvelle stratégie</button>
+      )}
     </div>
   );
 
@@ -119,7 +85,6 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
   const totalPrem = rows.reduce((a, r) => a + r.m.netPremium, 0);
   const totalVega = rows.reduce((a, r) => a + r.m.netVega, 0);
   const nAlerts   = rows.filter(r => r.m.alert).length;
-  const cur = rows[Math.min(sel, rows.length - 1)];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -148,7 +113,7 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
         <table style={{ width: '100%', borderCollapse: 'collapse', font: 'var(--type-body-sm)' }}>
           <thead>
             <tr style={{ background: 'var(--bg-elevated)' }}>
-              {['Stratégie', 'Comp.', 'DTE', 'Prime nette', 'Vega net', 'Theta/j', 'Delta', 'État', ...(view === 'compare' ? [''] : [])].map((h, i) => (
+              {['Stratégie', 'Comp.', 'DTE', 'Prime nette', 'Vega net', 'Theta/j', 'Delta', 'État', ''].map((h, i) => (
                 <th key={h} style={{ textAlign: i === 0 ? 'left' : 'right', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', padding: '11px 16px', borderBottom: '1px solid var(--border)', whiteSpace: 'nowrap' }}>{h}</th>
               ))}
             </tr>
@@ -158,10 +123,9 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
               const m = r.m;
               return (
                 <tr key={r.s.listId || i}
-                  // Comparatif : la ligne OUVRE la stratégie (son détail vit sur sa
-                  // propre page). Détail intégré : elle sélectionne, comme avant.
-                  onClick={() => (view === 'compare' && onNav) ? onNav('strategy-detail', { listId: r.s.listId }) : setSel(i)}
-                  style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', background: (view === 'detail' && sel === i) ? 'var(--bg-hover)' : 'transparent' }}>
+                  // La ligne OUVRE la stratégie : son détail vit sur sa propre page.
+                  onClick={() => onNav && onNav('strategy-detail', { listId: r.s.listId })}
+                  style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
                   <td style={{ padding: '12px 16px' }}>
                     <div style={{ font: 'var(--type-title)', fontWeight: 700, color: 'var(--accent-hover)' }}>{m.name}</div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>
@@ -177,115 +141,13 @@ function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: m.netTheta >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netTheta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-data-sm)', color: Math.abs(m.netDelta) < 50 ? 'var(--text-soft)' : 'var(--warn)' }}>{fmtS(m.netDelta)}</td>
                   <td style={{ padding: '12px 16px', textAlign: 'right' }}><Badge tone={statusTone[m.status] || 'neutral'} dot>{m.status}</Badge></td>
-                  {view === 'compare' && (
-                    <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-body-sm)', color: 'var(--accent-hover)', whiteSpace: 'nowrap' }}>Ouvrir →</td>
-                  )}
+                  <td style={{ padding: '12px 16px', textAlign: 'right', font: 'var(--type-body-sm)', color: 'var(--accent-hover)', whiteSpace: 'nowrap' }}>Ouvrir →</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
       </div>
-
-      {/* Détail de la stratégie sélectionnée — vue 'detail' UNIQUEMENT.
-          En comparatif, ce bloc ferait doublon avec la page StrategyDetail. */}
-      {view === 'detail' && cur && (
-        <section>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
-            <div>
-              <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Détail de la stratégie</h2>
-              <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '4px 0 0' }}><strong style={{ color: 'var(--accent-hover)' }}>{cur.m.name}</strong> · {cur.s.sizingMethod === 'vega_neutral' ? 'vega-neutre' : 'poids égaux'}</p>
-            </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {onNav && <button onClick={() => onNav('risk', { listId: cur.s.listId })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: 'none', background: 'var(--accent)', color: '#fff', cursor: 'pointer' }}>Risk Lab →</button>}
-              {onNav && <button onClick={() => onNav('construction', { listId: cur.s.listId })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Ajuster</button>}
-              {/* Export IBKR (Risk Navigator · What-If) — réservé Pro */}
-              {isProUser
-                ? <button onClick={() => setIbkrOpen(true)} title="Générer un CSV importable dans le Risk Navigator de TWS (What-If)" style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>⇪ Exporter IBKR</button>
-                : <button onClick={() => onNav && onNav('pricing')} title="Export IBKR réservé à l'offre Pro" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>🔒 Exporter IBKR <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 5px', borderRadius: 7, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase' }}>Pro</span></button>}
-              {cloudOn && cur.s.listId && (isProUser
-                ? <button onClick={() => setShareFor({ id: cur.s.listId, name: cur.s.displayName || cur.s.listName || cur.m.name })} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>🔗 Partager</button>
-                : <button onClick={() => onNav && onNav('pricing')} title="Partage réservé à l'offre Pro" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px dashed var(--border-strong)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>🔒 Partager <span style={{ font: '600 9px/1 var(--font-mono)', padding: '2px 5px', borderRadius: 7, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)', textTransform: 'uppercase' }}>Pro</span></button>)}
-              <button onClick={() => del(cur.s.listId)} style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--neg)', background: 'transparent', color: 'var(--neg-bright)', cursor: 'pointer' }}>Supprimer</button>
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, alignItems: 'start' }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                <MetricCard label="Prime nette" value={fmtS(cur.m.netPremium) + ' ' + dxSym()} accent="var(--accent)"
-                  hint={'Prime d\'entrée de cette stratégie. ' + (cur.m.netPremium >= 0 ? 'Crédit reçu à l\'ouverture.' : 'Débit payé pour être long dispersion.')} />
-                <MetricCard label="Vega net" value={fmtS(cur.m.netVega) + ' ' + dxSym() + '/1%'} accent={Math.abs(cur.m.netVega) < 60 ? 'var(--pos)' : 'var(--warn)'}
-                  hint="Sensibilité à la volatilité ($ pour +1 pt d'IV). Proche de 0 = équilibré ; élevé = exposé à un mouvement de vol." />
-                <MetricCard label="Theta /jour" value={fmtS(cur.m.netTheta) + ' ' + dxSym()} accent="var(--warn)"
-                  hint="Valeur temps perdue (négatif) ou gagnée chaque jour. Un débit de dispersion « brûle » du theta si le marché reste calme." />
-                <MetricCard label="Delta net" value={fmtS(cur.m.netDelta) + ' ' + dxSym() + '/1%'} accent={Math.abs(cur.m.netDelta) < 50 ? 'var(--pos)' : 'var(--warn)'}
-                  hint={'Sensibilité au sens du marché. Proche de 0 = neutre directionnellement. ' + (cur.s.deltaHedge && cur.s.deltaHedge !== 'none' ? 'Ici : couvert.' : 'Ici : résidu non couvert.')} />
-                <MetricCard label="DTE restant" value={String(cur.m.dte)} unit="j" accent={cur.m.dte < 12 ? 'var(--neg)' : 'var(--info)'}
-                  hint="Jours avant l'échéance des options. Sous ~7-12 jours, le theta s'accélère → le portage devient risqué." />
-                <MetricCard label="Risque" value={statusRisk[cur.m.status] || 'faible'} accent={'var(--' + (statusTone[cur.m.status] || 'pos') + ')'}
-                  hint="Niveau de risque global déduit du vega, du theta et de l'échéance restante." />
-              </div>
-
-              {/* Composition (jambes) */}
-              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 90px', padding: '9px 14px', background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-                  {['Jambe', 'Lots', `Vega ${dxSym()}/1%`, `Prime ${dxSym()}`].map(h => <span key={h} style={{ font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', textAlign: h === 'Jambe' ? 'left' : 'right' }}>{h}</span>)}
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 90px', padding: '9px 14px', borderBottom: '1px solid var(--border-subtle)', alignItems: 'center' }}>
-                  <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>{cur.s.index} (short straddle)</span>
-                  <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>{cur.s.nIndex || 1}</span>
-                  <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>−{fmtMag(cur.s.portfolio && cur.s.portfolio.idxVega)}</span>
-                  <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)', textAlign: 'right' }}>+{fmtMag(cur.s.portfolio && cur.s.portfolio.idxPrem)}</span>
-                </div>
-                {(cur.s.components || []).slice(0, 12).map((c, i) => (
-                  <div key={c.ticker} style={{ display: 'grid', gridTemplateColumns: '1fr 70px 90px 90px', padding: '8px 14px', borderBottom: i < Math.min(11, (cur.s.components || []).length - 1) ? '1px solid var(--border-subtle)' : 'none', alignItems: 'center' }}>
-                    <span style={{ font: '600 12px/1 var(--font-mono)', color: 'var(--text)' }}>{c.ticker} <span style={{ color: 'var(--text-dim)' }}>(long)</span></span>
-                    <span style={{ font: '700 12px/1 var(--font-mono)', color: 'var(--accent)', textAlign: 'right' }}>{c.nContracts}</span>
-                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)', textAlign: 'right' }}>+{fmtMag(c.vega)}</span>
-                    <span style={{ font: '11px/1 var(--font-mono)', color: 'var(--text-soft)', textAlign: 'right' }}>−{fmtMag(c.premium)}</span>
-                  </div>
-                ))}
-                {(cur.s.components || []).length > 12 && (
-                  <div style={{ padding: '8px 14px', font: 'var(--type-caption)', color: 'var(--text-dim)', textAlign: 'center' }}>+ {(cur.s.components || []).length - 12} autres composants</div>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {cur.m.alert
-                ? <WarningPanel tone={cur.m.status === 'risque' ? 'neg' : 'warn'} title="À surveiller">{cur.m.alert} — réévaluez dans le Risk Lab ou ajustez le dimensionnement.</WarningPanel>
-                : <WarningPanel tone="pos" title="Profil sain">Vega équilibré et échéance confortable. Surveillez la prime de corrélation dans le Risk Lab.</WarningPanel>}
-              <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 16 }}>
-                <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 8 }}>Repères</div>
-                {/* Nom de la stratégie EN PREMIER et en couleur, pour mieux la repérer. */}
-                <div style={{ font: 'var(--type-h3)', fontWeight: 700, color: 'var(--accent-hover)', margin: '0 0 10px', wordBreak: 'break-word', lineHeight: 1.25 }}>{cur.m.name}</div>
-                <MonitorRow k="Indice" v={cur.s.indexEtf && cur.s.indexEtf !== cur.s.index ? cur.s.indexEtf + ' (' + cur.s.index + ')' : cur.s.index} />
-                <MonitorRow k="Échéance" v={cur.s.expiry && window.DXExpiry ? `${window.DXExpiry.fmtExpiry(cur.s.expiry)} · ${cur.m.dte} DTE restant` : (cur.s.duration || 30) + ' jours'} />
-                <MonitorRow k="Composants" v={String(cur.m.nComp)} />
-                <MonitorRow k="Sizing" v={cur.s.sizingMethod === 'vega_neutral' ? 'Vega-neutre' : 'Poids égaux'} />
-                <MonitorRow k="Couverture delta" v={cur.s.deltaHedge && cur.s.deltaHedge !== 'none' ? (cur.s.deltaHedge === 'index' ? 'Par l\'indice (future/ETF)' : 'Par sous-jacent') : 'Aucune'} last />
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {shareFor && window.ShareDialog && (
-        <window.ShareDialog list={shareFor} kind="construction" onClose={() => setShareFor(null)} addToast={addToast} />
-      )}
-      {ibkrOpen && window.IbkrExportDialog && cur && (
-        <window.IbkrExportDialog strategy={cur.s} onClose={() => setIbkrOpen(false)} />
-      )}
-    </div>
-  );
-}
-
-function MonitorRow({ k, v, last }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '7px 0', borderBottom: last ? 'none' : '1px solid var(--border-subtle)' }}>
-      <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>{k}</span>
-      <span style={{ font: '600 var(--type-body-sm)', color: 'var(--text)' }}>{v}</span>
     </div>
   );
 }
