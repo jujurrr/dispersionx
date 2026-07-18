@@ -529,6 +529,7 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         ticker: c.ticker, price: c.price, iv: c.iv, hv: c.hv, beta: c.beta,
         sector: c.sector, weight: c.weightUsed, weightEst: c.weightEst, nContracts: c.nContracts,
         vega: c.vega, theta: c.theta, premium: c.premium, delta: c.delta,
+        gamma: c.gamma,   // convexité par jambe : P&L gamma = gamma · (ΔS/S)²
         hedgeShares: deltaHedge === 'legs' ? c.hedgeShares : 0,
       })),
       portfolio: {

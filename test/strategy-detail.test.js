@@ -67,12 +67,12 @@ const STRAT = {
   // et les maths font `sigma: c.iv / 100`). Des fixtures en fraction (0.28)
   // masqueraient un ×100 à l'affichage — c'est exactement ce qui était arrivé.
   components: [
-    { ticker: 'AAPL', price: 230, iv: 28, weight: 22, nContracts: 3, vega: 140, theta: -12, premium: 900, delta: 5 },
-    { ticker: 'MSFT', price: 500, iv: 25, weight: 19, nContracts: 2, vega: 120, theta: -10, premium: 800, delta: 4 },
+    { ticker: 'AAPL', price: 230, iv: 28, weight: 22, nContracts: 3, vega: 140, theta: -12, premium: 900, delta: 5, gamma: 250000 },
+    { ticker: 'MSFT', price: 500, iv: 25, weight: 19, nContracts: 2, vega: 120, theta: -10, premium: 800, delta: 4, gamma: 180000 },
   ],
   portfolio: {
     idxVega: 300, idxTheta: 25, idxPrem: 2400, compVega: 260, compTheta: -22, compPrem: 1700,
-    netVega: -40, netTheta: 3, netGamma: 1, netPremium: 700, netDelta: 0, netDeltaRaw: 9, idxIV: 18.5,
+    netVega: -40, netTheta: 3, netGamma: 130000, netPremium: 700, netDelta: 0, netDeltaRaw: 9, idxIV: 18.5, idxGamma: 300000,
   },
 };
 const LISTS = [{ id: 'L1', name: 'Tech NDX Core' }];
@@ -109,6 +109,40 @@ test('StrategyDetail : IV et poids affichés SANS ×100 parasite', () => {
   assert.ok(html.includes('28.0%'), 'IV du composant');
   assert.ok(html.includes('22.0%'), 'poids du composant');
   assert.doesNotMatch(html, /1850\.0%|2800\.0%|2200\.0%/, 'aucune valeur centuplée');
+});
+
+test('StrategyDetail : theta et gamma affichés par jambe, aux bons signes', () => {
+  // Avec des structures theta-flat / gamma-flat, le vega seul ne suffit plus :
+  // il faut voir le grec que la structure neutralise, jambe par jambe.
+  const html = renderDetail(seeded(), { pro: true });
+
+  assert.match(html, /Theta .{1,3}\/j/, 'colonne theta présente');
+  assert.match(html, /Gamma .{1,3}\/1% spot/, 'colonne gamma présente');
+  // Le gamma est un COEFFICIENT (P&L = gamma·(ΔS/S)²) : il doit être ramené au
+  // mouvement de 1 %, sinon on afficherait 250000 au lieu de 25.
+  assert.match(html, />\+25</, 'gamma AAPL ramené à ±1 % (250000 × 1e-4)');
+  assert.match(html, />−30</, "gamma de la jambe indice, de signe opposé (vendue)");
+  assert.doesNotMatch(html, /250\s?000/, 'jamais le coefficient brut');
+});
+
+test('StrategyDetail : gamma absent des anciennes stratégies → « — », pas 0', () => {
+  // Le gamma par jambe n'était pas stocké avant : afficher 0 laisserait croire à
+  // une convexité nulle, ce qui est faux — on affiche l'absence.
+  const old = JSON.parse(JSON.stringify(STRAT));
+  old.components.forEach(c => { delete c.gamma; });
+  delete old.portfolio.idxGamma;
+  const html = renderDetail(seeded(old), { pro: true });
+
+  assert.ok(html.includes('—'), 'absence signalée');
+  assert.ok(html.includes('AAPL'), 'le reste de la ligne reste affiché');
+});
+
+test('StrategyDetail : la ligne « Net » est la somme de ce qui est affiché', () => {
+  // Le pied de table mélangeait des valeurs vieillies du temps écoulé avec des
+  // lignes de construction : le total ne correspondait à aucune addition visible.
+  const html = renderDetail(seeded(), { pro: true });
+  // netVega de construction = −40 (et non −40 × √(34/30) ≈ −43).
+  assert.match(html, />−40</, 'le net vega est celui de la construction');
 });
 
 test('StrategyDetail : un vega libre par structure est présenté comme tel', () => {

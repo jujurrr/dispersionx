@@ -63,6 +63,12 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
   // IV et poids sont stockés en POURCENTAGE par Construction (`indexIV = 18`,
   // `weightUsed = … * 100`, et `sigma: c.iv / 100` côté maths) → afficher tel quel.
   const pct1 = v => (v != null && isFinite(v)) ? v.toFixed(1) + '%' : '—';
+  // Le gamma est stocké comme COEFFICIENT de convexité : P&L = gamma · (ΔS/S)².
+  // Brut, le nombre ne veut rien dire pour l'utilisateur — on l'exprime au
+  // mouvement de référence de 1 % (× 1e-4), lisible à côté du vega et du theta.
+  // Absent des stratégies construites avant qu'on le stocke → « — », jamais un 0
+  // qui laisserait croire à une convexité nulle.
+  const gammaCell = (g, sign) => (g == null || !isFinite(g)) ? '—' : sign + fmtMag(g * 1e-4);
   const CONTRACT = (window.DXRisk && window.DXRisk.CONTRACT) || 100;
   const statusTone = { sain: 'pos', surveiller: 'warn', risque: 'neg' };
   const statusRisk = { sain: 'faible', surveiller: 'modéré', risque: 'élevé' };
@@ -248,12 +254,15 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
         <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: 0 }}>Composition</h2>
         <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0 }}>
           Une ligne par jambe. <span style={{ color: 'var(--neg-bright)' }}>Rouge = vendu</span> (l'indice), <span style={{ color: 'var(--pos-bright)' }}>vert = acheté</span> (les composants).
+          {' '}<strong style={{ color: 'var(--text-soft)' }}>Vega</strong> = gain pour +1 point de volatilité ·
+          {' '}<strong style={{ color: 'var(--text-soft)' }}>Theta</strong> = valeur temps par jour ·
+          {' '}<strong style={{ color: 'var(--text-soft)' }}>Gamma</strong> = gain pour un mouvement de ±1 % du sous-jacent.
         </p>
         <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflowX: 'auto' }}>
-          <table style={{ width: '100%', minWidth: 620, borderCollapse: 'collapse' }}>
+          <table style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-                {['Jambe', 'Sens', 'Lots', 'Poids', 'IV', `Vega ${dxSym()}/1%`, `Prime ${dxSym()}`].map((h, i) => (
+                {['Jambe', 'Sens', 'Lots', 'Poids', 'IV', `Vega ${dxSym()}/1%`, `Theta ${dxSym()}/j`, `Gamma ${dxSym()}/1% spot`, `Prime ${dxSym()}`].map((h, i) => (
                   <th key={h} style={{ padding: '9px 14px', textAlign: i === 0 ? 'left' : 'right', font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -267,6 +276,10 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
                 <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-dim)' }}>—</td>
                 <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{pct1(p.idxIV)}</td>
                 <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{fmtMag(p.idxVega)}</td>
+                {/* Jambe VENDUE : elle encaisse le temps (theta positif) et subit la
+                    convexité (gamma négatif) — signes opposés aux composants. */}
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>+{fmtMag(p.idxTheta)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>{gammaCell(p.idxGamma, '−')}</td>
                 <td style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>+{fmtMag(p.idxPrem)}</td>
               </tr>
               {comps.map((c, i) => (
@@ -277,6 +290,9 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
                   <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{(c.weightEst ? '~' : '') + pct1(c.weight)}</td>
                   <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{pct1(c.iv)}</td>
                   <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>+{fmtMag(c.vega)}</td>
+                  {/* Jambes ACHETÉES : elles paient le temps et gagnent la convexité. */}
+                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{fmtMag(c.theta)}</td>
+                  <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--pos-bright)' }}>{gammaCell(c.gamma, '+')}</td>
                   <td style={{ padding: '9px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--neg-bright)' }}>−{fmtMag(c.premium)}</td>
                 </tr>
               ))}
@@ -286,8 +302,14 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
                 <td style={{ padding: '10px 14px', font: '600 11px/1 var(--font-sans)', color: 'var(--text-muted)' }}>Net</td>
                 <td colSpan={2} style={{ padding: '10px 14px', textAlign: 'right', font: '11px/1 var(--font-mono)', color: 'var(--text-dim)' }}>{comps.length + 1} jambes</td>
                 <td colSpan={2} />
-                <td style={{ padding: '10px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: Math.abs(m.netVega) < 60 ? 'var(--pos-bright)' : 'var(--warn)' }}>{fmtS(m.netVega)}</td>
-                <td style={{ padding: '10px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: m.netPremium >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(m.netPremium)}</td>
+                {/* Nets de CONSTRUCTION, comme les lignes au-dessus : la ligne « Net »
+                    doit être la somme de ce qui est affiché. Les valeurs vieillies du
+                    temps écoulé sont dans les cartes en haut de page — les mélanger ici
+                    donnait un total qui ne correspondait à aucune addition visible. */}
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: (m.neutralised === 'vega' && Math.abs(p.netVega) >= 60) ? 'var(--warn)' : 'var(--pos-bright)' }}>{fmtS(p.netVega || 0)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: (p.netTheta || 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(p.netTheta || 0)}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{gammaCell(p.netGamma, (p.netGamma || 0) >= 0 ? '+' : '−')}</td>
+                <td style={{ padding: '10px 14px', textAlign: 'right', font: '700 12px/1 var(--font-mono)', color: (p.netPremium || 0) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{fmtS(p.netPremium || 0)}</td>
               </tr>
             </tfoot>
           </table>
