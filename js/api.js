@@ -473,6 +473,7 @@
   // serveur (write-through best-effort) → synchro multi-appareil, sans changer
   // les lectures synchrones (ré-hydratées à la connexion). Voir src/cloud.js.
   function saveStrategy(listId, s) {
+    _archiveIfReplacing(listId, s);
     try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
     const c = _cloud();
     if (c && c.strategies) c.strategies.save(listId, s).catch(e => console.warn('cloud saveStrategy', e));
@@ -480,9 +481,78 @@
   }
   function deleteLocalStrategy(listId) {
     try { localStorage.removeItem('dx-strategy-' + listId); } catch {}
+    try { localStorage.removeItem(_prevKey(listId)); } catch {}   // archive devenue inatteignable
     const c = _cloud();
     if (c && c.strategies) c.strategies.remove(listId).catch(e => console.warn('cloud deleteStrategy', e));
     _strategiesPoke();
+  }
+
+  /* ── Filet anti-écrasement ────────────────────────────────────────────
+     Il n'y a qu'UNE stratégie par liste (contrainte jusqu'au schéma cloud :
+     `upsert … onConflict: 'user_id,list_id'`). Reconstruire sur une liste écrase
+     donc la précédente — et le Builder persiste AUTOMATIQUEMENT à chaque réglage
+     (Construction.jsx, effet `embedded`), sans clic. Une confirmation ne
+     protégerait pas ce chemin-là ; on archive donc la stratégie remplacée pour
+     la rendre restaurable.
+
+     Préfixe DISTINCT de `dx-strategy-` : sinon `localStrategies()`, l'EarningsPanel
+     et la remontée cloud prendraient l'archive pour une vraie stratégie.
+     ⚠ Purgé à la déconnexion comme les stratégies (voir purgeLocalStrategies dans
+     src/cloud.js) — sans quoi l'archive fuirait d'un compte à l'autre. L'archive
+     est donc LOCALE et de courte durée : un filet d'annulation, pas un historique. */
+  const _prevKey = listId => 'dx-stratprev-' + listId;
+
+  // Signature de DÉCISION : ce que l'utilisateur a choisi. Deux stratégies de
+  // même signature sont « la même » — renommer ou ranger n'est pas un remplacement.
+  function _stratSig(s) {
+    if (!s) return '';
+    const comps = (s.components || []).map(c => c.ticker + ':' + (c.nContracts || 0)).sort().join(',');
+    return [s.sizingMethod || '', s.expiry || s.duration || '', s.nIndex || 1,
+      s.weightBasis || '', s.deltaHedge || '', comps].join('|');
+  }
+
+  // UNE archive par liste et par session. Le Builder ré-enregistre à chaque
+  // réglage : sans ce verrou, le 2ᵉ ajustement chasserait la stratégie d'origine
+  // de l'archive et on aurait tout perdu quand même.
+  const _archived = new Set();
+
+  function _archiveIfReplacing(listId, incoming) {
+    try {
+      const key = String(listId);
+      if (_archived.has(key)) return;
+      const raw = localStorage.getItem('dx-strategy-' + listId);
+      if (!raw) return;                                   // rien à remplacer
+      const cur = JSON.parse(raw);
+      if (!cur || !cur.components) return;
+      if (_stratSig(cur) === _stratSig(incoming)) return;  // même stratégie ré-enregistrée
+      localStorage.setItem(_prevKey(listId), raw);
+      _archived.add(key);
+    } catch {}
+  }
+
+  // Stratégie remplacée, si elle existe encore dans cette session.
+  function previousStrategy(listId) {
+    try { const raw = localStorage.getItem(_prevKey(listId)); const s = raw ? JSON.parse(raw) : null; return (s && s.components) ? s : null; }
+    catch { return null; }
+  }
+
+  // Restaure l'archive. La stratégie courante prend sa place → restaurer est
+  // lui-même annulable. Écrit en direct (pas via saveStrategy) pour ne pas
+  // ré-archiver et perdre le va-et-vient.
+  function restoreStrategy(listId) {
+    try {
+      const prev = localStorage.getItem(_prevKey(listId));
+      if (!prev) return { success: false };
+      const cur = localStorage.getItem('dx-strategy-' + listId);
+      localStorage.setItem('dx-strategy-' + listId, prev);
+      if (cur) localStorage.setItem(_prevKey(listId), cur);
+      else localStorage.removeItem(_prevKey(listId));
+      const s = JSON.parse(prev);
+      const c = _cloud();
+      if (c && c.strategies) c.strategies.save(listId, s).catch(e => console.warn('cloud restoreStrategy', e));
+      _strategiesPoke();
+      return { success: true, strategy: s };
+    } catch { return { success: false }; }
   }
   // Écriture LOCALE d'une stratégie → même signal que l'hydratation cloud, pour que
   // les vues persistantes (sidebar « Stratégies », Dashboard) se rafraîchissent tout
@@ -804,6 +874,7 @@
     buildStrategy, getSavedStrategy,
     localStrategies, saveStrategy, deleteLocalStrategy, strategyMetrics,
     strategyName, renameStrategy, setStrategyGroup,
+    previousStrategy, restoreStrategy,
     getRisk,
     getChecklist, commitPosition,
     getPositions, getPosition, snapshotPosition, closePosition, deletePosition, reprice, renamePosition,

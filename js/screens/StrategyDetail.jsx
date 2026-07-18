@@ -197,6 +197,12 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
         </div>
       </div>
 
+      {/* Filet anti-écrasement : si cette stratégie en a remplacé une autre, on
+          l'annonce et on rend l'ancienne restaurable (cf. PrevStrategyBand). */}
+      {window.DXPrevStrategyBand && (
+        <window.DXPrevStrategyBand listId={s.listId} addToast={addToast} onRestored={load} />
+      )}
+
       {/* ── Synthèse en une phrase : ce que vous tradez, en clair ── */}
       <div style={{ ...card, borderLeft: '3px solid var(--accent)' }}>
         <div style={cardTitle}>La stratégie en une phrase</div>

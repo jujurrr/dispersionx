@@ -1036,6 +1036,19 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
         </div>
       ))}
 
+      {/* Filet anti-écrasement : en embarqué, l'effet ci-dessus a déjà persisté —
+          c'est donc ICI que l'utilisateur apprend qu'il a remplacé quelque chose. */}
+      {window.DXPrevStrategyBand && listId && (
+        <window.DXPrevStrategyBand listId={listId} addToast={addToast} onRestored={s => {
+          // Réaligne les réglages affichés sur la stratégie restaurée.
+          setNIndex(s.nIndex || 1);
+          setSizing(s.sizingMethod || 'vega_neutral');
+          if (s.weightBasis) setWeightBasis(s.weightBasis);
+          setDeltaHedge(s.deltaHedge || 'none');
+          setSavedTick(t => t + 1);
+        }} />
+      )}
+
       {/* ── Actions (mode autonome ; en embarqué le Builder gère le flux) ── */}
       {embedded ? (
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>

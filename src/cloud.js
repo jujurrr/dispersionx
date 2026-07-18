@@ -758,14 +758,17 @@ async function maybeMigrateLocalLists() {
   } catch (e) { console.warn('[cloud] migration listes :', e?.message); }
 }
 
-// Purge le cache LOCAL des stratégies (clés dx-strategy-<listId>). Utilisé à la
+// Purge le cache LOCAL des stratégies (clés dx-strategy-<listId>) ET leur archive
+// anti-écrasement (dx-stratprev-<listId>, cf. DXApi.previousStrategy). Utilisé à la
 // déconnexion et avant chaque hydratation → aucune stratégie d'un compte/session
-// précédent ne subsiste dans localStorage.
+// précédent ne subsiste dans localStorage. L'archive DOIT être purgée avec : c'est
+// une stratégie complète, elle fuirait d'un compte à l'autre exactement comme les
+// autres (cf. isolation de compte du cache stratégies).
 function purgeLocalStrategies() {
   try {
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k && k.indexOf('dx-strategy-') === 0) localStorage.removeItem(k);
+      if (k && (k.indexOf('dx-strategy-') === 0 || k.indexOf('dx-stratprev-') === 0)) localStorage.removeItem(k);
     }
   } catch {}
 }
