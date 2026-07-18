@@ -66,8 +66,12 @@
     right:      ['putcall', 'right', 'putorcall', 'callput'],
     strike:     ['strike', 'strikeprice'],
     expiry:     ['expiry', 'expirationdate', 'lasttradingdayorcontractmonth', 'maturity', 'lasttradingday'],
-    qty:        ['quantity', 'qty', 'shares', 'position'],
-    price:      ['tradeprice', 'tprice', 'price', 'execprice', 'fillprice', 'avgprice'],
+    qty:        ['quantity', 'qty', 'shares', 'position', 'pos', 'netposition', 'positionquantity', 'currentposition'],
+    // Un rapport de RISQUE n'a pas de « prix de transaction » : il valorise au
+    // marché. D'où les alias de marque (Last, Mark, Close…), sans lesquels un
+    // export Risk Navigator était rejeté faute de colonne de prix.
+    price:      ['tradeprice', 'tprice', 'price', 'execprice', 'fillprice', 'avgprice',
+      'last', 'lastprice', 'mark', 'markprice', 'marketprice', 'close', 'midpoint', 'mid', 'averageprice', 'avgcost', 'costbasisprice'],
     comm:       ['ibcommission', 'commfee', 'commission', 'commissions', 'comm'],
     asset:      ['assetclass', 'assetcategory', 'securitytype', 'sectype', 'type'],
     side:       ['buysell', 'side', 'action'],
@@ -189,24 +193,50 @@
     return { legs, warnings };
   }
 
-  // Fichier plat à en-tête : Flex Query (portail) ou export du Trade Log (TWS).
+  // Fichier plat à en-tête : Flex Query, Trade Log, ou export Risk Navigator.
   function parseFlat(lines) {
     const legs = [], warnings = [];
-    const delim = pickDelimiter(lines[0]);
-    const rd = columnReader(splitCsv(lines[0], delim));
-    if (rd.map.qty < 0 || rd.map.price < 0) {
-      return { legs, delim, warnings: ["colonnes de quantité et de prix introuvables — depuis le Trade Log, choisissez « Extended Form » ; depuis un Flex Query, cochez Quantity et Trade Price."] };
+    /* L'en-tête n'est PAS toujours la première ligne : un export Risk Navigator
+       commence souvent par un titre, une date, un nom de portefeuille. On cherche
+       donc la ligne qui fait reconnaître le PLUS de colonnes, dans les premières
+       du fichier. Supposer la ligne 0 faisait échouer l'import sans rien
+       expliquer — alors que l'en-tête se trouvait deux lignes plus bas. */
+    let best = { score: -1, i: 0, delim: ',', cols: [] };
+    const LOOK = Math.min(lines.length, 30);
+    for (let i = 0; i < LOOK; i++) {
+      const delim = pickDelimiter(lines[i]);
+      const cols = splitCsv(lines[i], delim);
+      if (cols.length < 2) continue;
+      const rd = columnReader(cols);
+      const score = Object.values(rd.map).filter(x => x >= 0).length;
+      if (score > best.score) best = { score, i, delim, cols, rd };
     }
-    for (let i = 1; i < lines.length; i++) {
+    const { rd, delim, cols } = best;
+    if (!rd || rd.map.qty < 0 || rd.map.price < 0) {
+      // On RESTITUE les colonnes lues : sans elles, l'utilisateur (et nous) ne
+      // pouvons pas savoir ce que contient le fichier. Un message d'échec qui
+      // n'aide pas à diagnostiquer est un cul-de-sac.
+      return { legs, delim, columns: cols,
+        warnings: ['Colonnes de quantité et/ou de prix non reconnues.',
+          cols.length ? `Colonnes lues : ${cols.filter(Boolean).slice(0, 20).join(' · ')}` : 'Aucune colonne lisible.'] };
+    }
+    for (let i = best.i + 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
       readRow(rd, splitCsv(lines[i], delim), legs, warnings);
     }
-    return { legs, warnings, delim };
+    // Nature du fichier : présence des COLONNES de grecs, pas de leurs valeurs.
+    // Un week-end, IBKR n'a pas de données de marché et les grecs sortent en
+    // « N/A » : se fier aux valeurs classerait alors le rapport comme un relevé
+    // d'exécutions, ce qu'il n'est pas.
+    const hasGreekCols = ['delta', 'gamma', 'vega', 'theta'].some(k => rd.map[k] >= 0);
+    return { legs, warnings, delim, columns: cols, hasGreekCols };
   }
 
   // ── Point d'entrée : texte du fichier → jambes d'options ──────────────────
   function parse(text) {
-    const lines = String(text || '').split(/\r?\n/).filter(l => l.length);
+    // Le BOM UTF-8 en tête de fichier colle au premier nom de colonne et le rend
+    // méconnaissable (« ﻿Symbol » ≠ « Symbol ») — Excel et TWS en produisent.
+    const lines = String(text || '').replace(/^﻿/, '').split(/\r?\n/).filter(l => l.length);
     if (!lines.length) return { legs: [], warnings: ['fichier vide'] };
     const isActivity = lines.some(l => l.startsWith('Trades,Header,') || l.startsWith('Trades,Data,'));
     const r = isActivity ? parseActivityStatement(lines) : parseFlat(lines);
@@ -218,7 +248,10 @@
          au marché, avec les grecs d'IBKR. En What-If, aucun ordre n'est passé —
          il n'existe donc aucune transaction, et c'est le seul export disponible.
        On reconnaît le second à la présence des colonnes de grecs. */
-    const hasGreeks = r.legs.some(l => l.vega !== undefined || l.delta !== undefined);
+    // La nature se lit sur les COLONNES, pas sur les valeurs : un week-end, les
+    // grecs d'IBKR sortent en « N/A » et un rapport de risque serait sinon pris
+    // pour un relevé d'exécutions.
+    const hasGreeks = r.hasGreekCols || r.legs.some(l => l.vega !== undefined || l.delta !== undefined);
     const kind = hasGreeks ? 'risk' : 'executions';
     if (!r.legs.length && !r.warnings.length) {
       r.warnings.push("aucune option trouvée — pour des exécutions : Trade History en « Extended Form » ; pour un portefeuille What-If : Risk Navigator ▸ Rapport ▸ Exporter ▸ CSV.");

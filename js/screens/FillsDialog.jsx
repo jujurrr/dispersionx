@@ -31,6 +31,7 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
   // valorisé + grecs IBKR — le seul export disponible en What-If).
   const [kind, setKind] = React.useState('executions');
   const [warnings, setWarnings] = React.useState([]);
+  const [columns, setColumns] = React.useState([]);   // colonnes lues, pour diagnostiquer un échec
   const [manual, setManual] = React.useState(() => {
     const seed = {};
     const f = strategy?.fills?.legs || {};
@@ -50,6 +51,7 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
     r.onload = () => {
       const parsed = IMP.parse(String(r.result || ''));
       setWarnings(parsed.warnings || []);
+      setColumns(parsed.columns || []);
       if (!parsed.legs.length) { setStraddles(null); addToast && addToast('Aucune option lue — voir le détail.', 'error'); return; }
       const s = IMP.toStraddles(parsed.legs);
       setStraddles(s);
@@ -158,8 +160,19 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
               </div>
             </div>
             {warnings.length > 0 && (
-              <div style={{ padding: '9px 12px', background: 'var(--warn-soft)', border: '1px solid var(--warn)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-soft)' }}>
-                {warnings.slice(0, 4).map((w, i) => <div key={i}>· {w}</div>)}
+              <div style={{ padding: '10px 12px', background: 'var(--warn-soft)', border: '1px solid var(--warn)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-soft)', lineHeight: 1.6 }}>
+                {warnings.slice(0, 4).map((w, i) => <div key={i} style={{ marginBottom: 3 }}>· {w}</div>)}
+                {columns.length > 0 && (
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ cursor: 'pointer', color: 'var(--text-muted)' }}>Colonnes détectées dans votre fichier ({columns.length})</summary>
+                    <div style={{ font: '10px/1.6 var(--font-mono)', color: 'var(--text-muted)', marginTop: 6, wordBreak: 'break-word' }}>
+                      {columns.filter(Boolean).join(' · ')}
+                    </div>
+                    <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 6 }}>
+                      Si la quantité ou le prix figurent dans cette liste sous un autre nom, signalez-le : l'alias sera ajouté.
+                    </div>
+                  </details>
+                )}
               </div>
             )}
           </div>

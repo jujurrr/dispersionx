@@ -307,3 +307,53 @@ test('Risk Navigator : nos grecs sont confrontés aux leurs', () => {
   // pas une conversion supposée qui l'aurait masqué.
   assert.equal(Math.round(row.plan.vega / row.greeks.vega), 100);
 });
+
+test("en-tête PRÉCÉDÉ d'un préambule (cas Risk Navigator)", () => {
+  // Un export Risk Navigator commence souvent par un titre, une date, un nom de
+  // portefeuille. Supposer que l'en-tête est la ligne 0 faisait échouer l'import
+  // alors que les colonnes se trouvaient deux lignes plus bas.
+  const withPreamble = [
+    'Risk Navigator Report',
+    'Portfolio: What-If 1,Date: 2026-07-18',
+    '',
+    'Financial Instrument,Position,Last,Delta,Gamma,Vega,Theta',
+    'AAPL 15AUG25 230 C,3,4.25,0.52,0.021,14.2,-3.1',
+    'AAPL 15AUG25 230 P,3,3.75,-0.48,0.021,14.0,-3.0',
+  ].join('\n');
+  const r = IMP.parse(withPreamble);
+  assert.equal(r.legs.length, 2, "l'en-tête doit être trouvé malgré le préambule");
+  assert.equal(IMP.toStraddles(r.legs).AAPL.price, 8);
+});
+
+test('rapport de risque un WEEK-END : grecs « N/A » mais nature reconnue', () => {
+  // Marchés fermés → IBKR ne calcule pas les grecs. Se fier aux VALEURS
+  // classerait le fichier comme un relevé d'exécutions, ce qu'il n'est pas.
+  const weekend = [
+    'Financial Instrument,Position,Last,Delta,Gamma,Vega,Theta',
+    'AAPL 15AUG25 230 C,3,4.25,N/A,N/A,N/A,N/A',
+    'AAPL 15AUG25 230 P,3,3.75,N/A,N/A,N/A,N/A',
+  ].join('\n');
+  const r = IMP.parse(weekend);
+  assert.equal(r.kind, 'risk', 'la nature se lit sur les COLONNES, pas sur les valeurs');
+  assert.equal(r.legs.length, 2, 'les positions restent lisibles');
+  assert.equal(IMP.toStraddles(r.legs).AAPL.price, 8);
+});
+
+test('un échec RESTITUE les colonnes lues, pour diagnostiquer', () => {
+  const inconnu = 'Instrument,Truc,Machin\nAAPL 15AUG25 230 C,1,2';
+  const r = IMP.parse(inconnu);
+  assert.equal(r.legs.length, 0);
+  assert.ok(Array.isArray(r.columns) && r.columns.length, 'les colonnes doivent être remontées');
+  assert.match(r.warnings.join(' '), /Colonnes lues/);
+});
+
+test('BOM UTF-8 en tête de fichier', () => {
+  // Excel et TWS en produisent : le BOM colle au premier nom de colonne et le
+  // rend méconnaissable (« ﻿Symbol » ≠ « Symbol »).
+  const bom = '﻿' + [
+    'Underlying,Right,Quantity,Price,Action,Type',
+    'AAPL,C,3,4.25,BOT,OPT',
+    'AAPL,P,3,3.75,BOT,OPT',
+  ].join('\n');
+  assert.equal(IMP.toStraddles(IMP.parse(bom).legs).AAPL.price, 8);
+});
