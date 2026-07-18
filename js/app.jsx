@@ -466,7 +466,16 @@ function App() {
           flex: 1, overflowY: 'auto', padding: isMobile ? '14px 12px 56px' : '24px 28px 64px',
           backgroundImage: 'radial-gradient(ellipse 70% 50% at 80% -5%, var(--accent-soft), transparent 60%), radial-gradient(ellipse 50% 40% at 0% 10%, var(--pos-soft), transparent 55%)',
         }}>
-          {screenEl}
+          {/* Barrière au niveau du MODULE (pas de la page) : si un écran plante,
+              la barre latérale et la barre du haut restent vivantes — on peut aller
+              ailleurs au lieu de devoir rafraîchir. `resetKey` repart d'une page
+              saine dès qu'on change d'écran ou de cible. */}
+          {window.DXErrorBoundary ? (
+            <window.DXErrorBoundary scope="screen" onHome={() => onNav('home')}
+              resetKey={screen + '·' + (params.listId || params.symbol || params.positionId || '')}>
+              {screenEl}
+            </window.DXErrorBoundary>
+          ) : screenEl}
         </main>
       </div>
 
@@ -594,5 +603,11 @@ function MfaGate({ factorId, onDone, addToast }) {
 (function mountApp() {
   const el = document.getElementById('root');
   if (!window.__dxAppRoot) window.__dxAppRoot = ReactDOM.createRoot(el);
-  window.__dxAppRoot.render(<App />);
+  // Barrière de dernier recours : si le Shell lui-même casse, la barrière du
+  // module ne peut rien — celle-ci évite au moins la page blanche muette.
+  window.__dxAppRoot.render(
+    window.DXErrorBoundary
+      ? <window.DXErrorBoundary scope="root"><App /></window.DXErrorBoundary>
+      : <App />
+  );
 })();

@@ -74,6 +74,7 @@ import '../js/screens/Lists.jsx';
 import '../js/screens/Strategies.jsx';
 import '../js/screens/StrategyDetail.jsx';
 import '../js/screens/PrevStrategyBand.jsx';
+import '../js/screens/ErrorBoundary.jsx';
 import '../js/screens/ListDetail.jsx';
 import '../js/screens/Dashboard.jsx';
 import '../js/screens/CorrelationLab.jsx';
