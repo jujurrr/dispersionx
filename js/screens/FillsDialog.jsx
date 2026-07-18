@@ -126,16 +126,21 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
               onDrop={e => { e.preventDefault(); readFile(e.dataTransfer.files[0]); }}
               style={{ padding: '22px 16px', textAlign: 'center', border: '1px dashed var(--border-strong)', borderRadius: 'var(--radius-lg)', cursor: 'pointer', background: 'var(--bg-elevated)' }}>
               <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>Déposez votre rapport IBKR, ou cliquez pour le choisir</div>
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 5, lineHeight: 1.6 }}>
-                Portail client ▸ <strong>Performance &amp; Rapports</strong> ▸ <strong>Flex Queries</strong> ▸ « Activity Flex Query » ▸ <strong>+</strong>,
-                {' '}puis cochez la section <strong>Trades</strong> et choisissez le format <strong>CSV</strong>.
-                {' '}Un relevé d'activité exporté en CSV fonctionne aussi.
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-soft)', marginTop: 8, lineHeight: 1.65, textAlign: 'left', maxWidth: 520, margin: '8px auto 0' }}>
+                <strong style={{ color: 'var(--accent-hover)' }}>Le plus simple — depuis TWS :</strong><br />
+                Bouton <strong>Compte</strong> (ou Nouvelle fenêtre) ▸ <strong>Trade History</strong> ▸ menu <strong>Fichier</strong> ▸
+                {' '}<em>Exporter les rapports du jour</em>, et choisissez <strong>Extended Form</strong>.
+                {' '}Trois clics, rien à configurer.
               </div>
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 6, lineHeight: 1.6 }}>
-                Colonnes nécessaires : <strong>Quantity</strong>, <strong>Trade Price</strong>, et de quoi identifier l'option
-                {' '}(<strong>Underlying Symbol</strong> + <strong>Put/Call</strong>, ou la colonne <strong>Symbol</strong> seule).
-                {' '}<strong>Buy/Sell</strong> et <strong>IB Commission</strong> sont recommandées.
-                {' '}Les variantes d'orthographe sont acceptées.
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 8, lineHeight: 1.6, textAlign: 'left', maxWidth: 520, margin: '8px auto 0' }}>
+                Autres sources acceptées : un <strong>Flex Query</strong> (Portail client ▸ Performance &amp; Rapports ▸ Flex Queries,
+                {' '}section <em>Trades</em>) ou un <strong>relevé d'activité</strong> en CSV. Utile pour une période ancienne,
+                {' '}que le Trade History ne couvre plus.
+              </div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 8, lineHeight: 1.6, textAlign: 'left', maxWidth: 520, margin: '8px auto 0' }}>
+                Le fichier doit contenir la <strong>quantité</strong>, le <strong>prix</strong> et de quoi identifier l'option.
+                {' '}Les trois exports IBKR nomment ces colonnes différemment, et le séparateur peut ne pas être la virgule —
+                {' '}tout cela est reconnu automatiquement.
               </div>
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 6 }}>
                 Le fichier est lu <strong>dans votre navigateur</strong> et n'est jamais transmis.

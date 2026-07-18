@@ -102,7 +102,7 @@ test('Flex Query : colonnes nommées, actions ignorées', () => {
     'SPY,SPY,,,,,100,480.10,-1.00',
   ].join('\n');
   const r = IMP.parse(flex);
-  assert.equal(r.format, 'flex');
+  assert.equal(r.format, 'flat');
   assert.equal(r.legs.length, 2);
   const s = IMP.toStraddles(r.legs);
   assert.equal(s.AAPL.price, 8);
@@ -159,6 +159,49 @@ test('la jambe indice retient bien le sens VENDU', () => {
   const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2, components: [], portfolio: { idxPrem: 3400 } };
   const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'QQQ');
   assert.equal(row.realPrice, 17.5, 'le prix retenu est celui de la VENTE initiale');
+});
+
+test('export du Trade Log TWS : ses propres noms de colonnes', () => {
+  // Le Trade Log nomme autrement : Underlying / Price / Action / Commission /
+  // Type / Right. Trois exports IBKR, trois vocabulaires pour la même donnée.
+  const tradeLog = [
+    'Date,Time,Underlying,Symbol,Right,Strike,Expiry,Quantity,Price,Action,Commission,Type',
+    '2026-07-15,10:31:22,AAPL,AAPL 250815C00230000,C,230,20250815,3,4.25,BOT,2.25,OPT',
+    '2026-07-15,10:31:24,AAPL,AAPL 250815P00230000,P,230,20250815,3,3.75,BOT,2.25,OPT',
+  ].join('\n');
+  const r = IMP.parse(tradeLog);
+  assert.equal(r.legs.length, 2);
+  assert.equal(IMP.toStraddles(r.legs).AAPL.price, 8);
+});
+
+test('séparateur AUTRE que la virgule (le Trade Log le laisse configurer)', () => {
+  // L'export du Trade Log est un .txt dont le séparateur est réglable. Imposer
+  // la virgule aurait fait échouer l'import sans rien expliquer.
+  const semi = [
+    'Underlying;Right;Quantity;Price;Action;Commission;Type',
+    'AAPL;C;3;4.25;BOT;2.25;OPT',
+    'AAPL;P;3;3.75;BOT;2.25;OPT',
+  ].join('\n');
+  const r = IMP.parse(semi);
+  assert.equal(r.delim, ';', 'le séparateur doit être détecté');
+  assert.equal(IMP.toStraddles(r.legs).AAPL.price, 8);
+
+  const tab = semi.replace(/;/g, '\t');
+  const rt = IMP.parse(tab);
+  assert.equal(rt.delim, '\t');
+  assert.equal(IMP.toStraddles(rt.legs).AAPL.price, 8);
+});
+
+test('« BOT » / « SLD » sont compris comme achat / vente', () => {
+  // Le Trade Log écrit BOT et SLD, là où le Flex Query écrit BUY et SELL.
+  const log = [
+    'Underlying,Right,Quantity,Price,Action,Commission,Type',
+    'QQQ,C,2,9.10,SLD,1.50,OPT',
+    'QQQ,P,2,8.40,SLD,1.50,OPT',
+  ].join('\n');
+  const s = IMP.toStraddles(IMP.parse(log).legs);
+  assert.equal(s.QQQ.sell.complete, true, 'les deux jambes doivent être classées en VENTE');
+  assert.equal(s.QQQ.sell.price, 17.5);
 });
 
 test('format OCC reconnu', () => {

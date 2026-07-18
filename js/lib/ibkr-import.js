@@ -29,7 +29,8 @@
   // ── CSV : découpe une ligne en respectant les guillemets ──────────────────
   // Indispensable : IBKR écrit la date sous la forme "2026-07-15, 10:31:22",
   // virgule comprise. Un simple split(',') casserait toutes les colonnes.
-  function splitCsv(line) {
+  function splitCsv(line, delim) {
+    const D = delim || ',';
     const out = [];
     let cur = '', q = false;
     for (let i = 0; i < line.length; i++) {
@@ -37,7 +38,7 @@
       if (ch === '"') {
         if (q && line[i + 1] === '"') { cur += '"'; i++; }   // guillemet échappé
         else q = !q;
-      } else if (ch === ',' && !q) { out.push(cur); cur = ''; }
+      } else if (ch === D && !q) { out.push(cur); cur = ''; }
       else cur += ch;
     }
     out.push(cur);
@@ -55,18 +56,40 @@
      On normalise donc l'en-tête (minuscules, sans espaces ni ponctuation) et on
      accepte tous les alias connus. */
   const norm = h => String(h || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  // Trois exports IBKR différents nomment les mêmes colonnes de trois façons :
+  //   Trade Log (TWS)      : Underlying · Price · Action · Commission · Type · Right
+  //   Flex Query (portail) : Underlying Symbol · Trade Price · IB Commission · Asset Class · Put/Call
+  //   Relevé d'activité    : Symbol · T. Price · Comm/Fee · Asset Category
   const ALIASES = {
-    symbol:     ['symbol', 'description'],
-    underlying: ['underlyingsymbol', 'underlying'],
-    right:      ['putcall', 'right', 'putorcall'],
+    symbol:     ['symbol', 'description', 'contract', 'financialinstrument'],
+    underlying: ['underlyingsymbol', 'underlying', 'undsymbol'],
+    right:      ['putcall', 'right', 'putorcall', 'callput'],
     strike:     ['strike', 'strikeprice'],
-    expiry:     ['expiry', 'expirationdate', 'lasttradingdayorcontractmonth', 'maturity'],
-    qty:        ['quantity', 'qty'],
-    price:      ['tradeprice', 'tprice', 'price'],
-    comm:       ['ibcommission', 'commfee', 'commission', 'commissions'],
-    asset:      ['assetclass', 'assetcategory'],
-    side:       ['buysell', 'side'],
+    expiry:     ['expiry', 'expirationdate', 'lasttradingdayorcontractmonth', 'maturity', 'lasttradingday'],
+    qty:        ['quantity', 'qty', 'shares', 'position'],
+    price:      ['tradeprice', 'tprice', 'price', 'execprice', 'fillprice', 'avgprice'],
+    comm:       ['ibcommission', 'commfee', 'commission', 'commissions', 'comm'],
+    asset:      ['assetclass', 'assetcategory', 'securitytype', 'sectype', 'type'],
+    side:       ['buysell', 'side', 'action'],
   };
+
+  // Le Trade Log de TWS exporte en .txt avec un séparateur CONFIGURABLE (virgule,
+  // point-virgule, tabulation…). Imposer la virgule aurait fait échouer l'import
+  // sans rien expliquer. On retient le séparateur qui fait reconnaître le PLUS de
+  // colonnes — pas simplement celui qui en produit le plus, sinon un texte libre
+  // truffé d'espaces gagnerait.
+  const DELIMS = [',', ';', '\t', '|'];
+  function pickDelimiter(headerLine) {
+    let best = ',', bestScore = -1;
+    for (const d of DELIMS) {
+      const cols = splitCsv(headerLine, d);
+      if (cols.length < 2) continue;
+      const known = Object.values(columnReader(cols).map).filter(i => i >= 0).length;
+      const score = known * 100 + cols.length;
+      if (score > bestScore) { bestScore = score; best = d; }
+    }
+    return best;
+  }
   // Renvoie une fonction `col(nom)` → valeur, quelle que soit l'orthographe.
   function columnReader(header) {
     const idx = {};
@@ -133,8 +156,14 @@
     if (qty == null || price == null || qty === 0) return;
     // Sens : la colonne Buy/Sell fait foi si elle existe, sinon le signe de la
     // quantité. Il SERT à distinguer l'ouverture de la clôture (cf. toStraddles).
+    // Le vocabulaire diffère d'un export à l'autre : « BUY / SELL » côté Flex
+    // Query, « BOT / SLD » dans le Trade Log de TWS. Ne reconnaître que le premier
+    // classait toutes les ventes en achats — donc le prix d'ouverture de la jambe
+    // indice devenait celui de son rachat.
     const sideCol = String(rd.get(f, 'side') || '').trim().toUpperCase();
-    const dir = sideCol.startsWith('SELL') ? -1 : sideCol.startsWith('BUY') ? 1 : (qty < 0 ? -1 : 1);
+    const isSell = /^(SELL|SLD|S)\b/.test(sideCol) || sideCol === 'SELL';
+    const isBuy  = /^(BUY|BOT|B)\b/.test(sideCol) || sideCol === 'BUY';
+    const dir = isSell ? -1 : isBuy ? 1 : (qty < 0 ? -1 : 1);
     legs.push({ ...meta, qty: Math.abs(qty) * dir, price, comm: Math.abs(num(rd.get(f, 'comm')) || 0) });
   }
 
@@ -152,18 +181,19 @@
     return { legs, warnings };
   }
 
-  // Flex Query : CSV plat, en-tête en première ligne.
-  function parseFlex(lines) {
+  // Fichier plat à en-tête : Flex Query (portail) ou export du Trade Log (TWS).
+  function parseFlat(lines) {
     const legs = [], warnings = [];
-    const rd = columnReader(splitCsv(lines[0]));
+    const delim = pickDelimiter(lines[0]);
+    const rd = columnReader(splitCsv(lines[0], delim));
     if (rd.map.qty < 0 || rd.map.price < 0) {
-      return { legs, warnings: ['colonnes « Quantity » et « Trade Price » introuvables — ajoutez-les au Flex Query.'] };
+      return { legs, delim, warnings: ["colonnes de quantité et de prix introuvables — depuis le Trade Log, choisissez « Extended Form » ; depuis un Flex Query, cochez Quantity et Trade Price."] };
     }
     for (let i = 1; i < lines.length; i++) {
       if (!lines[i].trim()) continue;
-      readRow(rd, splitCsv(lines[i]), legs, warnings);
+      readRow(rd, splitCsv(lines[i], delim), legs, warnings);
     }
-    return { legs, warnings };
+    return { legs, warnings, delim };
   }
 
   // ── Point d'entrée : texte du fichier → jambes d'options ──────────────────
@@ -171,11 +201,11 @@
     const lines = String(text || '').split(/\r?\n/).filter(l => l.length);
     if (!lines.length) return { legs: [], warnings: ['fichier vide'] };
     const isActivity = lines.some(l => l.startsWith('Trades,Header,') || l.startsWith('Trades,Data,'));
-    const r = isActivity ? parseActivityStatement(lines) : parseFlex(lines);
+    const r = isActivity ? parseActivityStatement(lines) : parseFlat(lines);
     if (!r.legs.length && !r.warnings.length) {
-      r.warnings.push("aucune exécution d'option trouvée — vérifiez qu'il s'agit bien d'un relevé d'activité ou d'un Flex Query « Trades ».");
+      r.warnings.push("aucune exécution d'option trouvée — vérifiez que le fichier contient bien des transactions sur options (Trade Log en « Extended Form », Flex Query section Trades, ou relevé d'activité).");
     }
-    return { ...r, format: isActivity ? 'activity' : 'flex' };
+    return { ...r, format: isActivity ? 'activity' : 'flat' };
   }
 
   // ── Recoller les straddles ────────────────────────────────────────────────
