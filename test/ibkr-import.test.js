@@ -108,6 +108,59 @@ test('Flex Query : colonnes nommées, actions ignorées', () => {
   assert.equal(s.AAPL.price, 8);
 });
 
+test('en-têtes OFFICIELS avec espaces (« Underlying Symbol », « Trade Price »)', () => {
+  // La doc IBKR est explicite : « les noms varient ». Le Flex Query exporte
+  // « Underlying Symbol » / « Trade Price » / « IB Commission » AVEC espaces —
+  // chercher « UnderlyingSymbol » sans espace échouait sur les vrais fichiers.
+  const officiel = [
+    'Symbol,Underlying Symbol,Expiry,Strike,Put/Call,Quantity,Trade Price,IB Commission,Asset Class,Buy/Sell',
+    'AAPL 250815C00230000,AAPL,20250815,230,C,3,4.25,-2.25,OPT,BUY',
+    'AAPL 250815P00230000,AAPL,20250815,230,P,3,3.75,-2.25,OPT,BUY',
+    'SPY,SPY,,,,100,480.10,-1.00,STK,BUY',
+  ].join('\n');
+  const r = IMP.parse(officiel);
+  assert.equal(r.legs.length, 2, 'les deux jambes doivent être lues');
+  const s = IMP.toStraddles(r.legs);
+  assert.equal(s.AAPL.price, 8);
+  assert.equal(s.AAPL.comm, 4.5);
+});
+
+test("un rapport contenant l'ALLER-RETOUR garde le prix d'ENTRÉE", () => {
+  // Piège majeur : si le fichier couvre aussi la clôture, tout agréger donnerait
+  // une moyenne entre le prix d'entrée et celui de sortie — ni l'un ni l'autre.
+  const roundTrip = [
+    'Symbol,Underlying Symbol,Put/Call,Quantity,Trade Price,IB Commission,Asset Class,Buy/Sell',
+    'AAPL,AAPL,C,3,4.25,-2.25,OPT,BUY',      // ouverture (achat)
+    'AAPL,AAPL,P,3,3.75,-2.25,OPT,BUY',
+    'AAPL,AAPL,C,-3,9.00,-2.25,OPT,SELL',    // clôture (vente, bien plus cher)
+    'AAPL,AAPL,P,-3,1.00,-2.25,OPT,SELL',
+  ].join('\n');
+  const s = IMP.toStraddles(IMP.parse(roundTrip).legs);
+  assert.equal(s.AAPL.roundTrip, true, "l'aller-retour est détecté");
+  assert.equal(s.AAPL.buy.price, 8, "prix d'ouverture isolé");
+  assert.equal(s.AAPL.sell.price, 10, 'prix de clôture isolé');
+
+  // Le rapprochement doit retenir le sens de la JAMBE : un composant est acheté.
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 1,
+    components: [{ ticker: 'AAPL', nContracts: 3, premium: 2200 }], portfolio: { idxPrem: 1000 } };
+  const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'AAPL');
+  assert.equal(row.realPrice, 8, "c'est le prix d'ENTRÉE qui compte, pas la moyenne des deux");
+});
+
+test('la jambe indice retient bien le sens VENDU', () => {
+  const mixed = [
+    'Symbol,Underlying Symbol,Put/Call,Quantity,Trade Price,IB Commission,Asset Class,Buy/Sell',
+    'QQQ,QQQ,C,-2,9.10,-1.50,OPT,SELL',      // ouverture de la jambe indice
+    'QQQ,QQQ,P,-2,8.40,-1.50,OPT,SELL',
+    'QQQ,QQQ,C,2,3.00,-1.50,OPT,BUY',        // rachat de clôture
+    'QQQ,QQQ,P,2,2.00,-1.50,OPT,BUY',
+  ].join('\n');
+  const s = IMP.toStraddles(IMP.parse(mixed).legs);
+  const strategy = { index: 'NDX', indexEtf: 'QQQ', nIndex: 2, components: [], portfolio: { idxPrem: 3400 } };
+  const row = IMP.matchStrategy(s, strategy, 100).rows.find(r => r.ticker === 'QQQ');
+  assert.equal(row.realPrice, 17.5, 'le prix retenu est celui de la VENTE initiale');
+});
+
 test('format OCC reconnu', () => {
   const m = IMP.parseOptionSymbol('AAPL  250815C00230000');
   assert.equal(m.underlying, 'AAPL');

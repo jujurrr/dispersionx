@@ -126,9 +126,19 @@ function FillsDialog({ strategy, onClose, onSaved, addToast }) {
               onDrop={e => { e.preventDefault(); readFile(e.dataTransfer.files[0]); }}
               style={{ padding: '22px 16px', textAlign: 'center', border: '1px dashed var(--border-strong)', borderRadius: 'var(--radius-lg)', cursor: 'pointer', background: 'var(--bg-elevated)' }}>
               <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>Déposez votre rapport IBKR, ou cliquez pour le choisir</div>
-              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 5 }}>
-                TWS ▸ Rapports ▸ Relevés ▸ Activité (CSV), ou un Flex Query « Trades ».
-                {' '}Le fichier est lu <strong>dans votre navigateur</strong> et n'est jamais transmis.
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 5, lineHeight: 1.6 }}>
+                Portail client ▸ <strong>Performance &amp; Rapports</strong> ▸ <strong>Flex Queries</strong> ▸ « Activity Flex Query » ▸ <strong>+</strong>,
+                {' '}puis cochez la section <strong>Trades</strong> et choisissez le format <strong>CSV</strong>.
+                {' '}Un relevé d'activité exporté en CSV fonctionne aussi.
+              </div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 6, lineHeight: 1.6 }}>
+                Colonnes nécessaires : <strong>Quantity</strong>, <strong>Trade Price</strong>, et de quoi identifier l'option
+                {' '}(<strong>Underlying Symbol</strong> + <strong>Put/Call</strong>, ou la colonne <strong>Symbol</strong> seule).
+                {' '}<strong>Buy/Sell</strong> et <strong>IB Commission</strong> sont recommandées.
+                {' '}Les variantes d'orthographe sont acceptées.
+              </div>
+              <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 6 }}>
+                Le fichier est lu <strong>dans votre navigateur</strong> et n'est jamais transmis.
               </div>
             </div>
             {warnings.length > 0 && (
