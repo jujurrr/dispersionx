@@ -295,6 +295,7 @@ function App() {
     lists: ['Mes listes'],
     'list-detail': ['Mes listes', '…'],
     strategies: ['Mes stratégies'],
+    'strategy-detail': ['Mes stratégies', '…'],
     dashboard: ['Dashboard'],
     corr: ['Correlation Lab'],
     vol: ['Volatility Lab'],
@@ -337,6 +338,9 @@ function App() {
       break;
     case 'strategies':
       screenEl = <window.Strategies onNav={onNav} lists={lists} addToast={addToast} />;
+      break;
+    case 'strategy-detail':
+      screenEl = <window.StrategyDetail listId={params.listId} onNav={onNav} lists={lists} addToast={addToast} pro={pro} mode={mode} />;
       break;
     case 'list-detail':
       screenEl = <window.ListDetail listId={params.listId} onNav={onNav} onScore={onScore} addToast={addToast} mode={mode} scoreCache={scoreCache} />;

@@ -14,11 +14,12 @@
 function Strategies({ onNav, lists, addToast }) {
   const { EmptyState } = window.DispersionXDesignSystem_cb86be;
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
-  const [strats, setStrats] = React.useState(null);
+  // Lecture SYNCHRONE (localStorage) → initialiseur paresseux plutôt qu'un effet :
+  // le premier rendu porte déjà les stratégies, pas d'écran de chargement inutile.
+  const read = () => (window.DXApi && DXApi.localStrategies) ? (DXApi.localStrategies(lists) || []) : [];
+  const [strats, setStrats] = React.useState(read);
 
-  const load = React.useCallback(() => {
-    setStrats((window.DXApi && DXApi.localStrategies) ? (DXApi.localStrategies(lists) || []) : []);
-  }, [lists]);
+  const load = React.useCallback(() => { setStrats(read()); }, [lists]);   // eslint-disable-line react-hooks/exhaustive-deps
   React.useEffect(() => {
     load();
     window.addEventListener('dx-strategies-changed', load);
@@ -128,7 +129,7 @@ function Strategies({ onNav, lists, addToast }) {
   // Carte de stratégie (réutilisée par les vues Grille et Groupes).
   const cardOf = ({ s, m }) => (
     <div key={s.listId} className="dx-glass dx-lift" style={{ borderRadius: 'var(--radius-lg)', padding: 18, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 12 }}
-      onClick={() => onNav('monitor', { listId: s.listId })}>
+      onClick={() => onNav('strategy-detail', { listId: s.listId })}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ font: 'var(--type-ticker)', color: 'var(--accent-hover)', marginBottom: 4 }}>{s.index || '—'}</div>
@@ -153,7 +154,7 @@ function Strategies({ onNav, lists, addToast }) {
       </div>
       {m.alert && <div style={{ font: 'var(--type-caption)', color: 'var(--warn)' }}>⚠ {m.alert}</div>}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-        <button onClick={e => { e.stopPropagation(); onNav('monitor', { listId: s.listId }); }}
+        <button onClick={e => { e.stopPropagation(); onNav('strategy-detail', { listId: s.listId }); }}
           style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'transparent', color: 'var(--accent-hover)', cursor: 'pointer' }}>Ouvrir</button>
         <button onClick={e => { e.stopPropagation(); setGroupFor(s); setNewGroupName(''); }}
           style={{ flex: 1, font: '600 11px/1 var(--font-sans)', padding: '7px 0', borderRadius: 'var(--radius)', border: '1px dashed var(--border)', background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer' }}>
@@ -216,9 +217,7 @@ function Strategies({ onNav, lists, addToast }) {
       )}
 
       {/* Contenu principal — bascule selon la vue */}
-      {strats == null ? (
-        <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-muted)', font: 'var(--type-body)' }}>Chargement…</div>
-      ) : rows.length === 0 ? (
+      {rows.length === 0 ? (
         /* EmptyState rend `action` (pas les enfants) et `icon` comme NŒUD, pas comme nom d'icône. */
         <EmptyState icon="🧱" title="Aucune stratégie construite"
           description="Construisez une dispersion depuis le Strategy Builder : elle apparaîtra ici, renommable et rangeable en groupes."
@@ -276,7 +275,7 @@ function Strategies({ onNav, lists, addToast }) {
                         {dayLabel(ymd)}
                       </div>
                     )}
-                    <div onClick={() => onNav('monitor', { listId: s.listId })}
+                    <div onClick={() => onNav('strategy-detail', { listId: s.listId })}
                       style={{ display: 'flex', gap: 14, cursor: 'pointer' }}
                       onMouseEnter={e => { e.currentTarget.querySelector('[data-row]').style.background = 'var(--bg-hover)'; }}
                       onMouseLeave={e => { e.currentTarget.querySelector('[data-row]').style.background = 'var(--bg-card)'; }}>
