@@ -82,7 +82,8 @@ function seeded(strat = STRAT) {
 }
 
 test('StrategyDetail : récapitule la construction sans planter', () => {
-  const html = renderDetail(seeded(), { pro: true, mode: 'debutant' });
+  // 'Débutant' avec majuscule et accent : c'est la valeur utilisée partout dans l'app.
+  const html = renderDetail(seeded(), { pro: true, mode: 'Débutant' });
 
   assert.ok(html.includes('Tech NDX Core'), 'nom hérité de la liste');
   // La phrase de synthèse doit refléter les VRAIS chiffres du blob (2 vendus, 3+2=5 achetés).

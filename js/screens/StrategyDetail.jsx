@@ -271,7 +271,7 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
             </tfoot>
           </table>
         </div>
-        {mode === 'debutant' && (
+        {mode === 'Débutant' && (
           <p style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', margin: 0 }}>
             Les grecs affichés sont ramenés au DTE restant (vega ∝ √T, theta ∝ 1/√T) : ils reflètent la position d'aujourd'hui, pas celle du jour de construction.
           </p>
