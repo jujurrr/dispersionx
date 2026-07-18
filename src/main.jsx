@@ -56,6 +56,7 @@ import '../js/lib/corr-baseline-data.js';   // window.DXCorrBaseline : quantiles
 import * as DXCostMath from '../api/_lib/dispersion-cost.js';
 window.DXCost = DXCostMath;
 import '../js/lib/ibkr-export.js';   // window.DXIbkr (CSV Risk Navigator/What-If à partir d'une stratégie)
+import '../js/lib/ibkr-import.js';   // window.DXIbkrImport : lecture des exécutions RÉELLES (rapport IBKR → prix payés)
 
 // 5) Écrans (ordre identique à index.html — dépendances de globals au top-level).
 import '../js/screens/LoadingSpinner.jsx';  // window.DXLoader (roue + texte tournant, écrans de chargement)
@@ -74,6 +75,7 @@ import '../js/screens/Lists.jsx';
 import '../js/screens/Strategies.jsx';
 import '../js/screens/StrategyDetail.jsx';
 import '../js/screens/PrevStrategyBand.jsx';
+import '../js/screens/FillsDialog.jsx';
 import '../js/screens/ErrorBoundary.jsx';
 import '../js/screens/ListDetail.jsx';
 import '../js/screens/Dashboard.jsx';

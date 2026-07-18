@@ -23,6 +23,7 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
   const [nameDraft, setNameDraft] = React.useState('');
   const [shareFor, setShareFor] = React.useState(null);
   const [ibkrOpen, setIbkrOpen] = React.useState(false);
+  const [fillsOpen, setFillsOpen] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
   const [dialog, setDialog] = React.useState(null);
   const [dialogBusy, setDialogBusy] = React.useState(false);
@@ -162,6 +163,12 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
       {isProUser
         ? <button onClick={() => setIbkrOpen(true)} title="CSV importable dans le Risk Navigator de TWS (What-If)" style={btnGhost}>⇪ Exporter IBKR</button>
         : lockedBtn('Exporter IBKR', "Export IBKR réservé à l'offre Pro")}
+      {/* Symétrique de l'export : relire ses vraies exécutions. Ouvert à tous —
+          mesurer ce qu'on a payé n'est pas un privilège, c'est la base. */}
+      <button onClick={() => setFillsOpen(true)} title="Importer un rapport IBKR ou saisir vos prix d'exécution"
+        style={s.fills ? btnAccent : btnGhost}>
+        {s.fills ? '✓ Mes exécutions' : '⇩ Mes exécutions'}
+      </button>
       {cloudOn && (isProUser
         ? <button onClick={() => setShareFor({ id: s.listId, name: s.displayName })} style={btnGhost}>🔗 Partager</button>
         : lockedBtn('Partager', "Partage réservé à l'offre Pro"))}
@@ -371,6 +378,9 @@ function StrategyDetail({ listId, onNav, lists, addToast, pro, mode }) {
 
       {shareFor && window.ShareDialog && (
         <window.ShareDialog list={shareFor} kind="construction" onClose={() => setShareFor(null)} addToast={addToast} />
+      )}
+      {fillsOpen && window.DXFillsDialog && (
+        <window.DXFillsDialog strategy={s} onClose={() => setFillsOpen(false)} onSaved={load} addToast={addToast} />
       )}
       {ibkrOpen && window.IbkrExportDialog && (
         <window.IbkrExportDialog strategy={s} onClose={() => setIbkrOpen(false)} />
