@@ -304,6 +304,15 @@ const NAV = [
 function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
   const listCount = lists ? lists.length : 0;
   const recent = lists ? lists.slice(0, 5) : [];
+  // Stratégies construites (dx-strategy-<listId> + cloud) → section sidebar « Stratégies ».
+  // Nom = liste SOURCE courante (le renommage de liste s'y propage), pas le snapshot stocké.
+  const [strategies, setStrategies] = React.useState([]);
+  React.useEffect(() => {
+    const load = () => setStrategies((window.DXApi && DXApi.localStrategies) ? (DXApi.localStrategies(lists) || []) : []);
+    load();
+    window.addEventListener('dx-strategies-changed', load);
+    return () => window.removeEventListener('dx-strategies-changed', load);
+  }, [lists]);
   // Entrée « Opportunités Pro » TOUJOURS visible (sinon impossible de découvrir
   // et de payer l'offre Pro). Marquée « Pro » tant que l'accès n'est pas actif ;
   // le clic mène à l'écran qui propose « Passer Pro ».
@@ -405,6 +414,30 @@ function Sidebar({ active, onNav, lists, user, pro, isMobile }) {
                 <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', flexShrink: 0 }}>{list.n_items}</span>
               </a>
             ))}
+          </div>
+        )}
+
+        {/* Stratégies construites — nom = liste source courante (suit le renommage) ; clic → Monitor */}
+        {strategies.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 6 }}>
+            <div style={{ padding: '0 10px 6px', font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-muted)' }}>{window.t ? window.t('Stratégies') : 'Stratégies'}</div>
+            {strategies.slice(0, 6).map((s) => {
+              const nm = ((lists || []).find(l => l.id === s.listId) || {}).name || s.listName || 'Stratégie';
+              return (
+                <a key={s.listId || nm} onClick={() => onNav('monitor', { listId: s.listId })} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px',
+                  borderRadius: 'var(--radius)', cursor: 'pointer', color: 'var(--text-soft)',
+                  font: '500 12px/1 var(--font-sans)', transition: 'all var(--dur-fast) var(--ease)',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                >
+                  <span style={{ width: 6, height: 6, borderRadius: 2, flexShrink: 0, background: 'var(--accent)' }} />
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nm}</span>
+                  <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', flexShrink: 0 }}>{s.index || ''}</span>
+                </a>
+              );
+            })}
           </div>
         )}
       </nav>

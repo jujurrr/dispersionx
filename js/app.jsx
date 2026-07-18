@@ -359,7 +359,7 @@ function App() {
       screenEl = <window.Builder listId={params.listId} onNav={onNav} onScore={onScore} mode={mode} lists={lists} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} pro={pro} />;
       break;
     case 'monitor':
-      screenEl = <window.StrategyMonitor mode={mode} lists={lists} onNav={onNav} addToast={addToast} />;
+      screenEl = <window.StrategyMonitor mode={mode} lists={lists} onNav={onNav} addToast={addToast} listId={params.listId} />;
       break;
     case 'opportunities':
       screenEl = <window.OpportunityFinder onNav={onNav} lists={lists} addToast={addToast} pro={pro} mode={mode} />;

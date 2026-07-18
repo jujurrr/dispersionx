@@ -2,7 +2,7 @@
    Connecté aux VRAIES stratégies de l'utilisateur (Builder / Construction),
    stockées en localStorage (dx-strategy-<listId>). Affiche leur composition,
    grecs nets, prime, DTE restant et état dérivé. Aucune exécution auto. */
-function StrategyMonitor({ mode, lists, onNav, addToast }) {
+function StrategyMonitor({ mode, lists, onNav, addToast, listId }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, Badge, RiskBadge, WarningPanel, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [strats, setStrats] = React.useState(null);
@@ -22,6 +22,14 @@ function StrategyMonitor({ mode, lists, onNav, addToast }) {
     window.addEventListener('dx-strategies-changed', onChg);
     return () => window.removeEventListener('dx-strategies-changed', onChg);
   }, [reload]);
+
+  // Entrée ciblée (sidebar « Stratégies » → onNav('monitor', { listId })) : on
+  // sélectionne la stratégie de cette liste. Sinon on garde la première.
+  React.useEffect(() => {
+    if (!listId || !strats) return;
+    const i = strats.findIndex(s => String(s.listId) === String(listId));
+    if (i >= 0) setSel(i);
+  }, [listId, strats]);
 
   const fmtS  = n => window.DXMoney ? window.DXMoney.value(n) : ((n >= 0 ? '+' : '−') + Math.abs(Math.round(n)).toLocaleString('fr-FR'));
   const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';

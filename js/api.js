@@ -444,11 +444,19 @@
     try { localStorage.setItem('dx-strategy-' + listId, JSON.stringify(s)); } catch {}
     const c = _cloud();
     if (c && c.strategies) c.strategies.save(listId, s).catch(e => console.warn('cloud saveStrategy', e));
+    _strategiesPoke();
   }
   function deleteLocalStrategy(listId) {
     try { localStorage.removeItem('dx-strategy-' + listId); } catch {}
     const c = _cloud();
     if (c && c.strategies) c.strategies.remove(listId).catch(e => console.warn('cloud deleteStrategy', e));
+    _strategiesPoke();
+  }
+  // Écriture LOCALE d'une stratégie → même signal que l'hydratation cloud, pour que
+  // les vues persistantes (sidebar « Stratégies », Dashboard) se rafraîchissent tout
+  // de suite après une construction, sans attendre un remontage.
+  function _strategiesPoke() {
+    try { window.dispatchEvent(new CustomEvent('dx-strategies-changed')); } catch {}
   }
   // Métriques dérivées d'une stratégie sauvegardée (DTE restant, état, alerte).
   function strategyMetrics(s) {
