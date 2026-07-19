@@ -831,7 +831,28 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       {/* Structure active : quel grec est neutralisé = le profil d'exposition choisi (BNP/GS). */}
       {sizing !== 'equal_weight' && (
         <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', padding: '2px 2px', lineHeight: 1.5 }}>
-          Structure <strong style={{ color: 'var(--accent-hover)' }}>{({ vega_neutral: 'Vega-neutre', gamma_flat: 'Gamma-flat', theta_flat: 'Theta-flat', premium_neutral: 'Premium-neutral' }[sizing])}</strong> — grec neutralisé : <strong style={{ color: 'var(--text-soft)' }}>{({ vega_neutral: 'vega', gamma_flat: 'gamma', theta_flat: 'theta', premium_neutral: 'prime' }[sizing])} net ≈ {fmtS(({ vega_neutral: sized.netVega, gamma_flat: sized.netGamma, theta_flat: sized.netTheta, premium_neutral: sized.netPremium }[sizing]))}</strong>. Les autres grecs sont <strong>libres</strong> : c'est un choix de <strong>profil d'exposition</strong> (ça change l'exposition, pas l'edge net).
+          {/* Le gamma est stocké en γ brut (P&L = γ·(ΔS/S)²) : affiché tel quel il
+              sortait en millions, à côté de trois autres structures exprimées en
+              dollars — on croyait à une anomalie. Converti ici en × 1e-4 = DOLLARS
+              pour un mouvement de ±1 %, exactement la convention de la page de la
+              stratégie (StrategyDetail, `gammaCell`). Et chaque unité est nommée :
+              un « net ≈ » sans unité invite à comparer ce qui ne se compare pas. */}
+          {(() => {
+            const S = {
+              vega_neutral:    { nom: 'Vega-neutre',     grec: 'vega',  val: sized.netVega,               unite: `${dxSym()} pour 1 pt d'IV` },
+              gamma_flat:      { nom: 'Gamma-flat',      grec: 'gamma', val: sized.netGamma * 1e-4,       unite: `${dxSym()} pour ±1 %` },
+              theta_flat:      { nom: 'Theta-flat',      grec: 'theta', val: sized.netTheta,              unite: `${dxSym()}/jour` },
+              premium_neutral: { nom: 'Premium-neutral', grec: 'prime', val: sized.netPremium,            unite: dxSym() },
+            }[sizing];
+            if (!S) return null;
+            return (
+              <>
+                Structure <strong style={{ color: 'var(--accent-hover)' }}>{S.nom}</strong> — grec neutralisé :{' '}
+                <strong style={{ color: 'var(--text-soft)' }}>{S.grec} net ≈ {fmtS(S.val)} <span style={{ fontWeight: 400, color: 'var(--text-dim)' }}>({S.unite})</span></strong>.
+                {' '}Les autres grecs sont <strong>libres</strong> : c'est un choix de <strong>profil d'exposition</strong> (ça change l'exposition, pas l'edge net).
+              </>
+            );
+          })()}
         </div>
       )}
 

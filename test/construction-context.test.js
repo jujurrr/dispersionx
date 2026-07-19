@@ -213,3 +213,43 @@ test('chaque liste garde SA structure', async () => {
   assert.equal(localStorage.getItem('dx-sizing-B'), 'theta_flat');
   assert.equal(localStorage.getItem('dx-sizing-A'), 'gamma_flat', 'la liste A ne récupère pas la structure de B');
 });
+
+test('le gamma net est affiche en dollars pour ±1 %, pas en gamma brut', async () => {
+  // Le gamma est stocke en γ brut (P&L = γ·(ΔS/S)²). Affiche tel quel il sortait
+  // en millions, a cote de trois structures exprimees en dollars — l'utilisateur
+  // a legitimement cru a une anomalie. Convention du site (StrategyDetail,
+  // `gammaCell`) : γ × 1e-4 = dollars pour un mouvement de ±1 %.
+  //
+  // Le stub greeks donne gammaK = 1 par contrat, donc netGamma reste petit ici :
+  // ce test verrouille l'UNITE affichee et la conversion, pas une magnitude.
+  store.clear();
+  const C = loadConstruction({ snapshot: [], vol: [], impl: [] });
+  const { container, root } = await mount(C, {
+    listId: 'G', sizingOverride: 'gamma_flat', moduleCtx: STALE_CTX, onModuleCtx: () => {},
+    lists: LISTS, onNav: () => {}, addToast: () => {}, mode: 'Avancé',
+  });
+  const txt = container.textContent;
+
+  assert.match(txt, /Gamma-flat/, 'la structure gamma-flat est bien active');
+  assert.match(txt, /gamma net/, 'le grec neutralise est nomme');
+  // L'unite DOIT etre ecrite : sans elle, on compare un gamma a des dollars.
+  assert.match(txt, /pour ±1\s?%/, "l'unite « pour ±1 % » accompagne le gamma net");
+  await React.act(async () => { root.unmount(); });
+});
+
+test('chaque structure nomme SON unite (on ne compare pas un vega a une prime)', async () => {
+  store.clear();
+  const C = loadConstruction({ snapshot: [], vol: [], impl: [] });
+  for (const [structure, unite] of [
+    ['vega_neutral',    /pour 1 pt d'IV/],
+    ['theta_flat',      /\/jour/],
+    ['premium_neutral', /prime net/],
+  ]) {
+    const { container, root } = await mount(C, {
+      listId: 'U', sizingOverride: structure, moduleCtx: STALE_CTX, onModuleCtx: () => {},
+      lists: LISTS, onNav: () => {}, addToast: () => {}, mode: 'Avancé',
+    });
+    assert.match(container.textContent, unite, `${structure} doit nommer son unite`);
+    await React.act(async () => { root.unmount(); });
+  }
+});
