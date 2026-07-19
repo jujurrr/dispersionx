@@ -57,7 +57,7 @@ function loadStore(implSeq, comps = COMPS) {
     Date, JSON, Math, String, Number, Object, Array, isFinite, isNaN, parseFloat, parseInt, Set, Map, Promise, Error,
   });
   vm.runInContext(readFileSync(new URL('../js/store.js', import.meta.url), 'utf8'), ctx);
-  return { store: win.DXStore, calls };
+  return { store: win.DXStore, calls, api };
 }
 
 // Simule l'écoulement du délai de garde entre deux tentatives d'ancre.
@@ -179,6 +179,48 @@ test('scoreIndex déjà en cours est ATTENDABLE (plus d\'univers partiel)', asyn
   const scores = store.getScores('SPX', 30);
   assert.equal(Object.keys(scores).length, COMPS.length, 'TOUS les composants sont scorés au retour');
   assert.equal(calls.scored.length, COMPS.length, 'aucun composant scoré deux fois');
+});
+
+/* ── Le MODÈLE de score actif voyage avec les scores ────────────────────────
+   Les écrans qui interprètent le NIVEAU d'un score (l'auto-chercheur centre le
+   sien sur 62, calibré sur V1) doivent savoir quel modèle tourne : sous V2 la
+   distribution est tout autre (médiane 5 contre 46). Le serveur le dit dans
+   chaque réponse ; encore faut-il que le store le retienne et le rende. */
+
+test("le store retient le modèle de score et ses seuils", async () => {
+  const { store, api } = loadStore([0.25]);
+  api.autoScore = () => Promise.resolve({
+    scoring: { score: 12, score_model: 'V2', score_thresholds: { fort: 62, mod: 19 } },
+  });
+  await store.loadIndex('SPX');
+  await store.scoreIndex('SPX', 30);
+
+  const sm = store.getScoreModel('SPX', 30);
+  assert.equal(sm.model, 'V2');
+  assert.equal(sm.thresholds.fort, 62);
+  assert.equal(sm.thresholds.mod, 19);
+});
+
+test("sans information du serveur, on retombe sur V1 (non-cassant)", async () => {
+  // C'est le stub par défaut : il ne renvoie pas de seuils, comme le repli
+  // hors-ligne. Le comportement historique doit être conservé tel quel.
+  const { store } = loadStore([0.25]);
+  await store.loadIndex('SPX');
+  await store.scoreIndex('SPX', 30);
+
+  const sm = store.getScoreModel('SPX', 30);
+  assert.equal(sm.model, 'V1');
+  // Champ par champ : l'objet naît dans le contexte vm, donc son prototype n'est
+  // pas celui de l'hôte et deepEqual strict le rejetterait à tort.
+  assert.equal(sm.thresholds.fort, 75);
+  assert.equal(sm.thresholds.mod, 55);
+});
+
+test("un indice jamais scoré rend le repli V1 plutôt que de planter", () => {
+  const { store } = loadStore([0.25]);
+  const sm = store.getScoreModel('NDX', 30);
+  assert.equal(sm.model, 'V1');
+  assert.ok(sm.thresholds.fort > sm.thresholds.mod);
 });
 
 test("l'ampleur du défaut est bien celle observée (0 contre 65)", () => {

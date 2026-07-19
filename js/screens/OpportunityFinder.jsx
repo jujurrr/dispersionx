@@ -27,19 +27,55 @@ const OPP_SIZE_MIN = 5;
    Un nom ABSENT de la table passe la porte : sans mesure, pas de verdict (même
    règle que le panneau de coût). Et si la porte laisse trop peu de noms, elle est
    levée plutôt que de casser la recherche. */
-const OPP_COST_GATE = 2.0;   // coût round-trip max, en points de vol (tenor 30)
-const oppCostOf = t => {
+const OPP_COST_GATE = 2.0;   // coût round-trip max, en points de vol
+// Le coût dépend de l'ÉCHÉANCE : la table le mesure aux tenors [30, 60, 90] j, et
+// une option longue coûte nettement moins cher par point de vol (AAPL : 0,86 à
+// 30 j contre 0,54 à 60 j). Lire systématiquement la colonne 30 j écartait 115
+// noms sur 509 (23 %) à l'horizon 60 — tous dans le sens « exclus à tort », donc
+// un vivier 3× trop petit. Même correspondance que api/stocks/auto-score.js.
+const oppTenorIdx = d => (d <= 45 ? 0 : d <= 75 ? 1 : 2);
+const oppCostOf = (t, duration) => {
   const e = (window.DXCostComp || {})[t];
-  const c = e && Array.isArray(e.cv) ? e.cv[0] : null;
+  const c = e && Array.isArray(e.cv) ? e.cv[oppTenorIdx(duration || 30)] : null;
   return (typeof c === 'number' && isFinite(c) && c > 0) ? c : null;
 };
 const OPP_SIZE_MAX = 20;
-const OPP_DUR = 30;          // échéance de référence pour les scores
 const OPP_TOP = 5;           // nombre d'opportunités affichées
 const _oppCache = {};        // index -> { at, results, ctx }
 
 // Poids de l'objectif « mix équilibré » (ajustables).
 const W_PRIME = 0.45, W_SCORE = 0.30, W_DIV = 0.15, W_OVERFIT = 0.10;
+
+/* ── Échelle du score : ramener le modèle ACTIF sur l'échelle V1 ──────────────
+   W_SCORE et la constante de centrage d'`oppScoreOf` ont été calibrés en juillet
+   2026 sur la distribution de V1 (médiane 46, panier retenu ≈ 60). Sous V2 la
+   distribution n'a plus rien à voir — médiane 5, vivier top-25 à 17,5 — et ces
+   constantes deviennent fausses sans que rien ne le signale :
+
+     • le score d'opportunité AFFICHÉ perdait 9 à 27 points selon la seule TAILLE
+       du panier (amplitude 17,5 pts contre 7,6 en V1) ;
+     • dans l'objectif, l'avantage mécanique des petits paniers passait de +0,038
+       à +0,088 alors que le contrepoids `sizePen` vaut 0,0375 — soit un garde-fou
+       anti-surajustement 2,3× trop faible, et un finder qui préfère
+       systématiquement les petits paniers.
+
+   Plutôt que d'inventer une seconde table de constantes par modèle, on réutilise
+   la calibration que le serveur PUBLIE déjà : `score_thresholds`. Les seuils de
+   V2 (62/19) ont été calés pour reproduire les proportions de V1 (75/55) — ce
+   sont donc deux points d'ancrage équivalents d'un modèle à l'autre, et une
+   interpolation linéaire entre eux transporte n'importe quelle échelle vers
+   celle de V1. Sur V1 la transformation est l'IDENTITÉ exacte (55↦55, 75↦75) :
+   aucun changement de comportement, par construction.
+
+   Vérifié sur les 13 138 observations mesurées (backtest/*_scored.csv) :
+   l'amplitude de taille de V2 revient à 8,1 pts (V1 : 7,6) et l'équilibre de
+   l'objectif à +0,003 (V1 : +0,000). */
+const OPP_REF = { fort: 75, mod: 55 };   // échelle de référence = V1
+function oppScaler(thresholds) {
+  const th = thresholds && thresholds.fort > thresholds.mod ? thresholds : OPP_REF;
+  const span = (OPP_REF.fort - OPP_REF.mod) / (th.fort - th.mod);
+  return x => OPP_REF.mod + (x - th.mod) * span;
+}
 
 // Corrélation implicite d'un panier (formule CBOE) — miroir navigateur de
 // api/_lib/dispersion-math.js. names = [{ w, sigma }], w normalisés ici, σ décimal.
@@ -85,11 +121,15 @@ function oppEval(members, ctx) {
 
   // Score de dispersion du panier, VEGA-pondéré (Σ vwᵢ·scoreᵢ, Σvw = 1)
   const avgScore = members.reduce((s, m, idx) => s + vw[idx] * (ctx.score[m] || 0), 0);
+  // Ramené sur l'échelle V1 : c'est ce niveau-là que W_SCORE et le centrage
+  // d'oppScoreOf savent lire (cf. oppScaler). Identité sous V1.
+  const scale = ctx.scale || (x => x);
+  const avgScaled = scale(avgScore);
 
   const diversification = 1 - Math.max(0, rhoReal);
   const sizePen = Math.max(0, (8 - k)) / 8;   // paniers < 8 légèrement pénalisés (anti-sur-optimisation)
-  const objective = W_PRIME * (prime / 15) + W_SCORE * (avgScore / 100) + W_DIV * diversification - W_OVERFIT * sizePen;
-  return { members: members.slice(), k, rhoReal, rhoImpl, prime, avgScore, diversification, objective };
+  const objective = W_PRIME * (prime / 15) + W_SCORE * (avgScaled / 100) + W_DIV * diversification - W_OVERFIT * sizePen;
+  return { members: members.slice(), k, rhoReal, rhoImpl, prime, avgScore, avgScaled, diversification, objective };
 }
 
 // Glouton (départ = seed) puis échanges locaux, pour une taille k donnée.
@@ -150,8 +190,13 @@ function oppFind(ctx) {
   return picked.slice(0, OPP_TOP);
 }
 
+// 62 = niveau typique du panier retenu SUR L'ÉCHELLE V1. On centre donc sur
+// `avgScaled` (déjà ramené à cette échelle), pas sur le score brut du modèle
+// actif — sinon sous V2 le nombre affiché chute de 9 à 27 points selon la seule
+// taille du panier. Identique à l'existant quand V1 est actif.
 function oppScoreOf(o) {
-  return Math.max(0, Math.min(100, Math.round(50 + o.prime * 2.2 + (o.avgScore - 62) * 0.6)));
+  const avg = o.avgScaled != null ? o.avgScaled : o.avgScore;
+  return Math.max(0, Math.min(100, Math.round(50 + o.prime * 2.2 + (avg - 62) * 0.6)));
 }
 
 // Cache module des backtests (à la demande, lourd) : clé = panier+indice+horizon.
@@ -199,7 +244,7 @@ async function oppGather(index, dur) {
   // Porte de coût AVANT le classement par score : on restreint l'univers aux noms
   // exécutables, puis le score choisit librement à l'intérieur. Le score lui-même
   // est inchangé (cf. OPP_COST_GATE).
-  const tradable = scored.filter(t => { const c = oppCostOf(t); return c == null || c <= OPP_COST_GATE; });
+  const tradable = scored.filter(t => { const c = oppCostOf(t, dur); return c == null || c <= OPP_COST_GATE; });
   const excluded = scored.length - tradable.length;
   // Fail-safe : une porte qui vide le vivier casserait la recherche pour les indices
   // dont les composants ne sont pas dans la table (NDX partiel, CAC, DAX). Mieux vaut
@@ -236,8 +281,12 @@ async function oppGather(index, dur) {
     : (corrData && corrData.vix_level ? corrData.vix_level / 100 : (d.snap && d.snap.iv_est ? d.snap.iv_est / 100 : 0.18));
   const pool = mt.filter(t => hv[t] != null && scores[t] != null);
   if (pool.length < OPP_SIZE_MIN) throw new Error('vivier trop maigre (données de vol manquantes) — réessayez.');
+  // Modèle de score actif (V1/V2) + convertisseur vers l'échelle V1, sur laquelle
+  // W_SCORE et le centrage d'oppScoreOf ont été calibrés. Identité sous V1.
+  const sm = window.DXStore.getScoreModel ? window.DXStore.getScoreModel(index, dur) : null;
   return {
     index, pool, corr, hv, iv, beta, vega, score: scores, price, sector, sigmaIdx, gate,
+    scoreModel: sm ? sm.model : 'V1', scale: oppScaler(sm && sm.thresholds),
     rhoImplPool: (implData && implData.rho_impl != null) ? implData.rho_impl : null,
     implMethod: implData?.method || null,
     indexPrice: (d.snap && (d.snap.etf_price || d.snap.price)) || 100,

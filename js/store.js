@@ -240,6 +240,15 @@
           const r = await DXApi.autoScore(symbol, t, dur, false, rhoImpl);
           const sc = r?.scoring?.score;
           if (sc != null) scores[t] = sc;
+          /* Modèle de score ACTIF + ses seuils, tels que le serveur les renvoie.
+             Sans ça, les écrans qui raisonnent sur le NIVEAU d'un score (et pas
+             seulement sur son classement) codent en dur l'échelle de V1 : sous V2
+             la distribution est tout autre (médiane 5 contre 46) et leurs
+             constantes deviennent fausses sans que rien ne le signale. */
+          if (!d.scoreModel) d.scoreModel = {};
+          if (!d.scoreModel[dur] && r?.scoring?.score_thresholds) {
+            d.scoreModel[dur] = { model: r.scoring.score_model || 'V1', thresholds: r.scoring.score_thresholds };
+          }
         } catch {}
         markDone(1);
       }));
@@ -289,6 +298,15 @@
     // qu'une liste, une table d'indice et le détail d'un titre parlent du même
     // score. Ne calcule JAMAIS d'ancre sur un sous-panier.
     resolveRhoImpl,
+    // Modèle de score ACTIF (V1/V2) et ses seuils, observés dans les réponses du
+    // serveur. Tout écran qui interprète le NIVEAU d'un score doit passer par là :
+    // les échelles de V1 et V2 n'ont rien à voir (médiane 46 contre 5). Repli sur
+    // les seuils de V1 = comportement historique, non-cassant.
+    getScoreModel: (symbol, dur) => {
+      const d = state.data[symbol];
+      const m = d && d.scoreModel && d.scoreModel[dur || PRELOAD_DUR];
+      return m || { model: 'V1', thresholds: { fort: 75, mod: 55 } };
+    },
     isScoring: (symbol, dur) => !!(state.data[symbol] && state.data[symbol].scoring[dur || PRELOAD_DUR]),
     getProgress: () => ({ queued: state.progress.queued, done: state.progress.done }),
     DEFAULT_DUR: PRELOAD_DUR,
