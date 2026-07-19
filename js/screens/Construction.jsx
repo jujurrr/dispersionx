@@ -345,11 +345,74 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
       // Gamma net $ : long composants (+convexité) − short indice (−convexité).
       compGamma, idxGamma, netGamma: compGamma - idxGamma,
       netPremium: idxPrem - compPrem,
+      // Exposés pour rejouer le dimensionnement à d'autres tailles sans le dupliquer
+      // (cf. `fit` : quelle taille rend la structure réellement atteignable).
+      wNormArr, GKEY,
       idxNotional: base.indexPrice * CONTRACT * nIndex,
       compNotional: comps.reduce((s, c) => s + c.notional, 0),
       totalLots: comps.reduce((s, c) => s + c.nContracts, 0),
     };
   }, [base, nIndex, sizing, weightBasis]);
+
+  /* ── ATTEIGNABILITÉ DE LA STRUCTURE À CETTE TAILLE ─────────────────────────
+     On n'achète pas 0,34 contrat. Le nombre de lots d'une jambe vaut
+     `max(1, round(cible × poids / grec))` : quand la cible par composant pèse
+     moins d'un contrat, l'arrondi tombe à 0 et le PLANCHER force 1 lot — on
+     achète alors plusieurs fois trop de chaque jambe et le grec censé être
+     neutralisé ne l'est pas du tout.
+
+     Mesuré sur un cas type (indice 7 507 $, composant 2 235 $, 10 noms) : à
+     1 contrat indice la prime nette vaut −14 846 $ au lieu de ≈ 0. Le plancher
+     mord aussi sur vega (×3,3 de trop) et theta (×6,7) — ce n'est pas propre au
+     premium-neutral, c'est juste là qu'on le voit puisque c'est la grandeur
+     affichée.
+
+     Pire, ce n'est PAS monotone : 3 contrats tombent juste, 4 et 5 non, 12 de
+     nouveau. Ajouter des jambes au hasard ne converge pas — d'où une recherche à
+     tâtons côté utilisateur. On balaie donc les tailles et on désigne celle qui
+     neutralise vraiment, au lieu de le laisser deviner.
+
+     On ne touche PAS au dimensionnement : le plancher à 1 lot existe pour ne
+     jamais faire disparaître silencieusement un composant du panier. */
+  const fit = React.useMemo(() => {
+    if (!sized || !sized.GKEY || !base) return null;
+    const { GKEY, wNormArr } = sized;
+    const gIdx = base.idxG[GKEY];
+    if (!gIdx || !isFinite(gIdx)) return null;
+
+    // Rejoue EXACTEMENT la formule du dimensionnement pour une taille donnée.
+    const netAt = (ni) => {
+      const target = gIdx * ni;
+      let comp = 0;
+      base.perTicker.forEach((t, i) => {
+        const gi = t.g[GKEY];
+        const n = (gi && Math.abs(gi) > 1e-12)
+          ? Math.max(1, Math.round(Math.abs(target * wNormArr[i] / gi)))
+          : 1;
+        comp += gi * n;
+      });
+      // Mêmes conventions de signe que le sizing : la prime s'inverse (on encaisse
+      // l'indice, on paie les composants), les autres grecs se soustraient.
+      return GKEY === 'premium' ? (gIdx * ni) - comp : comp - (gIdx * ni);
+    };
+
+    const ref = Math.abs(gIdx * nIndex) || 1;
+    const cur = netAt(nIndex);
+    const curPct = Math.abs(cur) / ref;
+
+    let best = null;
+    for (let ni = 1; ni <= 24; ni++) {
+      const pct = Math.abs(netAt(ni)) / (Math.abs(gIdx * ni) || 1);
+      if (!best || pct < best.pct) best = { ni, pct, net: netAt(ni) };
+    }
+    // Ne rien proposer si la taille courante est déjà bonne, ou si aucune ne l'est.
+    const bon = 0.10;   // résidu < 10 % de la cible = structure tenue
+    return {
+      curNet: cur, curPct,
+      ok: curPct <= bon,
+      suggestion: (curPct > bon && best && best.pct <= bon && best.ni !== nIndex) ? best : null,
+    };
+  }, [sized, base, nIndex]);
 
   // ── ρ implicite du panier (source unifiée du site : formule CBOE sur IV réelles, vega-pondérée
   //    — la même que le Correlation Lab, le score et l'auto-chercheur). Sert au seuil de
@@ -853,6 +916,31 @@ function Construction({ listId: listIdParam, onNav, mode, lists, moduleCtx, onMo
               </>
             );
           })()}
+        </div>
+      )}
+
+      {/* Structure inatteignable à cette taille : le dire, et donner la taille qui marche. */}
+      {sizing !== 'equal_weight' && fit && !fit.ok && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '11px 14px', background: 'var(--bg-elevated)', border: '1px dashed var(--warn)', borderRadius: 'var(--radius-lg)' }}>
+          <span style={{ color: 'var(--warn)', font: '700 13px/1.3 var(--font-mono)', flexShrink: 0 }}>⚠</span>
+          <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
+            À <strong style={{ color: 'var(--text-soft)' }}>{nIndex} contrat{nIndex > 1 ? 's' : ''} indice</strong>, cette structure n'est <strong>pas atteignable</strong> : le résidu vaut{' '}
+            <strong style={{ color: 'var(--warn)' }}>{Math.round(fit.curPct * 100)} %</strong> de la cible.
+            {' '}Les options se traitent par <strong>lots entiers</strong> — à cette taille, la part visée par composant pèse moins d'un contrat, et le plancher d'un lot par jambe fait acheter plusieurs fois trop.
+            {fit.suggestion ? (
+              <>
+                {' '}<strong style={{ color: 'var(--text)' }}>{fit.suggestion.ni} contrats indice</strong> ramènent le résidu à {Math.round(fit.suggestion.pct * 100)} %.
+                {' '}
+                <button onClick={() => setNIndex(fit.suggestion.ni)}
+                  style={{ font: '600 11px/1 var(--font-sans)', padding: '5px 10px', marginLeft: 2, borderRadius: 'var(--radius)', border: '1px solid var(--accent)', background: 'var(--accent-soft)', color: 'var(--accent-hover)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  Appliquer {fit.suggestion.ni}
+                </button>
+              </>
+            ) : (
+              <> Aucune taille jusqu'à 24 contrats ne la neutralise sur ce panier — c'est la granularité des lots qui l'interdit, pas un réglage.</>
+            )}
+            {' '}<span style={{ color: 'var(--text-dim)' }}>Ça n'affecte pas le coût d'exécution ni l'edge, seulement le profil d'exposition réellement obtenu.</span>
+          </div>
         </div>
       )}
 

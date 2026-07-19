@@ -253,3 +253,55 @@ test('chaque structure nomme SON unite (on ne compare pas un vega a une prime)',
     await React.act(async () => { root.unmount(); });
   }
 });
+
+test("une structure inatteignable a cette taille est SIGNALEE, pas subie", async () => {
+  // Les options se traitent par lots entiers : n = max(1, round(cible × poids / grec)).
+  // Quand la part visee par composant pese moins d'un contrat, l'arrondi tombe a 0
+  // et le plancher force 1 lot → on achete plusieurs fois trop de chaque jambe et le
+  // grec cense etre neutralise ne l'est pas. Mesure sur un cas type (indice 7 507 $,
+  // composant 2 235 $, 10 noms) : prime nette −14 846 $ au lieu de ≈ 0 a 1 contrat.
+  // Et ce n'est PAS monotone (3 tombe juste, 4 et 5 non) — d'ou une recherche a
+  // tatons cote utilisateur si rien ne le signale.
+  store.clear();
+  const C = loadConstruction({ snapshot: [], vol: [], impl: [] });
+  const { container, root } = await mount(C, {
+    listId: 'B', sizingOverride: 'premium_neutral', moduleCtx: STALE_CTX, onModuleCtx: () => {},
+    lists: LISTS, onNav: () => {}, addToast: () => {}, mode: 'Avancé',
+  });
+  const txt = container.textContent;
+  assert.match(txt, /pas atteignable/, "l'inatteignabilite est dite explicitement");
+  assert.match(txt, /lots entiers/, 'la cause (granularite des lots) est expliquee');
+  assert.match(txt, /contrats indice/, 'une taille de remplacement est proposee');
+  await React.act(async () => { root.unmount(); });
+});
+
+test("le bouton applique la taille qui neutralise vraiment", async () => {
+  store.clear();
+  const C = loadConstruction({ snapshot: [], vol: [], impl: [] });
+  const { container, root } = await mount(C, {
+    listId: 'B', sizingOverride: 'premium_neutral', moduleCtx: STALE_CTX, onModuleCtx: () => {},
+    lists: LISTS, onNav: () => {}, addToast: () => {}, mode: 'Avancé',
+  });
+  const btn = Array.from(container.querySelectorAll('button')).find(b => /Appliquer \d+/.test(b.textContent));
+  assert.ok(btn, 'le bouton d\'application est present');
+
+  await React.act(async () => { btn.click(); });
+  for (let i = 0; i < 4; i++) await React.act(async () => { await Promise.resolve(); });
+
+  // Une fois la bonne taille appliquee, l'avertissement doit disparaitre.
+  assert.doesNotMatch(container.textContent, /pas atteignable/,
+    'a la taille suggeree, la structure est tenue');
+  await React.act(async () => { root.unmount(); });
+});
+
+test("en 1 lot par jambe, aucun avertissement d'atteignabilite", async () => {
+  // `equal_weight` ne neutralise rien : parler de residu n'aurait aucun sens.
+  store.clear();
+  const C = loadConstruction({ snapshot: [], vol: [], impl: [] });
+  const { container, root } = await mount(C, {
+    listId: 'B', sizingOverride: 'equal_weight', moduleCtx: STALE_CTX, onModuleCtx: () => {},
+    lists: LISTS, onNav: () => {}, addToast: () => {}, mode: 'Avancé',
+  });
+  assert.doesNotMatch(container.textContent, /pas atteignable/);
+  await React.act(async () => { root.unmount(); });
+});
