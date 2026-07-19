@@ -77,6 +77,14 @@ function oppScaler(thresholds) {
   return x => OPP_REF.mod + (x - th.mod) * span;
 }
 
+/* Bornes de la corrélation implicite. Atteindre l'une d'elles n'est PAS une
+   mesure : c'est la formule qui sort de son domaine (typiquement quand l'IV de
+   l'indice est très éloignée de celles des composants). La valeur rendue ne
+   contient alors aucune information — d'où oppSaturated, qui permet de refuser
+   de s'en servir plutôt que de la traiter comme un chiffre de marché. */
+const OPP_RHO_MIN = 0.05, OPP_RHO_MAX = 0.95;
+const oppSaturated = r => r == null || r <= OPP_RHO_MIN + 1e-9 || r >= OPP_RHO_MAX - 1e-9;
+
 // Corrélation implicite d'un panier (formule CBOE) — miroir navigateur de
 // api/_lib/dispersion-math.js. names = [{ w, sigma }], w normalisés ici, σ décimal.
 function oppImpliedCorr(sigmaI, names) {
@@ -87,7 +95,7 @@ function oppImpliedCorr(sigmaI, names) {
   for (const n of valid) { const w = n.w / wsum; A += w * n.sigma; B += w * w * n.sigma * n.sigma; }
   const denom = A * A - B;
   if (denom <= 1e-9) return null;
-  return Math.max(0.05, Math.min(0.95, (sigmaI * sigmaI - B) / denom));
+  return Math.max(OPP_RHO_MIN, Math.min(OPP_RHO_MAX, (sigmaI * sigmaI - B) / denom));
 }
 
 // Évalue un panier (liste de tickers) : prime, score, diversification, objectif.
@@ -115,8 +123,17 @@ function oppEval(members, ctx) {
   let rhoImpl = oppImpliedCorr(ctx.sigmaIdx, names);
   if (rhoImpl == null) {
     const avgHV = members.reduce((s, m) => s + (ctx.hv[m] || 25), 0) / k;
-    rhoImpl = Math.min(0.95, Math.max(0.05, (ctx.sigmaIdx / ((avgHV / 100 * 1.08) || 1e-6)) ** 2));
+    rhoImpl = Math.min(OPP_RHO_MAX, Math.max(OPP_RHO_MIN, (ctx.sigmaIdx / ((avgHV / 100 * 1.08) || 1e-6)) ** 2));
   }
+  /* ρ implicite collée à une borne = la formule a quitté son domaine, le chiffre
+     ne mesure plus rien. Sans ce garde-fou, la prime qui en découle atteignait
+     93 points (contre 8 en régime normal) et, comme elle pèse ~88 % du pouvoir
+     de classement, la recherche allait CHERCHER ce coin dégénéré : le panier
+     retenu était collé à une borne 9 % des jours, contre 6 % pour un panier
+     tiré au hasard. Vérifié sur 45 dates : neutraliser ce terme ne change pas la
+     qualité des paniers (Δρ réalisée forward +0,004, t = 0,73 — indiscernable du
+     bruit) mais supprime les 9 % de sélections pilotées par un artefact. */
+  const rhoSaturated = oppSaturated(rhoImpl);
   const prime = (rhoImpl - rhoReal) * 100;
 
   // Score de dispersion du panier, VEGA-pondéré (Σ vwᵢ·scoreᵢ, Σvw = 1)
@@ -128,8 +145,11 @@ function oppEval(members, ctx) {
 
   const diversification = 1 - Math.max(0, rhoReal);
   const sizePen = Math.max(0, (8 - k)) / 8;   // paniers < 8 légèrement pénalisés (anti-sur-optimisation)
-  const objective = W_PRIME * (prime / 15) + W_SCORE * (avgScaled / 100) + W_DIV * diversification - W_OVERFIT * sizePen;
-  return { members: members.slice(), k, rhoReal, rhoImpl, prime, avgScore, avgScaled, diversification, objective };
+  // Une prime issue d'une ρ implicite saturée ne rapporte rien : on ne classe pas
+  // sur un artefact. Les autres termes (score, diversification, taille) continuent
+  // de départager ces paniers normalement.
+  const objective = W_PRIME * (rhoSaturated ? 0 : prime / 15) + W_SCORE * (avgScaled / 100) + W_DIV * diversification - W_OVERFIT * sizePen;
+  return { members: members.slice(), k, rhoReal, rhoImpl, rhoSaturated, prime, avgScore, avgScaled, diversification, objective };
 }
 
 // Glouton (départ = seed) puis échanges locaux, pour une taille k donnée.
@@ -196,7 +216,11 @@ function oppFind(ctx) {
 // taille du panier. Identique à l'existant quand V1 est actif.
 function oppScoreOf(o) {
   const avg = o.avgScaled != null ? o.avgScaled : o.avgScore;
-  return Math.max(0, Math.min(100, Math.round(50 + o.prime * 2.2 + (avg - 62) * 0.6)));
+  // Même règle que l'objectif : une prime issue d'une ρ implicite saturée n'entre
+  // pas dans le nombre affiché. Le score repose alors sur la seule qualité des
+  // composants — moins informatif, mais pas faux.
+  const prime = o.rhoSaturated ? 0 : o.prime;
+  return Math.max(0, Math.min(100, Math.round(50 + prime * 2.2 + (avg - 62) * 0.6)));
 }
 
 // Cache module des backtests (à la demande, lourd) : clé = panier+indice+horizon.
@@ -596,12 +620,23 @@ function OpportunityFinder({ onNav, lists, addToast, pro, mode }) {
                   <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 2 }}>Score d'opportunité {o.opp}/100 · {index} · horizon {duration}j</div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, auto)', gap: 18 }}>
-                  <div style={{ textAlign: 'right' }} title="Prime de dispersion = ρ implicite RÉELLE du panier (formule CBOE, IV vega-pondérées) − ρ réalisée. Positive = corrélation chère.">
-                    <div style={{ font: 'var(--type-data)', color: o.prime >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>{(o.prime >= 0 ? '+' : '') + o.prime.toFixed(1)} pts</div>
+                  {/* ρ implicite collée à une borne (5 % / 95 %) : la formule est sortie de son
+                      domaine, le chiffre ne mesure rien. On affiche « n.d. » plutôt qu'une valeur
+                      d'apparence normale — et la prime qui en découle n'est pas montrée non plus. */}
+                  <div style={{ textAlign: 'right' }} title={o.rhoSaturated
+                    ? "Prime non calculable : la corrélation implicite de ce panier atteint une borne de la formule (5 % / 95 %), son écart à la corrélation réalisée n'aurait pas de sens."
+                    : "Prime de dispersion = ρ implicite RÉELLE du panier (formule CBOE, IV vega-pondérées) − ρ réalisée. Positive = corrélation chère."}>
+                    <div style={{ font: 'var(--type-data)', color: o.rhoSaturated ? 'var(--text-dim)' : (o.prime >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)') }}>
+                      {o.rhoSaturated ? 'n.d.' : (o.prime >= 0 ? '+' : '') + o.prime.toFixed(1) + ' pts'}
+                    </div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Prime ρ</div>
                   </div>
-                  <div style={{ textAlign: 'right' }} title="Corrélation implicite du panier (formule CBOE, IV vega-pondérées) — le prix de marché de la corrélation.">
-                    <div style={{ font: 'var(--type-data)', color: 'var(--accent-hover)' }}>{(o.rhoImpl * 100).toFixed(0)}%</div>
+                  <div style={{ textAlign: 'right' }} title={o.rhoSaturated
+                    ? "Corrélation implicite hors domaine : la formule CBOE bute sur ses bornes (5 % / 95 %) pour ce panier — le plus souvent quand l'IV de l'indice s'écarte fortement de celles des composants. Aucune valeur fiable à afficher."
+                    : "Corrélation implicite du panier (formule CBOE, IV vega-pondérées) — le prix de marché de la corrélation."}>
+                    <div style={{ font: 'var(--type-data)', color: o.rhoSaturated ? 'var(--text-dim)' : 'var(--accent-hover)' }}>
+                      {o.rhoSaturated ? 'n.d.' : (o.rhoImpl * 100).toFixed(0) + '%'}
+                    </div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ρ implicite</div>
                   </div>
                   <div style={{ textAlign: 'right' }} title="Score de dispersion du panier, pondéré par le vega de chaque nom.">

@@ -41,7 +41,9 @@ function loadFinder() {
   const grab = name => vm.runInContext(name, ctx);
   return {
     F: { oppScaler: grab('oppScaler'), oppScoreOf: grab('oppScoreOf'), oppEval: grab('oppEval'),
-         oppCostOf: grab('oppCostOf'), oppTenorIdx: grab('oppTenorIdx') },
+         oppCostOf: grab('oppCostOf'), oppTenorIdx: grab('oppTenorIdx'),
+         oppImpliedCorr: grab('oppImpliedCorr'), oppSaturated: grab('oppSaturated'),
+         RHO_MIN: grab('OPP_RHO_MIN'), RHO_MAX: grab('OPP_RHO_MAX') },
     COST: win.DXCostComp,
   };
 }
@@ -144,7 +146,81 @@ test('oppEval applique l\'échelle à l\'OBJECTIF, pas seulement à l\'affichage
   assert.equal(brut.avgScaled, brut.avgScore);
 });
 
-/* ── 3. Porte de coût : le bon tenor ─────────────────────────────────────── */
+/* ── 3. ρ implicite saturée : une butée n'est pas une mesure ─────────────── */
+
+// Quand l'IV de l'indice s'écarte fortement de celles des composants, la formule
+// CBOE sort de son domaine et le clamp [5 %, 95 %] rend une valeur qui ne mesure
+// rien. La prime qui en découlait atteignait 93 points (contre ~8 en régime
+// normal) et, comme le terme de prime porte ~88 % du pouvoir de classement, la
+// recherche allait CHERCHER ce coin : le panier retenu était collé à une borne
+// 9 % des jours contre 6 % pour un tirage au hasard (mesuré, IV réelles SPX).
+
+test('une ρ implicite collée à une borne est signalée comme non fiable', () => {
+  // IV d'indice très supérieure à celles des composants → butée haute.
+  const hautes = [{ w: 0.5, sigma: 0.12 }, { w: 0.5, sigma: 0.12 }];
+  const r = F.oppImpliedCorr(0.60, hautes);
+  assert.ok(r >= F.RHO_MAX - 1e-9, `attendu à la borne haute, obtenu ${r}`);
+  assert.equal(F.oppSaturated(r), true);
+  // Et une valeur d'intérieur normale ne l'est pas.
+  assert.equal(F.oppSaturated(0.31), false);
+  assert.equal(F.oppSaturated(null), true, 'absence de valeur = non fiable');
+});
+
+// Panier de taille réaliste : sous ~5 noms, le terme Σwᵢ²σᵢ² décroît en 1/N et
+// fait dégénérer la formule quelles que soient les IV — ce n'est pas le cas
+// qu'on teste ici.
+// rhoPaires bas (0,05) pour que le panier SAIN dégage une vraie prime : sinon
+// ρ implicite = ρ réalisée, prime nulle, et la comparaison ne teste rien.
+function ctx5(ivVal, sigmaIdx, rhoPaires = 0.05) {
+  const m = ['A', 'B', 'C', 'D', 'E'];
+  const corr = {}, iv = {}, hv = {}, vega = {}, score = {};
+  m.forEach(a => { corr[a] = {}; m.forEach(b => corr[a][b] = a === b ? 1 : rhoPaires);
+    iv[a] = ivVal; hv[a] = ivVal * 0.92; vega[a] = 1; score[a] = 60; });
+  return { members: m, ctx: { corr, iv, hv, vega, score, sigmaIdx } };
+}
+
+test('la prime saturée ne rapporte RIEN dans l\'objectif', () => {
+  // Composants à IV basse contre indice à IV élevée → ρ implicite en butée haute.
+  const s = ctx5(12, 0.60);
+  const sature = F.oppEval(s.members, s.ctx);
+  assert.equal(sature.rhoSaturated, true);
+  assert.ok(sature.prime > 50, `la prime brute est bien absurde (${sature.prime.toFixed(0)} pts)`);
+
+  // Le même panier, avec des IV cohérentes → ρ implicite d'intérieur.
+  const h = ctx5(30, 0.18);
+  const sain = F.oppEval(h.members, h.ctx);
+  assert.equal(sain.rhoSaturated, false, `ρ implicite ${sain.rhoImpl} doit être d'intérieur`);
+
+  // L'objectif du panier saturé ne doit PAS profiter de sa prime fantôme.
+  const sansPrime = 0.30 * (sature.avgScaled / 100) + 0.15 * sature.diversification
+    - 0.10 * Math.max(0, (8 - sature.k)) / 8;
+  assert.ok(Math.abs(sature.objective - sansPrime) < 1e-9,
+    'le terme de prime doit être neutralisé, pas seulement réduit');
+  // Les deux paniers ne diffèrent que par leurs IV : même score, même
+  // diversification, même taille. Seule la prime les départage.
+  assert.ok(sain.prime > 10, `le panier sain dégage une vraie prime (${sain.prime.toFixed(1)} pts)`);
+  assert.ok(sature.objective < sain.objective,
+    `un panier saturé ne doit plus battre un panier à prime réelle (${sature.objective.toFixed(3)} vs ${sain.objective.toFixed(3)})`);
+});
+
+test('le score d\'opportunité affiché ignore lui aussi la prime fantôme', () => {
+  const o = { prime: 93, avgScore: 60, avgScaled: 60, rhoSaturated: true };
+  const sain = { prime: 93, avgScore: 60, avgScaled: 60, rhoSaturated: false };
+  assert.equal(F.oppScoreOf(o), Math.round(50 + (60 - 62) * 0.6), 'prime écartée du calcul');
+  assert.equal(F.oppScoreOf(sain), 100, 'une prime réelle de 93 sature légitimement le score');
+  assert.ok(F.oppScoreOf(o) < F.oppScoreOf(sain));
+});
+
+test('la ρ implicite reste exposée telle quelle (l\'écran décide de l\'afficher ou non)', () => {
+  // On ne réécrit pas la valeur : on l'accompagne d'un drapeau. L'UI montre
+  // « n.d. » ; un rapport ou un test peut encore inspecter le chiffre brut.
+  const s = ctx5(12, 0.60);
+  const o = F.oppEval(s.members, s.ctx);
+  assert.equal(typeof o.rhoImpl, 'number');
+  assert.ok(o.rhoImpl <= F.RHO_MAX + 1e-9 && o.rhoImpl >= F.RHO_MIN - 1e-9, 'toujours bornée');
+});
+
+/* ── 4. Porte de coût : le bon tenor ─────────────────────────────────────── */
 
 test('la porte de coût lit le tenor correspondant à l\'horizon', () => {
   // La table mesure [30, 60, 90] j ; api/stocks/auto-score.js utilise la même
