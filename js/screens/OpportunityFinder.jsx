@@ -125,16 +125,31 @@ function oppEval(members, ctx) {
     const avgHV = members.reduce((s, m) => s + (ctx.hv[m] || 25), 0) / k;
     rhoImpl = Math.min(OPP_RHO_MAX, Math.max(OPP_RHO_MIN, (ctx.sigmaIdx / ((avgHV / 100 * 1.08) || 1e-6)) ** 2));
   }
-  /* ρ implicite collée à une borne = la formule a quitté son domaine, le chiffre
-     ne mesure plus rien. Sans ce garde-fou, la prime qui en découle atteignait
-     93 points (contre 8 en régime normal) et, comme elle pèse ~88 % du pouvoir
-     de classement, la recherche allait CHERCHER ce coin dégénéré : le panier
-     retenu était collé à une borne 9 % des jours, contre 6 % pour un panier
-     tiré au hasard. Vérifié sur 45 dates : neutraliser ce terme ne change pas la
-     qualité des paniers (Δρ réalisée forward +0,004, t = 0,73 — indiscernable du
-     bruit) mais supprime les 9 % de sélections pilotées par un artefact. */
-  const rhoSaturated = oppSaturated(rhoImpl);
-  const prime = (rhoImpl - rhoReal) * 100;
+  /* ── RÉFÉRENCE DE LA PRIME : l'ancre de l'INDICE ───────────────────────────
+     ρ_impl est le prix que le marché met sur la corrélation de l'INDICE — pas une
+     propriété des 5 à 20 noms qu'on vient de sélectionner. La calculer sur le
+     sous-panier est la MÊME erreur que celle retirée du scoring : la formule CBOE
+     suppose que le panier EST l'indice, ce qu'un sous-panier n'est pas. Elle se
+     trompait dans les deux sens selon l'indice :
+       · NDX : ρ_impl sous-panier ≈ 0,73 contre 0,298 d'ancre réelle → prime
+         affichée de 73 points, absurde mais sans jamais toucher de borne ;
+       · SPX : elle s'effondre sous la borne basse (σ_indice 14,7 % contre 31,4 %
+         de médiane composants — le S&P est bien plus diversifié que le Nasdaq)
+         → clamp → « n.d. » sur la plupart des petits paniers.
+     Mesuré sur 45 dates, ρ réalisée du panier APRÈS l'entrée (model-free) :
+       NDX 0,161 → 0,086 · t Newey-West −4,52 · t sans recouvrement −2,89 (n=8)
+       SPX 0,164 → 0,122 · t Newey-West −2,05 · t sans recouvrement −0,54 (n=8)
+     NDX passe les deux corrections ALORS QU'IL NE SATURAIT JAMAIS : le gain ne
+     vient donc pas de la disparition du clamp, mais bien d'une meilleure
+     référence. SPX seul ne serait pas concluant — à revérifier sur l'échantillon
+     2020 (krach) en cours de collecte.
+     Repli : sans ancre d'indice connue, on garde l'ancien calcul ET son garde-fou
+     de saturation (comportement d'avant, non-cassant). */
+  const rhoImplRef = ctx.rhoImplIndex != null ? ctx.rhoImplIndex : rhoImpl;
+  // Une ancre d'indice est toujours dans le domaine de la formule : la saturation
+  // ne concerne que le repli sur sous-panier.
+  const rhoSaturated = ctx.rhoImplIndex != null ? false : oppSaturated(rhoImpl);
+  const prime = (rhoImplRef - rhoReal) * 100;
 
   // Score de dispersion du panier, VEGA-pondéré (Σ vwᵢ·scoreᵢ, Σvw = 1)
   const avgScore = members.reduce((s, m, idx) => s + vw[idx] * (ctx.score[m] || 0), 0);
@@ -149,7 +164,9 @@ function oppEval(members, ctx) {
   // sur un artefact. Les autres termes (score, diversification, taille) continuent
   // de départager ces paniers normalement.
   const objective = W_PRIME * (rhoSaturated ? 0 : prime / 15) + W_SCORE * (avgScaled / 100) + W_DIV * diversification - W_OVERFIT * sizePen;
-  return { members: members.slice(), k, rhoReal, rhoImpl, rhoSaturated, prime, avgScore, avgScaled, diversification, objective };
+  // `rhoImpl` = valeur du sous-panier, conservée à titre informatif ; `rhoImplRef`
+  // = celle qui a RÉELLEMENT servi à la prime, et donc celle qu'affiche l'écran.
+  return { members: members.slice(), k, rhoReal, rhoImpl, rhoImplRef, rhoSaturated, prime, avgScore, avgScaled, diversification, objective };
 }
 
 // Glouton (départ = seed) puis échanges locaux, pour une taille k donnée.
@@ -308,9 +325,18 @@ async function oppGather(index, dur) {
   // Modèle de score actif (V1/V2) + convertisseur vers l'échelle V1, sur laquelle
   // W_SCORE et le centrage d'oppScoreOf ont été calibrés. Identité sous V1.
   const sm = window.DXStore.getScoreModel ? window.DXStore.getScoreModel(index, dur) : null;
+  /* Ancre CANONIQUE de l'indice — la même que celle qui a servi à scorer chaque
+     nom. Calculée sur le panier COMPLET, pas sur le vivier : `implData` ci-dessus
+     porte sur les 25 noms du top, ce qui est encore un sous-panier. C'est cette
+     ancre qui sert de référence à la prime (cf. oppEval). null → repli sur
+     l'ancien calcul par sous-panier, comportement d'avant. */
+  const rhoImplIndex = (window.DXStore && window.DXStore.resolveRhoImpl)
+    ? await window.DXStore.resolveRhoImpl(index, dur).catch(() => null)
+    : null;
   return {
     index, pool, corr, hv, iv, beta, vega, score: scores, price, sector, sigmaIdx, gate,
     scoreModel: sm ? sm.model : 'V1', scale: oppScaler(sm && sm.thresholds),
+    rhoImplIndex,
     rhoImplPool: (implData && implData.rho_impl != null) ? implData.rho_impl : null,
     implMethod: implData?.method || null,
     indexPrice: (d.snap && (d.snap.etf_price || d.snap.price)) || 100,
@@ -624,18 +650,21 @@ function OpportunityFinder({ onNav, lists, addToast, pro, mode }) {
                       domaine, le chiffre ne mesure rien. On affiche « n.d. » plutôt qu'une valeur
                       d'apparence normale — et la prime qui en découle n'est pas montrée non plus. */}
                   <div style={{ textAlign: 'right' }} title={o.rhoSaturated
-                    ? "Prime non calculable : la corrélation implicite de ce panier atteint une borne de la formule (5 % / 95 %), son écart à la corrélation réalisée n'aurait pas de sens."
-                    : "Prime de dispersion = ρ implicite RÉELLE du panier (formule CBOE, IV vega-pondérées) − ρ réalisée. Positive = corrélation chère."}>
+                    ? "Prime non calculable : faute d'ancre d'indice, on retombe sur la corrélation implicite de ce seul panier, et elle atteint une borne de la formule (5 % / 95 %)."
+                    : `Prime de dispersion = ρ implicite de ${index} − ρ réalisée du panier. Positive = le marché price la corrélation plus cher que celle observée.`}>
                     <div style={{ font: 'var(--type-data)', color: o.rhoSaturated ? 'var(--text-dim)' : (o.prime >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)') }}>
                       {o.rhoSaturated ? 'n.d.' : (o.prime >= 0 ? '+' : '') + o.prime.toFixed(1) + ' pts'}
                     </div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>Prime ρ</div>
                   </div>
+                  {/* On montre la référence RÉELLEMENT utilisée pour la prime : l'ancre de
+                      l'indice. La ρ implicite d'un sous-panier n'est pas une grandeur de
+                      marché — la formule CBOE suppose que le panier EST l'indice. */}
                   <div style={{ textAlign: 'right' }} title={o.rhoSaturated
-                    ? "Corrélation implicite hors domaine : la formule CBOE bute sur ses bornes (5 % / 95 %) pour ce panier — le plus souvent quand l'IV de l'indice s'écarte fortement de celles des composants. Aucune valeur fiable à afficher."
-                    : "Corrélation implicite du panier (formule CBOE, IV vega-pondérées) — le prix de marché de la corrélation."}>
+                    ? "Ancre d'indice indisponible, et la corrélation implicite de ce panier bute sur les bornes de la formule. Aucune valeur fiable à afficher."
+                    : `Corrélation implicite de ${index} à ${duration} j (formule CBOE, IV vega-pondérées) — le prix de marché de la corrélation, et la référence de la prime ci-contre.`}>
                     <div style={{ font: 'var(--type-data)', color: o.rhoSaturated ? 'var(--text-dim)' : 'var(--accent-hover)' }}>
-                      {o.rhoSaturated ? 'n.d.' : (o.rhoImpl * 100).toFixed(0) + '%'}
+                      {o.rhoSaturated ? 'n.d.' : ((o.rhoImplRef != null ? o.rhoImplRef : o.rhoImpl) * 100).toFixed(0) + '%'}
                     </div>
                     <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>ρ implicite</div>
                   </div>

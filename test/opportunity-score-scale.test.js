@@ -220,6 +220,53 @@ test('la ρ implicite reste exposée telle quelle (l\'écran décide de l\'affic
   assert.ok(o.rhoImpl <= F.RHO_MAX + 1e-9 && o.rhoImpl >= F.RHO_MIN - 1e-9, 'toujours bornée');
 });
 
+/* ── 3-bis. La prime se réfère à l'ANCRE DE L'INDICE ─────────────────────── */
+
+// ρ_impl est le prix que le marché met sur la corrélation de l'INDICE, pas une
+// propriété des 5-20 noms retenus. La calculer sur le sous-panier se trompait dans
+// les deux sens : gonflée sur NDX (0,73 contre 0,298 réels → prime affichée de
+// 73 pts), écrasée sous la borne sur SPX (σ_indice 14,7 % contre 31,4 % de médiane
+// composants) → « n.d. ». Mesuré sur 45 dates, ρ réalisée du panier après entrée :
+// NDX 0,161→0,086 (t Newey-West −4,52, t sans recouvrement −2,89 alors que NDX ne
+// saturait JAMAIS) ; SPX 0,164→0,122 (t N-W −2,05).
+
+test("la prime part de l'ancre d'indice quand elle est fournie", () => {
+  const s = ctx5(30, 0.18);                       // sous-panier ρ_impl ≈ 0,20
+  const sansAncre = F.oppEval(s.members, s.ctx);
+  const avecAncre = F.oppEval(s.members, { ...s.ctx, rhoImplIndex: 0.35 });
+
+  assert.equal(avecAncre.rhoImplRef, 0.35, "c'est l'ancre d'indice qui sert de référence");
+  assert.ok(Math.abs(sansAncre.rhoImplRef - sansAncre.rhoImpl) < 1e-9, 'sans ancre : repli sur le sous-panier');
+  // La ρ du sous-panier reste exposée à titre informatif, non réécrite.
+  assert.ok(Math.abs(avecAncre.rhoImpl - sansAncre.rhoImpl) < 1e-9);
+  // Une ancre plus haute que le sous-panier ⇒ prime plus élevée.
+  assert.ok(avecAncre.prime > sansAncre.prime);
+  assert.ok(Math.abs(avecAncre.prime - (0.35 - avecAncre.rhoReal) * 100) < 1e-9);
+});
+
+test("avec une ancre d'indice, plus jamais de « n.d. »", () => {
+  // Le cas SPX : composants à IV basse sous un indice à IV élevée → le sous-panier
+  // sature. L'ancre d'indice, elle, est toujours dans le domaine de la formule.
+  const s = ctx5(12, 0.60);
+  assert.equal(F.oppEval(s.members, s.ctx).rhoSaturated, true, 'sans ancre : saturé');
+  const avec = F.oppEval(s.members, { ...s.ctx, rhoImplIndex: 0.20 });
+  assert.equal(avec.rhoSaturated, false);
+  assert.equal(avec.rhoImplRef, 0.20);
+  // Et sa prime compte de nouveau dans l'objectif (elle était neutralisée).
+  const sansPrime = 0.30 * (avec.avgScaled / 100) + 0.15 * avec.diversification
+    - 0.10 * Math.max(0, (8 - avec.k)) / 8;
+  assert.ok(Math.abs(avec.objective - sansPrime) > 1e-6, "la prime n'est plus neutralisée");
+});
+
+test("une ancre d'indice aberrante est ignorée (repli non-cassant)", () => {
+  const s = ctx5(30, 0.18);
+  const ref = F.oppEval(s.members, s.ctx);
+  for (const mauvaise of [null, undefined]) {
+    const o = F.oppEval(s.members, { ...s.ctx, rhoImplIndex: mauvaise });
+    assert.ok(Math.abs(o.rhoImplRef - ref.rhoImpl) < 1e-9, 'ancre absente → sous-panier');
+  }
+});
+
 /* ── 4. Porte de coût : le bon tenor ─────────────────────────────────────── */
 
 test('la porte de coût lit le tenor correspondant à l\'horizon', () => {
