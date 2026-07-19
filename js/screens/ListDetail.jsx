@@ -1,6 +1,10 @@
 /* ─── List Detail: basket analysis + sortable items + score modal ─ */
 // Journal d'audit : phrases/temps partagés via window.DXActivity (ActivityFeed.jsx).
-function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
+function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache, duration }) {
+  // Horizon du site (sélecteur de l'écran Indices). Un score dépend de l'échéance :
+  // afficher 30 j ici pendant que la table de l'indice affiche 45 j, c'est comparer
+  // deux grandeurs différentes en les appelant du même nom.
+  const dur = duration || (window.DXStore ? window.DXStore.DEFAULT_DUR : 30);
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const dxSym = () => window.DXMoney ? window.DXMoney.symbol() : '$';
   const { MetricCard, ScoreBadge, WarningPanel, EmptyState, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
@@ -18,52 +22,86 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
   const [dialogBusy, setDialogBusy] = React.useState(false);
   const [showAudit, setShowAudit] = React.useState(false);   // journal d'activité (déroulé)
   const [auditRows, setAuditRows] = React.useState(null);
+  // Scores recalculés dans CETTE session, sur l'ancre canonique et l'horizon courant.
+  // Ils priment sur `score_data` figé à l'ajout (ancre/horizon/modèle d'alors).
+  const [liveScores, setLiveScores] = React.useState({});
+  const [basketRho, setBasketRho] = React.useState(null);   // ρ̂ réalisée MESURÉE du panier
+  const [anchorRho, setAnchorRho] = React.useState(null);   // ancre d'indice ayant servi à scorer
   const autoScoredRef = React.useRef(null);
 
   const load = React.useCallback(() => {
-    Promise.all([DXApi.getList(listId), DXApi.getListAnalysis(listId)]).then(([l, a]) => {
+    DXApi.getList(listId).then((l) => {
       setList(l);
 
-      // Analyse calculée à partir des vrais items (pas du mock figé)
-      // Préférer score_data.score (autoScore réel) si disponible
-      const items  = l?.items || [];
-      const scores = items.map(i => i.score_data?.score ?? i.score).filter(s => s != null);
-      setAnalysis({
-        ...a,
-        avg_score: scores.length ? Number((scores.reduce((x, y) => x + y, 0) / scores.length).toFixed(1)) : (a?.avg_score ?? null),
-        n_items:   items.length,
-      });
+      // Le score moyen n'est PLUS figé ici : il est dérivé au rendu à partir de la
+      // même précédence que la colonne « Score » (cf. scoreOf). Le calculer à deux
+      // endroits, c'était la garantie qu'un jour la moyenne affichée ne corresponde
+      // plus aux lignes du tableau.
+      const items = l?.items || [];
+      setAnalysis({ n_items: items.length });
 
       setLoading(false);
 
-      // Cotations live + IV/HV en parallèle
+      // Cotations live + IV/HV + corrélation, en parallèle. Chaque bloc est ISOLÉ :
+      // une source indisponible ne doit pas emporter les autres avec elle (elles
+      // partageaient un seul try implicite, et le premier throw coupait la suite).
       const tickers = items.map(i => i.ticker).filter(Boolean);
       const indexSym = l?.index_symbol || 'SPX';
+      const safe = (fn) => { try { const p = fn(); if (p && p.catch) p.catch(() => {}); } catch {} };
       if (tickers.length > 0) {
+        /* ── Corrélation RÉELLE du panier ────────────────────────────────────
+           Ces chiffres venaient de DXApi.getListAnalysis(), qui appelle un
+           endpoint /lists/:id/analysis INEXISTANT : l'appel échouait toujours et
+           retombait sur des constantes de démonstration. Toute liste, quel que
+           soit son contenu, affichait donc « Edge moyen +11,2 · ρ implicite 0,52
+           · ρ̂ réalisée 0,45 », un signal « FAVORABLE » et des recommandations
+           parlant d'un résultat AAPL — à côté de scores, eux, bien réels.
+           On mesure maintenant ρ̂ réalisée sur le vrai panier, et on la compare à
+           l'ANCRE qui a servi à scorer ces mêmes actions : l'en-tête explique
+           enfin les scores au lieu de les contredire. */
+        safe(() => DXApi.getCorrelation(listId, tickers, indexSym).then(c => {
+          if (c && c.rho_real != null) setBasketRho(Number(c.rho_real));
+        }));
         // Cotations live
-        DXApi.batchQuotes(tickers).then(results => {
+        safe(() => DXApi.batchQuotes(tickers).then(results => {
           const m = {};
           (results || []).forEach(r => { if (r?.ticker) m[r.ticker] = r; });
           setQuotes(m);
-        }).catch(() => {});
+        }));
 
         // IV/HV réelles depuis le risk endpoint (Yahoo Finance + MarketData)
-        fetch('/api/risk/portfolio', {
+        safe(() => fetch('/api/risk/portfolio', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tickers, index: indexSym, duration: 30 }),
+          body: JSON.stringify({ tickers, index: indexSym, duration: dur }),
         }).then(r => r.ok ? r.json() : null).then(d => {
           if (d?.per_ticker) {
             const vm = {};
             d.per_ticker.forEach(t => { if (t.ticker) vm[t.ticker] = { iv: t.iv, hv: t.hv, beta: t.beta, src: t.iv_src }; });
             setVolData(vm);
           }
-        }).catch(() => {});
+        }));
       }
     }).catch(() => setLoading(false));
-  }, [listId]);
+  }, [listId, dur]);   // `dur` est capturé (IV/HV du bon horizon) → il doit figurer ici
 
-  React.useEffect(() => { load(); autoScoredRef.current = null; }, [listId]);
+  React.useEffect(() => { load(); autoScoredRef.current = null; setLiveScores({}); }, [listId, dur]);
+
+  // Ancre de l'indice pour l'en-tête. Résolue INDÉPENDAMMENT du re-scoring, qui
+  // ne tourne pas sur une liste partagée en lecture seule : sans ça, ces listes
+  // n'auraient affiché ni ρ implicite ni prime.
+  React.useEffect(() => {
+    if (!list || !window.DXStore || !window.DXStore.resolveRhoImpl) return;
+    let cancelled = false;
+    window.DXStore.resolveRhoImpl(list.index_symbol || 'SPX', dur)
+      .then(r => { if (!cancelled && r != null) setAnchorRho(r); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [list?.index_symbol, dur]);
+  // Changer d'horizon change le score : les valeurs de l'ancien horizon ne sont
+  // plus valables, on les jette et on relance le calcul plutôt que d'afficher un
+  // mélange de deux échéances.
+  React.useEffect(() => { autoScoredRef.current = null; setLiveScores({}); }, [dur]);
 
   // Rafraîchissement des prix toutes les 60 s (tick global) — on ne recharge que
   // les cotations, pas toute la liste ni le re-scoring.
@@ -82,58 +120,51 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
 
   // Auto-rescore all items once per list load (background, batches de 4)
   React.useEffect(() => {
-    if (!list || autoScoredRef.current === listId) return;
+    const runKey = listId + '|' + dur;
+    if (!list || autoScoredRef.current === runKey) return;
     if (list.shared && list.role !== 'editor') return;   // lecture seule : pas de ré-écriture
     const items = list.items || [];
     if (items.length === 0) return;
-    autoScoredRef.current = listId;
+    autoScoredRef.current = runKey;
 
     const indexSym = list.index_symbol || 'SPX';
     const BATCH = 4;
 
     async function rescoreAll() {
       setRescoring(true);
-      // ρ implicite RÉELLE de CETTE liste — calculée une fois, passée à chaque score, comme le
-      // fait déjà le scoring d'indice (store.js). Sans elle le serveur applique le fail-safe 0,65
-      // et les scores d'une liste ne sont pas comparables à ceux d'un indice (~24 points d'écart).
-      //
-      // Garde-fou : sous ~12 noms, ρ_impl s'effondre MÉCANIQUEMENT (son terme Σwᵢ²σᵢ² décroît en
-      // 1/N et finit par absorber la variance de l'indice ; ρ tombe au clamp 0,05). Sur un petit
-      // panier on préfère donc le fail-safe : il est arbitraire, mais au moins dans le bon ordre
-      // de grandeur. Mieux vaut une ancre grossière qu'une ancre fausse.
-      let rhoImpl = null;
-      const tickers = items.map(i => i.ticker).filter(Boolean);
-      if (tickers.length >= 12) {
-        try {
-          const r = await DXApi.impliedCorrelation(indexSym, tickers, null, 30);
-          if (r && r.rho_impl != null) rhoImpl = r.rho_impl;
-        } catch { /* non-bloquant : on retombe sur le fail-safe serveur */ }
-      }
+      // ANCRE CANONIQUE DE L'INDICE — la même que la table de l'indice et que le détail
+      // d'un titre. Elle n'est PAS recalculée sur le sous-panier de la liste : ρ_impl est
+      // le prix que le marché met sur la corrélation de l'INDICE, pas une propriété des
+      // quelques noms qu'on a mis dans une liste. La calculer sur le sous-panier donnait
+      // au même titre deux scores différents selon l'écran (≈ 23 points), et sous 12 noms
+      // elle n'était même pas tentée → fail-safe 0,65 → scores systématiquement gonflés.
+      const rhoImpl = (window.DXStore && window.DXStore.resolveRhoImpl)
+        ? await window.DXStore.resolveRhoImpl(indexSym, dur).catch(() => null)
+        : null;
+      setAnchorRho(rhoImpl);   // l'en-tête affiche l'ancre RÉELLEMENT utilisée ci-dessous
       for (let i = 0; i < items.length; i += BATCH) {
         const batch = items.slice(i, i + BATCH);
         await Promise.allSettled(batch.map(async item => {
-          const result = await DXApi.autoScore(indexSym, item.ticker, 30, false, rhoImpl);
+          const result = await DXApi.autoScore(indexSym, item.ticker, dur, false, rhoImpl);
           if (result?.scoring?.score != null) {
+            // Affichage immédiat du score FRAIS, sans attendre l'aller-retour de
+            // persistance : sinon la table montre encore la valeur figée à l'ajout.
+            setLiveScores(prev => ({ ...prev, [item.ticker]: result.scoring.score }));
             await DXApi.addListItem(listId, item.ticker, result.scoring);
           }
         }));
       }
       setRescoring(false);
-      // Recharger la liste pour afficher les scores mis à jour
+      // Recharger la liste (scores persistés à jour). La moyenne, elle, suit le rendu.
       DXApi.getList(listId).then(l => {
         if (!l) return;
         setList(l);
-        const scores = (l.items || []).map(i => i.score_data?.score ?? i.score).filter(s => s != null);
-        setAnalysis(prev => ({
-          ...prev,
-          avg_score: scores.length ? Number((scores.reduce((x, y) => x + y, 0) / scores.length).toFixed(1)) : prev?.avg_score,
-          n_items: (l.items || []).length,
-        }));
+        setAnalysis(prev => ({ ...prev, n_items: (l.items || []).length }));
       });
     }
 
     rescoreAll();
-  }, [list, listId]);
+  }, [list, listId, dur]);
 
   const notify = (msg) => addToast && addToast(msg);
   async function saveName() {
@@ -212,10 +243,48 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
 
   const pctColor  = v => parseFloat(v) >= 0 ? 'var(--pos-bright)' : 'var(--neg-bright)';
   const scoreColor = s => s >= 75 ? 'var(--pos-bright)' : s >= 55 ? 'var(--warn)' : 'var(--neg-bright)';
-  const sigColors  = { FAVORABLE: 'var(--pos)', NEUTRE: 'var(--warn)', DÉFAVORABLE: 'var(--neg)' };
 
   const items = list?.items || [];
+
+  /* ── Précédence UNIQUE du score affiché, utilisée par la colonne, le tri et la
+     moyenne. Toute divergence entre ces trois-là serait le même bug qu'avant, en
+     plus petit.
+       1) recalcul de cette session — ancre canonique de l'indice + horizon courant ;
+       2) cache mémoïsé de l'API pour ce même (indice, titre, horizon) ;
+       3) valeur PERSISTÉE à l'ajout — figée, possiblement d'un autre horizon ou
+          d'une ancre d'alors : repli d'affichage, jamais une référence. */
+  const listIndex = list?.index_symbol || 'SPX';
+  const scoreOf = (item) => {
+    if (liveScores[item.ticker] != null) return liveScores[item.ticker];
+    const cached = (window.DXApi && window.DXApi.getCachedScore)
+      ? window.DXApi.getCachedScore(listIndex, item.ticker, dur) : null;
+    if (cached != null) return cached;
+    return item.score_data?.score ?? item.score ?? scoreCache?.[[listIndex, item.ticker, dur].join('|')] ?? null;
+  };
+  // Score « figé » : plus aucune source fraîche, on n'affiche donc pas ce chiffre
+  // avec la même autorité qu'un score recalculé.
+  const isStale = (item) => liveScores[item.ticker] == null
+    && !(window.DXApi && window.DXApi.getCachedScore && window.DXApi.getCachedScore(listIndex, item.ticker, dur) != null)
+    && (item.score_data?.score ?? item.score) != null;
+
+  const listScores = items.map(scoreOf).filter(s => s != null);
+  const avgScore = listScores.length
+    ? Number((listScores.reduce((x, y) => x + y, 0) / listScores.length).toFixed(1))
+    : null;
+
+  /* Prime de dispersion du panier — MÊME convention que le score de chaque ligne
+     (ancre de l'indice − corrélation réalisée) et que l'auto-chercheur. Affichée
+     seulement quand les deux termes sont mesurés. */
+  const basketPrime = (anchorRho != null && basketRho != null)
+    ? Number(((anchorRho - basketRho) * 100).toFixed(1))
+    : null;
+
   const sorted = [...items].sort((a, b) => {
+    if (sort.key === 'score') {
+      const av = scoreOf(a) ?? (sort.dir > 0 ? Infinity : -Infinity);
+      const bv = scoreOf(b) ?? (sort.dir > 0 ? Infinity : -Infinity);
+      return (av - bv) * sort.dir;
+    }
     const av = a[sort.key] ?? (sort.dir > 0 ? Infinity : -Infinity);
     const bv = b[sort.key] ?? (sort.dir > 0 ? Infinity : -Infinity);
     return typeof av === 'string' ? av.localeCompare(bv) * sort.dir : (av - bv) * sort.dir;
@@ -325,31 +394,35 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
         </div>
       )}
 
-      {/* Analysis metrics — calculés depuis les vrais items */}
+      {/* Analyse du panier — MESURÉE, et cohérente avec le scoring des lignes.
+          « — » quand la donnée n'est pas encore là : un tiret est honnête, une
+          constante de démonstration ne l'est pas. */}
       {analysis && (
         <section>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 10, marginBottom: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 12 }}>
             {[
-              { label: 'Score pondéré', value: analysis.avg_score?.toFixed(1), accent: scoreColor(analysis.avg_score) },
-              { label: 'Edge moyen',    value: (analysis.avg_edge >= 0 ? '+' : '') + analysis.avg_edge?.toFixed(1), accent: 'var(--pos)' },
-              { label: 'ρ implicite',  value: analysis.rho_impl?.toFixed(2), accent: 'var(--info)' },
-              { label: 'ρ̂ réalisée',  value: analysis.rho_real?.toFixed(2), accent: 'var(--info)' },
-              { label: 'Dispersion',   value: (analysis.dispersion * 1e4)?.toFixed(1) + ' ×10⁻⁴', accent: 'var(--accent)' },
-              { label: 'Actions',      value: String(analysis.n_items), accent: 'var(--text-soft)' },
+              { label: 'Score pondéré', value: avgScore != null ? avgScore.toFixed(1) : '—', accent: scoreColor(avgScore),
+                hint: `Moyenne des scores affichés ci-dessous (horizon ${dur} j).` },
+              { label: 'Prime ρ', value: basketPrime != null ? (basketPrime >= 0 ? '+' : '') + basketPrime.toFixed(1) + ' pts' : '—',
+                accent: basketPrime == null ? 'var(--text-soft)' : basketPrime >= 0 ? 'var(--pos)' : 'var(--neg)',
+                hint: "Prime de dispersion = ρ implicite de l'indice − ρ̂ réalisée du panier. Positive = le marché price la corrélation plus cher que celle observée." },
+              { label: 'ρ implicite', value: anchorRho != null ? anchorRho.toFixed(2) : '—', accent: 'var(--info)',
+                hint: `Corrélation implicite de ${list.index_symbol} à ${dur} j (formule CBOE, IV vega-pondérées). C'est l'ancre qui a servi à scorer chaque action de cette liste.` },
+              { label: 'ρ̂ réalisée', value: basketRho != null ? basketRho.toFixed(2) : '—', accent: 'var(--info)',
+                hint: 'Corrélation réalisée moyenne entre les actions du panier, mesurée sur 60 jours de clôtures.' },
+              { label: 'Actions', value: String(analysis.n_items), accent: 'var(--text-soft)' },
             ].map(m => <MetricCard key={m.label} {...m} />)}
           </div>
-          {analysis.signal && (
-            <div style={{ padding: '10px 16px', borderLeft: `3px solid ${sigColors[analysis.signal] || 'var(--border)'}`, background: 'var(--bg-card)', borderRadius: '0 var(--radius) var(--radius) 0', marginBottom: 10 }}>
-              <span style={{ font: 'var(--type-title)', color: sigColors[analysis.signal] || 'var(--text-muted)' }}>{analysis.signal}</span>
-            </div>
-          )}
-          {analysis.recommendations?.length > 0 && (
-            <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '12px 16px' }}>
-              {analysis.recommendations.map((r, i) => (
-                <div key={i} style={{ display: 'flex', gap: 10, padding: '6px 0', borderBottom: i < analysis.recommendations.length - 1 ? '1px solid var(--border-subtle)' : 'none', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
-                  <span style={{ color: 'var(--accent-hover)', flexShrink: 0 }}>›</span>{r}
-                </div>
-              ))}
+          {basketPrime != null && (
+            <div style={{ padding: '10px 16px', borderLeft: `3px solid ${basketPrime >= 2 ? 'var(--pos)' : basketPrime >= 0 ? 'var(--warn)' : 'var(--neg)'}`, background: 'var(--bg-card)', borderRadius: '0 var(--radius) var(--radius) 0', font: 'var(--type-body-sm)', color: 'var(--text-soft)' }}>
+              <strong style={{ font: 'var(--type-title)', color: basketPrime >= 2 ? 'var(--pos)' : basketPrime >= 0 ? 'var(--warn)' : 'var(--neg)' }}>
+                {basketPrime >= 2 ? 'FAVORABLE' : basketPrime >= 0 ? 'NEUTRE' : 'DÉFAVORABLE'}
+              </strong>
+              {' — '}
+              {basketPrime >= 0
+                ? `le marché price la corrélation ${basketPrime.toFixed(1)} points au-dessus de celle réalisée par ce panier : c'est le sens favorable à une dispersion (vendre l'indice, acheter les composants).`
+                : `la corrélation réalisée de ce panier dépasse celle que price le marché de ${Math.abs(basketPrime).toFixed(1)} points : la prime joue contre une dispersion en ce moment.`}
+              <span style={{ color: 'var(--text-dim)' }}> Mesuré, pas garanti — la prime peut se retourner.</span>
             </div>
           )}
         </section>
@@ -402,13 +475,15 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
                 const iv   = vol?.iv   ?? comp.iv   ?? null;
                 const hv   = vol?.hv   ?? comp.hv   ?? null;
                 const beta = vol?.beta ?? comp.beta ?? null;
-                // Score : préférer score_data.score (autoScore réel) > item.score (stocké) > cache modal
-                const displayScore = item.score_data?.score ?? item.score ?? scoreCache?.[item.ticker];
+                // Score : précédence unique (cf. scoreOf) — recalcul de session > cache
+                // mémoïsé > valeur persistée à l'ajout.
+                const displayScore = scoreOf(item);
                 const scoreFallback = item.score_data?.is_fallback === true;   // score de secours (données non chargées)
+                const scoreStale = isStale(item);
 
                 return (
                   <tr key={item.ticker}
-                    onClick={() => onScore(list.index_symbol, item.ticker, 30)}
+                    onClick={() => onScore(list.index_symbol, item.ticker, dur)}
                     style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer', transition: 'background var(--dur-fast) var(--ease)' }}
                     onMouseEnter={e => { e.currentTarget.style.background = 'var(--bg-hover)'; }}
                     onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
@@ -465,8 +540,9 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache }) {
                     {/* Score */}
                     <td style={{ padding: '10px 14px', textAlign: 'right' }}>
                       {displayScore != null && (
-                        <span title={scoreFallback ? 'Score estimé — données non chargées (recharge pour le vrai calcul)' : undefined}
-                          style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: displayScore >= 75 ? 'var(--pos-soft)' : displayScore >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(displayScore), border: `1px solid ${displayScore >= 75 ? 'var(--pos)' : displayScore >= 55 ? 'var(--warn)' : 'var(--neg)'}`, opacity: scoreFallback ? 0.55 : 1 }}>
+                        <span title={scoreFallback ? 'Score estimé — données non chargées (recharge pour le vrai calcul)'
+                          : scoreStale ? `Score enregistré lors de l'ajout — recalcul en cours pour l'horizon ${dur} j.` : undefined}
+                          style={{ font: '700 12px/1 var(--font-mono)', padding: '3px 7px', borderRadius: 'var(--radius)', background: displayScore >= 75 ? 'var(--pos-soft)' : displayScore >= 55 ? 'var(--warn-soft)' : 'var(--neg-soft)', color: scoreColor(displayScore), border: `1px solid ${displayScore >= 75 ? 'var(--pos)' : displayScore >= 55 ? 'var(--warn)' : 'var(--neg)'}`, opacity: (scoreFallback || scoreStale) ? 0.55 : 1 }}>
                           {scoreFallback ? '≈' : ''}{displayScore}
                         </span>
                       )}

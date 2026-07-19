@@ -15,9 +15,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-const COMPS = [{ ticker: 'NVDA', weight: 7 }, { ticker: 'AAPL', weight: 6 }];
+// Panier d'indice de taille RÉALISTE. La taille n'est pas décorative : l'ancre
+// n'est calculée qu'au-dessus de MIN_ANCHOR_NAMES (12), parce qu'en dessous
+// ρ_impl s'effondre mécaniquement (cf. le test « sous-panier » plus bas).
+const COMPS = [
+  'NVDA', 'AAPL', 'MSFT', 'AMZN', 'META', 'GOOGL', 'TSLA',
+  'AVGO', 'COST', 'NFLX', 'AMD', 'PEP', 'ADBE', 'CSCO',
+].map((ticker, i) => ({ ticker, weight: 8 - i * 0.4 }));
 
-function loadStore(implSeq) {
+function loadStore(implSeq, comps = COMPS) {
   const calls = { impl: 0, scored: [] };
   const win = {
     addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
@@ -29,7 +35,7 @@ function loadStore(implSeq) {
     getIndices: () => Promise.resolve([]),
     getIndex: () => Promise.resolve({ symbol: 'SPX' }),
     getSnapshot: () => Promise.resolve({ iv_est: 18 }),
-    getComponents: () => Promise.resolve(COMPS.map(c => ({ ...c }))),
+    getComponents: () => Promise.resolve(comps.map(c => ({ ...c }))),
     batchQuotes: () => Promise.resolve([]),
     // null = échec / dépassement du délai ; nombre = ancre résolue.
     impliedCorrelation: () => {
@@ -112,6 +118,67 @@ test("un échec persistant ne martèle pas l'API", async () => {
   await store.scoreIndex('SPX', 30);
   await store.scoreIndex('SPX', 30);            // sans laisser expirer le délai
   assert.equal(calls.impl, 1, 'le délai de garde empêche une seconde tentative immédiate');
+});
+
+/* ── L'ancre est CANONIQUE : une seule par (indice, durée), pour tout le site ── */
+
+test("resolveRhoImpl rend la MÊME ancre à tous les écrans, calculée une seule fois", async () => {
+  const { store, calls } = loadStore([0.27]);
+  await store.loadIndex('SPX');
+
+  // Trois écrans qui demandent l'ancre en même temps (table d'indice, liste,
+  // détail d'un titre) : un seul calcul, une seule valeur.
+  const [a, b, c] = await Promise.all([
+    store.resolveRhoImpl('SPX', 30),
+    store.resolveRhoImpl('SPX', 30),
+    store.resolveRhoImpl('SPX', 30),
+  ]);
+  assert.equal(a, 0.27);
+  assert.equal(b, 0.27);
+  assert.equal(c, 0.27);
+  assert.equal(calls.impl, 1, 'les appels concurrents sont dédoublonnés');
+
+  // Et le scoring de l'indice réutilise CETTE ancre, sans la recalculer.
+  await store.scoreIndex('SPX', 30);
+  assert.equal(calls.impl, 1, "le scoring réutilise l'ancre déjà résolue");
+  assert.ok(calls.scored.every(s => s.rhoImpl === 0.27), 'tout est scoré sur la même ancre');
+});
+
+test("l'ancre se résout même si l'écran Indices n'a jamais été ouvert", async () => {
+  // Cas réel : une liste ouverte directement (marque-page, lien partagé). Elle
+  // doit obtenir la même ancre que la table de l'indice, sans l'avoir chargée.
+  const { store, calls } = loadStore([0.31]);
+  const rho = await store.resolveRhoImpl('SPX', 30);   // pas de loadIndex préalable
+  assert.equal(rho, 0.31, "l'indice est chargé à la demande pour ancrer le score");
+  assert.equal(calls.impl, 1);
+});
+
+test('un sous-panier trop petit ne produit PAS une ancre inventée', async () => {
+  // Sous ~12 noms, ρ_impl s'effondre mécaniquement vers son clamp bas. Rendre
+  // une telle valeur serait pire que ne rien rendre : elle a l'air d'une vraie
+  // ancre et gonfle le score de ~23 points. On refuse, et le fail-safe serveur
+  // s'applique — mais alors il s'applique PARTOUT pareil.
+  const { store, calls } = loadStore([0.05], [{ ticker: 'NVDA', weight: 7 }, { ticker: 'AAPL', weight: 6 }]);
+  const rho = await store.resolveRhoImpl('SPX', 30);
+  assert.equal(rho, null, 'pas assez de noms → pas d\'ancre');
+  assert.equal(calls.impl, 0, "on n'interroge même pas l'API pour un panier non ancrable");
+});
+
+test('scoreIndex déjà en cours est ATTENDABLE (plus d\'univers partiel)', async () => {
+  // L'auto-chercheur `await scoreIndex(...)` puis lit la table des scores. Quand
+  // un autre écran scorait déjà, l'ancien code rendait la main immédiatement :
+  // le chercheur travaillait sur un univers à moitié scoré, donc un résultat qui
+  // dépendait de l'ordre d'ouverture des écrans.
+  const { store, calls } = loadStore([0.24]);
+  await store.loadIndex('SPX');
+
+  const premier = store.scoreIndex('SPX', 30);
+  const second  = store.scoreIndex('SPX', 30);   // pendant que le premier tourne
+  await Promise.all([premier, second]);
+
+  const scores = store.getScores('SPX', 30);
+  assert.equal(Object.keys(scores).length, COMPS.length, 'TOUS les composants sont scorés au retour');
+  assert.equal(calls.scored.length, COMPS.length, 'aucun composant scoré deux fois');
 });
 
 test("l'ampleur du défaut est bien celle observée (0 contre 65)", () => {

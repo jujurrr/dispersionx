@@ -135,10 +135,25 @@
   // navigation. Arrondi à 3 décimales — ρ_impl bouge peu, inutile de fragmenter le cache.
   function _scoreKey(i, s, d, x, r) { return [i, s, d, x ? 1 : 0, (r > 0 && r < 1) ? r.toFixed(3) : 'default'].join('|'); }
 
-  // rho_impl (optionnel) : corrélation implicite RÉELLE du panier → ancre du terme de
-  // corrélation à la place de la constante 0.65. À passer dès qu'on l'a : le modèle V2
-  // (DX_SCORE_MODEL) s'en sert comme seuil de sélectivité et dégénère sans lui.
+  // Ancre CANONIQUE du site : la ρ implicite de l'INDICE (panier complet) pour cet
+  // horizon, telle que le store l'a résolue. Un score de dispersion doit être une
+  // fonction de (indice, titre, durée) et de rien d'autre — l'ancre est donc lue
+  // ici, au même endroit pour tout le monde, plutôt que laissée à la discrétion de
+  // chaque écran. null = pas encore résolue → fail-safe serveur, identique partout.
+  function _canonAnchor(index_symbol, duration_days) {
+    try {
+      const r = (window.DXStore && window.DXStore.getRhoImpl)
+        ? window.DXStore.getRhoImpl(index_symbol, duration_days) : null;
+      return (r > 0 && r < 1) ? r : null;
+    } catch { return null; }
+  }
+
+  // rho_impl (optionnel) : ancre de corrélation. Un appelant qui ne la passe PAS ne
+  // retombe plus sur le fail-safe 0,65 — il hérite de l'ancre canonique de l'indice.
+  // C'est ce qui rend l'incohérence impossible : oublier l'ancre ne peut plus
+  // produire un score différent (≈ 23 points) pour le même titre selon l'écran.
   async function autoScore(index_symbol, stock_symbol, duration_days, use_ex_action = false, rho_impl = null) {
+    if (!(rho_impl > 0 && rho_impl < 1)) rho_impl = _canonAnchor(index_symbol, duration_days);
     const key = _scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action, rho_impl);
     if (_scoreCache[key]) return _scoreCache[key];
     if (_scoreInflight[key]) return _scoreInflight[key];
@@ -185,8 +200,14 @@
     return p;
   }
   // Lecture synchrone du score déjà calculé (null si pas encore en cache).
+  // Lit la clé de l'ancre CANONIQUE — pas la clé « default ». Sans ça, cette
+  // fonction ignorait tous les scores correctement ancrés (jamais rangés sous
+  // « default ») et ne pouvait ramener QUE des scores calculés au fail-safe 0,65,
+  // qu'elle servait ensuite à la table de l'indice et au Builder : un score gonflé
+  // d'une liste contaminait des écrans qui, eux, étaient justes.
   function getCachedScore(index_symbol, stock_symbol, duration_days, use_ex_action = false) {
-    const r = _scoreCache[_scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action)];
+    const anchor = _canonAnchor(index_symbol, duration_days);
+    const r = _scoreCache[_scoreKey(index_symbol, stock_symbol, duration_days, use_ex_action, anchor)];
     return r ? (r.scoring?.score ?? null) : null;
   }
   function clearScoreCache() {

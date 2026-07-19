@@ -18,7 +18,9 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
     DXApi.autoScore(indexSymbol, stockTicker, duration, false, rhoImpl).then(d => {
       setData(d);
       setLoading(false);
-      onScoreLoaded && onScoreLoaded(stockTicker, d?.scoring?.score);
+      // L'indice et l'horizon accompagnent le score : sans eux, l'appelant ne peut
+      // pas le ranger sous une clé qui le distingue d'un autre indice/échéance.
+      onScoreLoaded && onScoreLoaded(stockTicker, d?.scoring?.score, indexSymbol, duration);
       // On N'ÉCRASE PLUS l'IV avec une 2e source (options ATM). L'IV affichée,
       // « IV − HV » et le score doivent provenir du MÊME calcul (auto-score),
       // sinon l'écran montre une IV qui ne colle pas à « IV − HV » — bug

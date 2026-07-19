@@ -343,7 +343,7 @@ function App() {
       screenEl = <window.StrategyDetail listId={params.listId} onNav={onNav} lists={lists} addToast={addToast} pro={pro} mode={mode} />;
       break;
     case 'list-detail':
-      screenEl = <window.ListDetail listId={params.listId} onNav={onNav} onScore={onScore} addToast={addToast} mode={mode} scoreCache={scoreCache} />;
+      screenEl = <window.ListDetail listId={params.listId} onNav={onNav} onScore={onScore} addToast={addToast} mode={mode} scoreCache={scoreCache} duration={duration} />;
       break;
     case 'dashboard':
       screenEl = <window.Dashboard onNav={onNav} lists={lists} mode={mode} moduleCtx={moduleCtx} onModuleCtx={onModuleCtx} />;
@@ -500,7 +500,10 @@ function App() {
           onAddedToList={onAddedToList}
           addToast={addToast}
           mode={mode}
-          onScoreLoaded={(ticker, score) => score != null && setScoreCache(prev => ({ ...prev, [ticker]: score }))}
+          /* Clé (indice, titre, horizon) — PAS le seul ticker. Un score est propre à
+             un indice et à une échéance : indexé par ticker seul, le score d'AAPL vu
+             depuis SPX ressortait dans une liste NDX. */
+          onScoreLoaded={(ticker, score, idx, dur) => score != null && setScoreCache(prev => ({ ...prev, [[idx, ticker, dur].join('|')]: score }))}
         />
       )}
 

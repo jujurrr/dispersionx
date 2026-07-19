@@ -57,7 +57,7 @@ function IndexDetail({ symbol, onNav, onScore, duration, onDuration, mode, score
     if (scores[c.ticker] != null) return scores[c.ticker];
     const cached = window.DXApi && window.DXApi.getCachedScore(symbol, c.ticker, duration);
     if (cached != null) return cached;
-    return c.score != null ? c.score : (scoreCache?.[c.ticker] ?? null);
+    return c.score != null ? c.score : (scoreCache?.[[symbol, c.ticker, duration].join('|')] ?? null);
   };
 
   // Progression du scoring de CET indice (barre in-page, distincte de la
