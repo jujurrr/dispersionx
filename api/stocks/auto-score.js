@@ -337,14 +337,20 @@ export default async (req) => {
   // Modèle actif. V1 par défaut : V2 est validé sur le CLASSEMENT mais change tous les niveaux
   // affichés — bascule par variable d'environnement, réversible à chaud, sans redéploiement de
   // code. Les deux scores sont TOUJOURS calculés et renvoyés → comparables en production.
-  const SCORE_MODEL = String(process.env.DX_SCORE_MODEL || 'V1').toUpperCase() === 'V2' ? 'V2' : 'V1';
-  const score = SCORE_MODEL === 'V2' ? scoreV2 : scoreV1;
+  const _envModel = String(process.env.DX_SCORE_MODEL || 'V1').toUpperCase();
+  const SCORE_MODEL = _envModel === 'V2' ? 'V2' : _envModel === 'ALT' ? 'ALT' : 'V1';
+  // ALT (« vol idio réalisée − coût », sans prime) : le score est CROSS-SECTIONNEL — c'est le RANG
+  // du titre parmi les autres de l'indice. Une action isolée n'a pas de coupe transverse, donc ici
+  // on renvoie un placeholder (V2) + les ingrédients bruts (alt_idio/alt_cost) ; le store écrase par
+  // le vrai percentile ALT une fois tout l'indice scoré (js/lib/alt-score.js).
+  const score = SCORE_MODEL === 'V1' ? scoreV1 : scoreV2;
 
   // Seuils du signal : propres à chaque modèle. Ceux de V2 sont calibrés sur la distribution
   // mesurée (13 138 observations NDX+SPX) pour reproduire les proportions de V1 — 4,6 % de FORT
   // et 33,8 % de MODÉRÉ. Réutiliser 75/55 sur V2 laisserait 0,7 % de FORT : un badge qui ne
   // s'allume jamais n'informe personne.
-  const TH = SCORE_MODEL === 'V2' ? { fort: 62, mod: 19 } : { fort: 75, mod: 55 };
+  // Seuils ALT = percentiles (le score ALT est un rang 0-100) : FORT = top 20 %, MODÉRÉ = top 50 %.
+  const TH = SCORE_MODEL === 'V2' ? { fort: 62, mod: 19 } : SCORE_MODEL === 'ALT' ? { fort: 80, mod: 50 } : { fort: 75, mod: 55 };
   const [signal, signal_color] = score >= TH.fort ? ['FORT', 'green'] : score >= TH.mod ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
 
   const subscores = {
@@ -428,6 +434,9 @@ export default async (req) => {
       // champs permettent de comparer V1 et V2 sur les mêmes données réelles sans rien casser.
       score_model: SCORE_MODEL, score_v1: scoreV1, score_v2: scoreV2,
       score_thresholds: TH,
+      // Ingrédients BRUTS du modèle ALT (« idio réalisée − coût »). Le score ALT lui-même est
+      // cross-sectionnel (percentile sur l'univers de l'indice) → calculé dans le store, pas ici.
+      alt_idio: Number(idioVol.toFixed(2)), alt_cost: Number(spreadPctUsed.toFixed(2)),
       v2_parts: { corr_gate: Number(corrGate.toFixed(3)), quality: Math.round(quality), edge: Number(edge.toFixed(3)) },
       weights: W,
       // Décomposition pondérée : contribution = poids × sous-score (∑ = score).

@@ -80,10 +80,20 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
         ) : !data ? (
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--neg)', font: 'var(--type-body)' }}>Erreur de chargement. Réessayez.</div>
         ) : (() => {
-          const { scoring, stock, index: idx } = data;
-          // Modèle actif : V1 (somme pondérée) ou V2 (porte corrélation × qualité). L'affichage
-          // s'ADAPTE au modèle — les blocs V1 restent tels quels quand V1 est actif, on ne les écrase pas.
+          const { stock, index: idx } = data;
+          // Modèle actif : V1 (somme pondérée), V2 (porte corrélation × qualité), ou ALT (rang
+          // « vol idio réalisée − coût » dans l'indice). L'affichage s'ADAPTE au modèle.
+          let scoring = data.scoring;
           const isV2 = scoring.score_model === 'V2';
+          const isAlt = scoring.score_model === 'ALT';
+          // ALT est CROSS-SECTIONNEL : le vrai score (percentile) vient du STORE, pas de la réponse
+          // par-action (qui ne porte qu'un placeholder). On substitue score + signal, sans muter
+          // l'état. Repli sur le placeholder si le store n'a pas l'indice en contexte (non-cassant).
+          if (isAlt && window.DXStore && window.DXStore.getAltDetail) {
+            const ad = window.DXStore.getAltDetail(indexSymbol, stockTicker, duration);
+            if (ad) scoring = { ...scoring, score: ad.score, signal: ad.signal, alt_detail: ad,
+              signal_color: ad.signal === 'FORT' ? 'green' : ad.signal === 'MODÉRÉ' ? 'amber' : 'red' };
+          }
           const v2 = scoring.v2_parts || {};
           return (
             <div style={{ padding: 22, display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -136,10 +146,38 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                   et le spread pilotent le profit autant que la corrélation. Le présenter comme un
                   signal d'achat serait donc faux. On le dit là où le chiffre se lit. */}
               <div style={{ padding: '10px 13px', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.55 }}>
-                <strong style={{ color: 'var(--text-soft)' }}>Comment lire ce score.</strong> Il classe l'<strong>apport de ce composant à une dispersion</strong> : bouge-t-il assez indépendamment de l'indice, sa volatilité est-elle attractive, ses options sont-elles traitables. Nos tests sur 2 ans confirment qu'il <strong>prédit bien la corrélation</strong> à venir — mais il ne prédit <strong>pas le gain</strong> : dans nos backtests, le panier le mieux classé est celui qui capture le mieux la corrélation, et pourtant pas celui au meilleur résultat net de frais. C'est un outil d'<strong>analyse</strong>, pas un signal d'achat : le résultat se joue au moment du trade, sur le coût d'exécution et la taille.
+                {isAlt ? (
+                  <><strong style={{ color: 'var(--text-soft)' }}>Comment lire ce score.</strong> Il classe ce composant par « <strong>vol idiosyncratique réalisée − coût d'exécution</strong> », <strong>rangé parmi les titres de l'indice</strong> (percentile). Il ne dépend <strong>pas de la prime de corrélation</strong>. Sur notre backtest en dollars, ce classement <strong>bat le modèle actuel</strong> et reste positif <strong>delta-hedgé net sur l'indice</strong> — mais c'est un <strong>facteur expérimental</strong> (long vol idio bon marché), sensible au régime, <strong>pas une promesse de rendement</strong> : à valider en conditions réelles.</>
+                ) : (
+                  <><strong style={{ color: 'var(--text-soft)' }}>Comment lire ce score.</strong> Il classe l'<strong>apport de ce composant à une dispersion</strong> : bouge-t-il assez indépendamment de l'indice, sa volatilité est-elle attractive, ses options sont-elles traitables. Nos tests sur 2 ans confirment qu'il <strong>prédit bien la corrélation</strong> à venir — mais il ne prédit <strong>pas le gain</strong> : dans nos backtests, le panier le mieux classé est celui qui capture le mieux la corrélation, et pourtant pas celui au meilleur résultat net de frais. C'est un outil d'<strong>analyse</strong>, pas un signal d'achat : le résultat se joue au moment du trade, sur le coût d'exécution et la taille.</>
+                )}
               </div>
 
-              {isV2 ? (
+              {isAlt ? (
+                /* ALT : vignette « vol idio − coût → rang percentile », même moule visuel que V2. */
+                <div style={{ padding: 16, background: 'var(--accent-soft, var(--bg-elevated))', border: '1px solid var(--accent)', borderRadius: 'var(--radius-lg)' }}>
+                  <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--accent-hover)', marginBottom: 14 }}>Comment le score se construit</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+                    {[
+                      { l: 'Vol idio réal.', v: scoring.alt_idio != null ? scoring.alt_idio.toFixed(0) : '—', sub: 'mouvement propre (pts)', c: 'var(--pos-bright)' },
+                      { op: '−' },
+                      { l: 'Coût exéc.', v: scoring.alt_cost != null ? scoring.alt_cost.toFixed(0) + '%' : '—', sub: 'spread straddle ATM', c: 'var(--warn)' },
+                      { op: '→' },
+                      { l: 'Rang', v: scoring.score, sub: scoring.signal, c: sigColor[scoring.signal_color] || 'var(--text)', big: true },
+                    ].map((m, i) => m.op
+                      ? <div key={i} style={{ font: '300 24px/1 var(--font-mono)', color: 'var(--text-dim)', flex: '0 0 auto' }}>{m.op}</div>
+                      : <div key={i} style={{ textAlign: 'center', flex: '1 1 70px', minWidth: 70 }}>
+                          <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginBottom: 5 }}>{m.l}</div>
+                          <div style={{ font: `700 ${m.big ? 32 : 24}px/1 var(--font-mono)`, color: m.c }}>{m.v}</div>
+                          <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 5 }}>{m.sub}</div>
+                        </div>
+                    )}
+                  </div>
+                  <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', marginTop: 14, lineHeight: 1.5, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
+                    Le score est le <strong>rang percentile</strong> de « vol idio − coût » parmi les titres de l'indice. <strong>Sans prime de corrélation.</strong> À trader delta-hedgé <strong style={{ color: 'var(--text-soft)' }}>net sur l'indice</strong> (pas jambe par jambe). Corrélation, IV-rank et earnings sont <strong>hors modèle</strong> — affichés plus bas pour information.
+                  </div>
+                </div>
+              ) : isV2 ? (
                 /* V2 : UNE seule vignette « porte × qualité = score » — lecture immédiate. Elle
                    remplace le bandeau + les 4 cartes + le bloc sous-scores (redondants en V2). */
                 <div style={{ padding: 16, background: 'var(--accent-soft, var(--bg-elevated))', border: '1px solid var(--accent)', borderRadius: 'var(--radius-lg)' }}>
@@ -187,9 +225,30 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                 </>
               )}
 
+              {/* ALT : les facteurs HORS modèle (corrélation, IV-rank, earnings), pour information —
+                  un trader de dispersion veut les voir même s'ils n'entrent pas dans le score ALT. */}
+              {isAlt && scoring.subscores && (
+                <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', padding: '14px 16px', border: '1px solid var(--border)' }}>
+                  <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Pour information — hors modèle ALT</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                    {[
+                      { l: 'Corrélation', v: scoring.subscores.dispersion_contrib?.score ?? '—', sub: scoring.rho_real_expected != null ? `ρ réal ${(scoring.rho_real_expected * 100).toFixed(0)}% vs impl ${(scoring.rho_implicit_final * 100).toFixed(0)}%` : 'apport dispersion' },
+                      { l: 'IV Rank', v: scoring.subscores.vol_attractive?.score ?? '—', sub: `rank ${stock.iv_rank?.iv_rank ?? '—'}% · bas = favorable` },
+                      { l: 'Earnings', v: scoring.subscores.earnings_catalyst?.score ?? '—', sub: stock.earnings_in_strategy ? `résultat dans ${stock.days_to_earnings} j` : 'pas de catalyseur' },
+                    ].map(m => (
+                      <div key={m.l} style={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius)', padding: '10px 12px' }}>
+                        <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)', marginBottom: 5 }}>{m.l}</div>
+                        <div style={{ font: '700 16px/1 var(--font-mono)', color: 'var(--text-soft)' }}>{m.v}</div>
+                        <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', marginTop: 4 }}>{m.sub}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Prime de corrélation (signal desk) — ρ implicite RÉELLE du panier vs ρ réalisée.
                   En V2 l'edge est déjà dans la vignette « porte » → on ne la répète pas. */}
-              {!isV2 && scoring.corr_risk_premium != null && (
+              {!isV2 && !isAlt && scoring.corr_risk_premium != null && (
                 <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', textAlign: 'center', marginTop: -8 }}>
                   Prime de corrélation :{' '}
                   <strong style={{ color: scoring.corr_risk_premium > 0 ? 'var(--pos-bright)' : 'var(--neg-bright)' }}>
@@ -200,8 +259,8 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               )}
 
               {/* Sous-scores décomposés — V1 UNIQUEMENT (en V2 la vignette « porte × qualité »
-                  suffit, et earnings/liquidité sont hors modèle → inutile de les lister). */}
-              {!isV2 && (
+                  suffit ; en ALT le bloc « hors modèle » ci-dessus tient ce rôle). */}
+              {!isV2 && !isAlt && (
               <div style={{ background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', padding: '14px 16px', border: '1px solid var(--border)' }}>
                 <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: 12 }}>Sous-scores décomposés</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -302,7 +361,9 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
               {/* Beginner box */}
               {mode === 'Débutant' && (
                 <BeginnerExplanationBox>
-                  {isV2 ? (
+                  {isAlt ? (
+                    <><strong>Pourquoi ce score ?</strong> Le modèle <strong>ALT</strong> classe les titres sur deux choses seulement : la <strong>vol idiosyncratique réalisée</strong> (combien l'action bouge toute seule, indépendamment de l'indice — c'est ce qui fait payer le straddle long) <strong>moins</strong> le <strong>coût d'exécution</strong> (le spread des options : cher à trader = pénalisé). Le score est le <strong>rang</strong> du titre parmi ceux de l'indice, de 0 à 100. <strong>Pas de prime de corrélation</strong> : nos tests en dollars montrent qu'elle ne prédit pas le gain, alors que « bouge beaucoup, pas cher » le prédit mieux. ⚠️ Modèle <strong>expérimental</strong> — à trader delta-hedgé <strong>net sur l'indice</strong>, et à confirmer en conditions réelles.</>
+                  ) : isV2 ? (
                     <><strong>Pourquoi ce score ?</strong> Le modèle V2 <strong>multiplie</strong> deux choses. D'abord une <strong>porte de corrélation</strong> : ce titre bouge-t-il vraiment indépendamment de l'indice ? Si sa corrélation est trop élevée, la porte se ferme (→ 0) et le score tombe — <em>un titre qui suit l'indice n'apporte rien à une dispersion, quelle que soit sa vol</em>. Ensuite une <strong>qualité</strong> : 60 % d'<strong>IV rank</strong> (on <strong>achète</strong> la volatilité, donc on la préfère <strong>basse dans son historique</strong>) + 40 % de <strong>vol idiosyncratique</strong> (bouge-t-il assez, tout seul, pour payer le straddle ?). C'est un <strong>produit, pas une moyenne</strong> : contrairement à V1, un bon critère ne compense jamais une corrélation trop haute. Les <strong>earnings</strong> et la <strong>liquidité</strong> sont affichés pour information mais n'entrent pas dans V2.</>
                   ) : (
                     <><strong>Pourquoi ce score ?</strong> Le score est une <strong>moyenne pondérée</strong> de cinq critères notés sur 100 : la <strong>corrélation</strong> (45 %, le cœur de la dispersion — on cherche des actions qui bougent indépendamment de l'indice), l'<strong>IV rank</strong> (20 % — sur une action on <strong>achète</strong> la volatilité, donc on la préfère <strong>BASSE dans son historique</strong> : la payer moins cher est un meilleur point d'entrée), le <strong>catalyseur d'earnings</strong> (15 % — un résultat dans la fenêtre crée un gap idiosyncratique qui décorrèle le titre de l'indice, <em>favorable</em> à une dispersion), la <strong>vol idiosyncratique</strong> (10 % — combien l'action bouge indépendamment de l'indice, ce qui fait payer le straddle) et la <strong>liquidité</strong> (10 % — spread réel des options). Plus le score est élevé, meilleur est le composant pour la jambe longue de la stratégie.</>

@@ -43,6 +43,7 @@ import '../project/_ds_bundle.js';
 // 4) Données de démo, client API, store/préchargeur, logique pure partagée.
 import '../js/data.js';
 import '../js/api.js';
+import '../js/lib/alt-score.js';   // window.DXAltScore : score ALT cross-sectionnel (idio réalisée − coût), utilisé par store.js
 import '../js/store.js';
 import '../js/notif-store.js';   // window.DXNotifStore (store partagé des notifications, cloud)
 import '../js/lib/market-hours.js';

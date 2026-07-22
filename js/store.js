@@ -240,6 +240,14 @@
           const r = await DXApi.autoScore(symbol, t, dur, false, rhoImpl);
           const sc = r?.scoring?.score;
           if (sc != null) scores[t] = sc;
+          /* Ingrédients du modèle ALT (« vol idio réalisée − coût »). Le score ALT est
+             CROSS-SECTIONNEL (rang du titre dans l'indice) → on collecte ici les ingrédients
+             bruts et on calcule le vrai score APRÈS la passe, quand tout l'univers est connu. */
+          if (r?.scoring?.alt_idio != null && r?.scoring?.alt_cost != null) {
+            if (!d.altParts) d.altParts = {};
+            if (!d.altParts[dur]) d.altParts[dur] = {};
+            d.altParts[dur][t] = { idio: r.scoring.alt_idio, cost: r.scoring.alt_cost };
+          }
           /* Modèle de score ACTIF + ses seuils, tels que le serveur les renvoie.
              Sans ça, les écrans qui raisonnent sur le NIVEAU d'un score (et pas
              seulement sur son classement) codent en dur l'échelle de V1 : sous V2
@@ -254,8 +262,31 @@
       }));
       emitIndex(symbol);
     }
+    // ── Modèle ALT : score CROSS-SECTIONNEL sur TOUT l'univers de l'indice ──
+    // Le percentile de z(idio) − z(coût) ne peut se calculer qu'ici, une fois tous les noms
+    // scorés (une action isolée n'a pas de coupe transverse). Écrase le placeholder V2 par le
+    // vrai score ALT. Uniquement quand le serveur renvoie le modèle ALT → non cassant en V1/V2.
+    applyAltScores(d, dur, scores);
     d.scoring[dur] = false;
     emitIndex(symbol);
+  }
+
+  /* Applique le score ALT (js/lib/alt-score.js) sur l'univers déjà scoré de l'indice, en place. */
+  function applyAltScores(d, dur, scores) {
+    const model = d.scoreModel && d.scoreModel[dur] && d.scoreModel[dur].model;
+    if (model !== 'ALT') return;
+    const parts = d.altParts && d.altParts[dur];
+    const AS = (typeof window !== 'undefined' && window.DXAltScore) || (typeof globalThis !== 'undefined' && globalThis.DXAltScore);
+    if (!parts || !AS) return;                       // repli : on garde le placeholder (non cassant)
+    const alt = AS.altScores(parts);
+    if (!Object.keys(alt).length) return;
+    if (!d.altDetail) d.altDetail = {};
+    d.altDetail[dur] = alt;
+    const TH = (d.scoreModel[dur] && d.scoreModel[dur].thresholds) || { fort: 80, mod: 50 };
+    for (const t of Object.keys(alt)) {
+      scores[t] = alt[t].score;                       // le vrai score ALT remplace le placeholder
+      alt[t].signal = alt[t].score >= TH.fort ? 'FORT' : alt[t].score >= TH.mod ? 'MODÉRÉ' : 'FAIBLE';
+    }
   }
 
   /* ── Préchargement complet au démarrage ──────────────────────── */
@@ -306,6 +337,14 @@
       const d = state.data[symbol];
       const m = d && d.scoreModel && d.scoreModel[dur || PRELOAD_DUR];
       return m || { model: 'V1', thresholds: { fort: 75, mod: 55 } };
+    },
+    // Détail du score ALT (idio, coût, z, percentile, signal) d'un titre DANS le contexte de son
+    // indice — pour le ScoreModal. null hors modèle ALT / hors contexte d'indice (le score ALT est
+    // cross-sectionnel, il n'existe pas pour une action isolée).
+    getAltDetail: (symbol, ticker, dur) => {
+      const d = state.data[symbol];
+      const a = d && d.altDetail && d.altDetail[dur || PRELOAD_DUR];
+      return (a && a[ticker]) || null;
     },
     isScoring: (symbol, dur) => !!(state.data[symbol] && state.data[symbol].scoring[dur || PRELOAD_DUR]),
     getProgress: () => ({ queued: state.progress.queued, done: state.progress.done }),
