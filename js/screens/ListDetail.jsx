@@ -103,6 +103,19 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache, durati
   // mélange de deux échéances.
   React.useEffect(() => { autoScoredRef.current = null; setLiveScores({}); }, [dur]);
 
+  // Bascule du modèle de score (Préférences V2 ⇆ ALT) : re-lire les scores du store dans la
+  // liste déjà ouverte, sans re-scorer — cohérence immédiate avec les tableaux d'indice.
+  React.useEffect(() => {
+    if (!list) return;
+    const onView = () => {
+      const idx = list.index_symbol || 'SPX';
+      const ss = (window.DXStore && window.DXStore.getScores) ? window.DXStore.getScores(idx, dur) : {};
+      setLiveScores(prev => { const n = { ...prev }; (list.items || []).forEach(it => { if (it.ticker && ss[it.ticker] != null) n[it.ticker] = ss[it.ticker]; }); return n; });
+    };
+    window.addEventListener('dx-score-view-changed', onView);
+    return () => window.removeEventListener('dx-score-view-changed', onView);
+  }, [list, dur]);
+
   // Rafraîchissement des prix toutes les 60 s (tick global) — on ne recharge que
   // les cotations, pas toute la liste ni le re-scoring.
   React.useEffect(() => {
@@ -142,15 +155,23 @@ function ListDetail({ listId, onNav, onScore, addToast, mode, scoreCache, durati
         ? await window.DXStore.resolveRhoImpl(indexSym, dur).catch(() => null)
         : null;
       setAnchorRho(rhoImpl);   // l'en-tête affiche l'ancre RÉELLEMENT utilisée ci-dessous
+      // Le score AFFICHÉ doit être celui du modèle de VUE (V2, ou rang ALT cross-sectionnel), COHÉRENT
+      // avec les tableaux d'indice. ALT n'existe pas par action isolée (c'est un rang dans l'indice) :
+      // on s'assure donc que le store a scoré l'indice (idempotent, souvent déjà fait au préchargement),
+      // puis on lit SON score par nom au lieu du placeholder par-action renvoyé par l'API.
+      if (window.DXStore && window.DXStore.scoreIndex) { try { await window.DXStore.scoreIndex(indexSym, dur); } catch {} }
+      const storeScores = (window.DXStore && window.DXStore.getScores) ? window.DXStore.getScores(indexSym, dur) : {};
       for (let i = 0; i < items.length; i += BATCH) {
         const batch = items.slice(i, i + BATCH);
         await Promise.allSettled(batch.map(async item => {
           const result = await DXApi.autoScore(indexSym, item.ticker, dur, false, rhoImpl);
           if (result?.scoring?.score != null) {
-            // Affichage immédiat du score FRAIS, sans attendre l'aller-retour de
-            // persistance : sinon la table montre encore la valeur figée à l'ajout.
-            setLiveScores(prev => ({ ...prev, [item.ticker]: result.scoring.score }));
-            await DXApi.addListItem(listId, item.ticker, result.scoring);
+            // Store (modèle de vue) prioritaire ; repli sur le score serveur si le nom n'est pas dans
+            // l'univers de l'indice (liste hors composants, cas rare). Affichage immédiat sans attendre
+            // l'aller-retour de persistance.
+            const shown = storeScores[item.ticker] != null ? storeScores[item.ticker] : result.scoring.score;
+            setLiveScores(prev => ({ ...prev, [item.ticker]: shown }));
+            await DXApi.addListItem(listId, item.ticker, { ...result.scoring, score: shown });
           }
         }));
       }

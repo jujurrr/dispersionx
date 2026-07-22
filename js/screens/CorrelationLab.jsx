@@ -823,11 +823,16 @@ function CorrelationLab({ listId: listIdParam, onNav, mode, lists, moduleCtx, on
     const resolve = DXApi.getList(listId).then(list => {
       const tickers = (list?.items || []).map(i => i.ticker).filter(Boolean);
       const index   = list?.index_symbol || ctx.listIndex || 'SPX';
-      // ρ implicite RÉELLE (formule CBOE sur IV, vega-pondérée) pour CETTE liste —
-      // cohérente avec le score et l'auto-chercheur. Repli sur C.rho_impl (VIX).
-      const useTk = tickers.length >= 2 ? tickers : DEMO_TICKERS;
-      DXApi.impliedCorrelation(index, useTk, null, 30)
-        .then(r => { if (r && r.rho_impl != null) setImplRho(r.rho_impl); }).catch(() => {});
+      // ρ implicite = ANCRE DE L'INDICE (invariant « une seule ancre par indice »), PAS le sous-panier
+      // de la liste. Sur une petite liste (le finder en produit de 5-15 noms) la formule CBOE sur le
+      // sous-panier S'EFFONDRE (Σwᵢ²σᵢ² décroît en 1/N → clamp 0,05) → prime négative absurde → le
+      // Régime conclut « pas de bon régime » à tort. L'ancre d'indice est le VRAI prix de la corrélation,
+      // cohérente avec le score et le finder. Repli sur la liste seulement si assez grande (≥ 12 noms).
+      if (window.DXStore && window.DXStore.resolveRhoImpl) {
+        window.DXStore.resolveRhoImpl(index, 30).then(a => { if (a != null) setImplRho(a); }).catch(() => {});
+      } else if (tickers.length >= 12) {
+        DXApi.impliedCorrelation(index, tickers, null, 30).then(r => { if (r && r.rho_impl != null) setImplRho(r.rho_impl); }).catch(() => {});
+      }
       if (tickers.length < 2) return DXApi.getCorrelation(null, DEMO_TICKERS, index);
       return DXApi.getCorrelation(listId, tickers, index);
     });
