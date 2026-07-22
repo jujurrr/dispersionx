@@ -32,6 +32,10 @@
   // une fausse. Ne mord jamais sur un indice complet — c'est un garde-fou, pas
   // un aiguillage.
   const MIN_ANCHOR_NAMES = 12;
+  // Seuils du BADGE ALT (FORT/MODÉRÉ/FAIBLE). Le score ALT est un PERCENTILE → le seuil = le
+  // pourcentage : {90,65} = 10 % de FORT, 25 % de MODÉRÉ, 65 % de FAIBLE. N'affecte QUE la couleur du
+  // badge (pas le score ni le tri du chercheur). Doit rester aligné avec auto-score.js (score_thresholds).
+  const ALT_TH = { fort: 90, mod: 65 };
 
   const state = {
     started: false,
@@ -304,7 +308,7 @@
     if (!Object.keys(alt).length) return;
     if (!d.altDetail) d.altDetail = {};
     d.altDetail[dur] = alt;
-    for (const t of Object.keys(alt)) alt[t].signal = alt[t].score >= 80 ? 'FORT' : alt[t].score >= 50 ? 'MODÉRÉ' : 'FAIBLE';
+    for (const t of Object.keys(alt)) alt[t].signal = alt[t].score >= ALT_TH.fort ? 'FORT' : alt[t].score >= ALT_TH.mod ? 'MODÉRÉ' : 'FAIBLE';
   }
 
   /* ── Préchargement complet au démarrage ──────────────────────── */
@@ -368,7 +372,7 @@
     // pas le flag serveur — c'est ce qui permet la bascule à chaud.
     getScoreModel: (symbol, dur) => {
       const vm = viewModel();
-      const TH = vm === 'ALT' ? { fort: 80, mod: 50 } : vm === 'V2' ? { fort: 62, mod: 19 } : { fort: 75, mod: 55 };
+      const TH = vm === 'ALT' ? { fort: ALT_TH.fort, mod: ALT_TH.mod } : vm === 'V2' ? { fort: 62, mod: 19 } : { fort: 75, mod: 55 };
       return { model: vm, thresholds: TH };
     },
     // Modèle de vue courant ('V2' | 'ALT') + bascule (persistante, re-rend toutes les surfaces).

@@ -243,8 +243,8 @@ test("setViewModel bascule la vue et ses seuils, sans re-scoring", async () => {
   assert.equal(s2.getViewModel(), 'ALT');
   const smAlt = s2.getScoreModel('SPX', 30);
   assert.equal(smAlt.model, 'ALT');
-  assert.equal(smAlt.thresholds.fort, 80);
-  assert.equal(smAlt.thresholds.mod, 50);
+  assert.equal(smAlt.thresholds.fort, 90);
+  assert.equal(smAlt.thresholds.mod, 65);
 
   // Retour V2 → seuils {62,19}.
   s2.setViewModel('V2');

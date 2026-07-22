@@ -350,7 +350,8 @@ export default async (req) => {
   // et 33,8 % de MODÉRÉ. Réutiliser 75/55 sur V2 laisserait 0,7 % de FORT : un badge qui ne
   // s'allume jamais n'informe personne.
   // Seuils ALT = percentiles (le score ALT est un rang 0-100) : FORT = top 20 %, MODÉRÉ = top 50 %.
-  const TH = SCORE_MODEL === 'V2' ? { fort: 62, mod: 19 } : SCORE_MODEL === 'ALT' ? { fort: 80, mod: 50 } : { fort: 75, mod: 55 };
+  // ⚠️ Seuil ALT à garder ALIGNÉ avec ALT_TH dans js/store.js (le store recalcule le badge côté client).
+  const TH = SCORE_MODEL === 'V2' ? { fort: 62, mod: 19 } : SCORE_MODEL === 'ALT' ? { fort: 90, mod: 65 } : { fort: 75, mod: 55 };
   const [signal, signal_color] = score >= TH.fort ? ['FORT', 'green'] : score >= TH.mod ? ['MODÉRÉ', 'amber'] : ['FAIBLE', 'red'];
 
   const subscores = {
