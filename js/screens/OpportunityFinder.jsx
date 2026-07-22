@@ -330,9 +330,18 @@ async function oppGather(index, dur) {
      porte sur les 25 noms du top, ce qui est encore un sous-panier. C'est cette
      ancre qui sert de référence à la prime (cf. oppEval). null → repli sur
      l'ancien calcul par sous-panier, comportement d'avant. */
-  const rhoImplIndex = (window.DXStore && window.DXStore.resolveRhoImpl)
+  let rhoImplIndex = (window.DXStore && window.DXStore.resolveRhoImpl)
     ? await window.DXStore.resolveRhoImpl(index, dur).catch(() => null)
     : null;
+  /* Repli d'ANCRE par HORIZON. L'IV Cboe est ~mono-échéance (30 j) : à 60/90 j l'ancre d'indice peut
+     ne pas se calculer (coverage insuffisante) → sans elle, oppEval retombe sur le sous-panier qui
+     S'EFFONDRE (clamp) → prime « n.d. » ET, l'objectif perdant son terme de prime, des paniers
+     dégénérés (petits, 5-7 noms). Constaté sur NDX à 60 j. La corrélation d'INDICE varie peu selon
+     l'horizon → l'ancre 30 j est une bien meilleure référence qu'un sous-panier saturé. */
+  if (rhoImplIndex == null && window.DXStore && window.DXStore.resolveRhoImpl) {
+    const DD = window.DXStore.DEFAULT_DUR || 30;
+    if (dur !== DD) rhoImplIndex = await window.DXStore.resolveRhoImpl(index, DD).catch(() => null);
+  }
   return {
     index, pool, corr, hv, iv, beta, vega, score: scores, price, sector, sigmaIdx, gate,
     scoreModel: sm ? sm.model : 'V1', scale: oppScaler(sm && sm.thresholds),
