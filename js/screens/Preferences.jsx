@@ -151,6 +151,7 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
   const [savingPw, setSavingPw] = React.useState(false);
   const [busyPro, setBusyPro] = React.useState(false);
   const [noStats, setNoStats] = React.useState(() => !!(window.DXAnalytics && window.DXAnalytics.isOptedOut && window.DXAnalytics.isOptedOut()));
+  const [scoreView, setScoreView] = React.useState(() => (window.DXStore && window.DXStore.getViewModel) ? window.DXStore.getViewModel() : 'V2');
   const [email, setEmail] = React.useState(user ? user.email : '');
   const [savingEmail, setSavingEmail] = React.useState(false);
   const [busyDelete, setBusyDelete] = React.useState(false);
@@ -418,6 +419,30 @@ function Preferences({ user, onNav, onAuth, addToast, mode }) {
       <PrefSection title={t('Apparence')} desc={t('Thème clair ou sombre.')} right={window.ThemeToggle ? <window.ThemeToggle /> : null}>
         <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)' }}>
           {t("Le thème est mémorisé sur cet appareil. Le mode d'affichage (Débutant / Avancé) se règle en haut à droite de l'app.")}
+        </div>
+      </PrefSection>
+
+      {/* ── Modèle de score (bascule de VUE V2 / ALT, sans re-scoring serveur) ── */}
+      <PrefSection title={t('Modèle de score')} desc={t('Comment les actions sont notées pour la dispersion.')}>
+        <div style={{ display: 'flex', gap: 0, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 3, width: 'fit-content', marginBottom: 12 }}>
+          {[{ m: 'V2', l: 'V2 · porte × qualité' }, { m: 'ALT', l: 'ALT · idio − coût (exp.)' }].map(o => {
+            const active = scoreView === o.m;
+            return (
+              <button key={o.m} type="button"
+                onClick={() => { if (window.DXStore && window.DXStore.setViewModel) window.DXStore.setViewModel(o.m); setScoreView(o.m);
+                  addToast && addToast(o.m === 'ALT' ? t('Modèle ALT (expérimental) activé.') : t('Modèle V2 activé.'), 'ok'); }}
+                style={{ font: 'var(--type-body-sm)', padding: '7px 14px', borderRadius: 'calc(var(--radius) - 2px)', border: 'none', cursor: 'pointer',
+                  background: active ? 'var(--accent)' : 'transparent', color: active ? 'var(--on-accent, #fff)' : 'var(--text-muted)',
+                  fontWeight: active ? 600 : 400, transition: 'all 0.15s var(--ease)' }}>
+                {o.l}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', lineHeight: 1.5 }}>
+          <strong style={{ color: 'var(--text-soft)' }}>V2</strong> {t('multiplie une porte de corrélation par la qualité (IV-rank + vol idio) — le modèle par défaut.')}{' '}
+          <strong style={{ color: 'var(--text-soft)' }}>ALT</strong> {t("classe par « vol idiosyncratique réalisée − coût d'exécution » (rang dans l'indice, sans prime) : sur nos backtests en dollars il bat V2, mais c'est un facteur EXPÉRIMENTAL à valider en réel, à trader delta-hedgé NET sur l'indice.")}{' '}
+          {t("Le choix est mémorisé sur cet appareil ; il change l'affichage des scores et les paniers du chercheur, sans rien recalculer côté serveur.")}
         </div>
       </PrefSection>
 

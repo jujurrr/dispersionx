@@ -39,7 +39,18 @@
     progress: { queued: 0, done: 0 },
     // symbol -> { index, snap, components, quotes, scores:{dur:{ticker:score}}, scoring:{dur:bool}, loaded, loading }
     data: {},
+    // Modèle de SCORE affiché (V2 ou ALT), choisi par l'utilisateur (persistant, localStorage).
+    // null = suivre le flag serveur (envModel). La bascule est PUREMENT une vue : le store calcule
+    // score V2 ET rang ALT en parallèle → passer de l'un à l'autre ne re-score rien.
+    viewModel: (() => { try { return localStorage.getItem('dx-score-view'); } catch { return null; } })(),
+    envModel: null,
   };
+  // Modèle de vue effectif : préférence utilisateur (V2/ALT) si posée, sinon le flag serveur, sinon
+  // repli V1 (comportement historique non-cassant — un déploiement sans flag reste en V1).
+  function viewModel() {
+    if (state.viewModel === 'ALT' || state.viewModel === 'V2') return state.viewModel;
+    return state.envModel || 'V1';
+  }
 
   /* ── Progression globale ─────────────────────────────────────── */
   function emitProgress() {
@@ -240,6 +251,13 @@
           const r = await DXApi.autoScore(symbol, t, dur, false, rhoImpl);
           const sc = r?.scoring?.score;
           if (sc != null) scores[t] = sc;
+          // Score V2 EXPLICITE (toujours renvoyé par le serveur) : base de la VUE V2, indépendante
+          // du flag serveur → permet la bascule V2/ALT côté client sans re-scorer.
+          if (r?.scoring?.score_v2 != null) {
+            if (!d.scoreV2) d.scoreV2 = {};
+            if (!d.scoreV2[dur]) d.scoreV2[dur] = {};
+            d.scoreV2[dur][t] = r.scoring.score_v2;
+          }
           /* Ingrédients du modèle ALT (« vol idio réalisée − coût »). Le score ALT est
              CROSS-SECTIONNEL (rang du titre dans l'indice) → on collecte ici les ingrédients
              bruts et on calcule le vrai score APRÈS la passe, quand tout l'univers est connu. */
@@ -256,37 +274,37 @@
           if (!d.scoreModel) d.scoreModel = {};
           if (!d.scoreModel[dur] && r?.scoring?.score_thresholds) {
             d.scoreModel[dur] = { model: r.scoring.score_model || 'V1', thresholds: r.scoring.score_thresholds };
+            // Modèle ACTIF côté serveur (flag) = défaut de vue pour un visiteur sans préférence.
+            if (state.envModel == null) state.envModel = r.scoring.score_model || 'V1';
           }
         } catch {}
         markDone(1);
       }));
+      // ALT : recalcul INCRÉMENTAL du rang sur les noms DÉJÀ scorés, avant chaque émission → la vue
+      // ALT montre un rang dès le départ (jamais de « flicker V2 → ALT »). S'affine à mesure que
+      // l'univers se remplit. Idempotent et O(n log n) sur le sous-ensemble courant → négligeable.
+      applyAltScores(d, dur);
       emitIndex(symbol);
     }
-    // ── Modèle ALT : score CROSS-SECTIONNEL sur TOUT l'univers de l'indice ──
-    // Le percentile de z(idio) − z(coût) ne peut se calculer qu'ici, une fois tous les noms
-    // scorés (une action isolée n'a pas de coupe transverse). Écrase le placeholder V2 par le
-    // vrai score ALT. Uniquement quand le serveur renvoie le modèle ALT → non cassant en V1/V2.
-    applyAltScores(d, dur, scores);
+    // ── Modèle ALT : rang CROSS-SECTIONNEL sur TOUT l'univers de l'indice (passe finale) ──
+    applyAltScores(d, dur);
     d.scoring[dur] = false;
     emitIndex(symbol);
   }
 
-  /* Applique le score ALT (js/lib/alt-score.js) sur l'univers déjà scoré de l'indice, en place. */
-  function applyAltScores(d, dur, scores) {
-    const model = d.scoreModel && d.scoreModel[dur] && d.scoreModel[dur].model;
-    if (model !== 'ALT') return;
+  /* Calcule le score ALT (js/lib/alt-score.js) sur l'univers déjà scoré et le range dans
+     d.altDetail[dur]. On calcule TOUJOURS (indépendamment du flag serveur) pour que la vue puisse
+     basculer V2 ↔ ALT côté client sans rien re-scorer. N'écrase PAS `scores` (base V2) : getScores
+     choisit V2 ou ALT selon le modèle de VUE. Seuils ALT = percentiles fixes {80,50}. */
+  function applyAltScores(d, dur) {
     const parts = d.altParts && d.altParts[dur];
     const AS = (typeof window !== 'undefined' && window.DXAltScore) || (typeof globalThis !== 'undefined' && globalThis.DXAltScore);
-    if (!parts || !AS) return;                       // repli : on garde le placeholder (non cassant)
+    if (!parts || !AS) return;
     const alt = AS.altScores(parts);
     if (!Object.keys(alt).length) return;
     if (!d.altDetail) d.altDetail = {};
     d.altDetail[dur] = alt;
-    const TH = (d.scoreModel[dur] && d.scoreModel[dur].thresholds) || { fort: 80, mod: 50 };
-    for (const t of Object.keys(alt)) {
-      scores[t] = alt[t].score;                       // le vrai score ALT remplace le placeholder
-      alt[t].signal = alt[t].score >= TH.fort ? 'FORT' : alt[t].score >= TH.mod ? 'MODÉRÉ' : 'FAIBLE';
-    }
+    for (const t of Object.keys(alt)) alt[t].signal = alt[t].score >= 80 ? 'FORT' : alt[t].score >= 50 ? 'MODÉRÉ' : 'FAIBLE';
   }
 
   /* ── Préchargement complet au démarrage ──────────────────────── */
@@ -317,7 +335,20 @@
     loadQuotes,
     refreshQuotes,
     getIndexData: (symbol) => state.data[symbol] || null,
-    getScores: (symbol, dur) => (state.data[symbol] && state.data[symbol].scores[dur || PRELOAD_DUR]) || {},
+    // Scores du modèle de VUE courant : rang ALT (percentile) si vue ALT, sinon score V2. Repli sur
+    // V2 si ALT pas encore calculé. Utilisé par les tableaux ET le finder → tout suit la vue choisie.
+    getScores: (symbol, dur) => {
+      const d = state.data[symbol]; if (!d) return {};
+      dur = dur || PRELOAD_DUR;
+      const vm = viewModel();
+      if (vm === 'ALT') {
+        const a = d.altDetail && d.altDetail[dur];
+        if (a && Object.keys(a).length) { const m = {}; for (const t in a) m[t] = a[t].score; return m; }
+        // ALT pas encore calculé → repli sur V2 (bref, à peine le temps du 1er lot).
+      }
+      if (vm === 'V2') return (d.scoreV2 && d.scoreV2[dur]) || d.scores[dur] || {};
+      return d.scores[dur] || {};   // V1 (ou repli) : score serveur actif
+    },
     // Lecture SYNCHRONE de l'ancre déjà résolue (null si pas encore calculée) —
     // pour les chemins qui ne peuvent pas attendre (clé de cache, rendu).
     getRhoImpl: (symbol, dur) => {
@@ -333,10 +364,21 @@
     // serveur. Tout écran qui interprète le NIVEAU d'un score doit passer par là :
     // les échelles de V1 et V2 n'ont rien à voir (médiane 46 contre 5). Repli sur
     // les seuils de V1 = comportement historique, non-cassant.
+    // Modèle de VUE + ses seuils (pour l'oppScaler du finder et les badges). Suit le choix utilisateur,
+    // pas le flag serveur — c'est ce qui permet la bascule à chaud.
     getScoreModel: (symbol, dur) => {
-      const d = state.data[symbol];
-      const m = d && d.scoreModel && d.scoreModel[dur || PRELOAD_DUR];
-      return m || { model: 'V1', thresholds: { fort: 75, mod: 55 } };
+      const vm = viewModel();
+      const TH = vm === 'ALT' ? { fort: 80, mod: 50 } : vm === 'V2' ? { fort: 62, mod: 19 } : { fort: 75, mod: 55 };
+      return { model: vm, thresholds: TH };
+    },
+    // Modèle de vue courant ('V2' | 'ALT') + bascule (persistante, re-rend toutes les surfaces).
+    getViewModel: () => viewModel(),
+    setViewModel: (m) => {
+      m = m === 'ALT' ? 'ALT' : 'V2';
+      state.viewModel = m;
+      try { localStorage.setItem('dx-score-view', m); } catch {}
+      Object.keys(state.data).forEach(sym => emitIndex(sym));   // tableaux + finder re-render
+      window.dispatchEvent(new CustomEvent('dx-score-view-changed', { detail: { model: m } }));
     },
     // Détail du score ALT (idio, coût, z, percentile, signal) d'un titre DANS le contexte de son
     // indice — pour le ScoreModal. null hors modèle ALT / hors contexte d'indice (le score ALT est

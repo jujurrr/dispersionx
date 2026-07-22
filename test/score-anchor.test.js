@@ -223,6 +223,35 @@ test("un indice jamais scoré rend le repli V1 plutôt que de planter", () => {
   assert.ok(sm.thresholds.fort > sm.thresholds.mod);
 });
 
+/* ── Bascule de VUE V2 ↔ ALT (Préférences) : sans préférence on suit le flag serveur,
+      avec préférence on la respecte, et les seuils suivent le modèle affiché. ── */
+test("setViewModel bascule la vue et ses seuils, sans re-scoring", async () => {
+  // Serveur en V2 (+ ingrédients ALT toujours renvoyés dans chaque réponse).
+  const { store: s2, api } = loadStore([0.25]);
+  api.autoScore = () => Promise.resolve({
+    scoring: { score: 12, score_v2: 12, score_model: 'V2', score_thresholds: { fort: 62, mod: 19 }, alt_idio: 30, alt_cost: 5 },
+  });
+  await s2.loadIndex('SPX');
+  await s2.scoreIndex('SPX', 30);
+
+  // Sans préférence → suit le flag serveur (V2).
+  assert.equal(s2.getViewModel(), 'V2');
+  assert.equal(s2.getScoreModel('SPX', 30).model, 'V2');
+
+  // Bascule ALT → seuils percentiles {80,50}.
+  s2.setViewModel('ALT');
+  assert.equal(s2.getViewModel(), 'ALT');
+  const smAlt = s2.getScoreModel('SPX', 30);
+  assert.equal(smAlt.model, 'ALT');
+  assert.equal(smAlt.thresholds.fort, 80);
+  assert.equal(smAlt.thresholds.mod, 50);
+
+  // Retour V2 → seuils {62,19}.
+  s2.setViewModel('V2');
+  assert.equal(s2.getViewModel(), 'V2');
+  assert.equal(s2.getScoreModel('SPX', 30).thresholds.fort, 62);
+});
+
 test("l'ampleur du défaut est bien celle observée (0 contre 65)", () => {
   // Documente pourquoi ce bug se voyait autant : la porte est multiplicative.
   const gate = (rhoImpl, rho) => 1 / (1 + Math.exp(-((rhoImpl - rho) - 0.05) / 0.08));

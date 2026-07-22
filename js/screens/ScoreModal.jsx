@@ -81,18 +81,23 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
           <div style={{ padding: 48, textAlign: 'center', color: 'var(--neg)', font: 'var(--type-body)' }}>Erreur de chargement. Réessayez.</div>
         ) : (() => {
           const { stock, index: idx } = data;
-          // Modèle actif : V1 (somme pondérée), V2 (porte corrélation × qualité), ou ALT (rang
-          // « vol idio réalisée − coût » dans l'indice). L'affichage s'ADAPTE au modèle.
+          // Modèle de VUE (choix utilisateur dans Préférences : V2 ou ALT), INDÉPENDANT du flag
+          // serveur. Le store fournit les deux scores ; l'affichage s'adapte à la vue choisie.
           let scoring = data.scoring;
-          const isV2 = scoring.score_model === 'V2';
-          const isAlt = scoring.score_model === 'ALT';
-          // ALT est CROSS-SECTIONNEL : le vrai score (percentile) vient du STORE, pas de la réponse
-          // par-action (qui ne porte qu'un placeholder). On substitue score + signal, sans muter
-          // l'état. Repli sur le placeholder si le store n'a pas l'indice en contexte (non-cassant).
-          if (isAlt && window.DXStore && window.DXStore.getAltDetail) {
-            const ad = window.DXStore.getAltDetail(indexSymbol, stockTicker, duration);
+          const vm = (window.DXStore && window.DXStore.getViewModel) ? window.DXStore.getViewModel() : (scoring.score_model || 'V2');
+          const isAlt = vm === 'ALT';
+          const isV2 = vm === 'V2';
+          if (isAlt) {
+            // ALT est CROSS-SECTIONNEL : le vrai rang (percentile sur l'indice) vient du STORE, pas
+            // de la réponse par-action. Repli sur le score V2 de la réponse si l'indice n'est pas
+            // encore en contexte dans le store (non-cassant).
+            const ad = (window.DXStore && window.DXStore.getAltDetail) ? window.DXStore.getAltDetail(indexSymbol, stockTicker, duration) : null;
             if (ad) scoring = { ...scoring, score: ad.score, signal: ad.signal, alt_detail: ad,
               signal_color: ad.signal === 'FORT' ? 'green' : ad.signal === 'MODÉRÉ' ? 'amber' : 'red' };
+          } else if (scoring.score_v2 != null && scoring.score !== scoring.score_v2) {
+            // Vue V2 alors que le flag serveur est ALT/V1 → afficher le score_v2 (toujours renvoyé).
+            const s2 = scoring.score_v2, sig = s2 >= 62 ? 'FORT' : s2 >= 19 ? 'MODÉRÉ' : 'FAIBLE';
+            scoring = { ...scoring, score: s2, signal: sig, signal_color: sig === 'FORT' ? 'green' : sig === 'MODÉRÉ' ? 'amber' : 'red' };
           }
           const v2 = scoring.v2_parts || {};
           return (
