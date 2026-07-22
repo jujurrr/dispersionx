@@ -65,6 +65,23 @@ test('Docs · brique 9 : la fiche vérité annonce le verdict et ses chiffres', 
   assert.match(html, /y compris les nôtres/i);
 });
 
+test('Docs · fiche ALT : présentée comme expérimentale et couverte net sur l’indice', () => {
+  const html = renderDocs('Avancé');
+
+  assert.match(html, /Le modèle ALT/);
+  // Ce qu'il note : vol idio réalisée − coût, SANS prime de corrélation.
+  assert.match(html, /vol idiosyncratique réalisée/i);
+  assert.match(html, /sans prime de corrélation/i);
+  // Le complément indispensable : hedge NET sur l'indice, pas jambe par jambe.
+  // (on évite l'apostrophe dans la regex — l'échappement HTML des apostrophes varie.)
+  assert.match(html, /delta-hedgé NET sur l/i);
+  assert.match(html, /pas jambe par jambe/i);
+  // Le cadrage honnête doit rester : facteur expérimental, pas une promesse.
+  assert.match(html, /expérimental/i);
+  assert.match(html, /facteur régime-sensible/i);
+  assert.match(html, /jamais comme un signal d/i);
+});
+
 test('Docs · les sections pédagogiques viennent après la référence technique', () => {
   const html = renderDocs('Avancé');
   const at = n => { const i = html.indexOf(n); assert.notEqual(i, -1, `introuvable : ${n}`); return i; };

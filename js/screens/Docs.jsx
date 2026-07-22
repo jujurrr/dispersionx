@@ -264,6 +264,52 @@ function Docs({ mode }) {
         </p>
       </section>
 
+      {/* ═══ Le modèle ALT (expérimental) — vol idio bon marché, couvert net sur l'indice ═══ */}
+      <section>
+        <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Le modèle ALT — vol idio bon marché (expérimental)</h2>
+        <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: '0 0 16px', maxWidth: 780 }}>
+          Un second modèle de score, activable dans <strong style={{ color: 'var(--text-soft)' }}>Préférences → Modèle de score</strong>.
+          Il classe les composants autrement — et, jugé en dollars sur options réelles, mieux que le modèle par défaut. C'est un{' '}
+          <strong style={{ color: 'var(--text)' }}>facteur expérimental</strong>, en cours de validation en conditions réelles.
+        </p>
+
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18, marginBottom: 14 }}>
+          <div style={{ font: 'var(--type-title)', color: 'var(--text)', marginBottom: 6 }}>Ce qu'il note, et pourquoi</div>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-soft)', margin: '0 0 8px', lineHeight: 1.65 }}>
+            <strong style={{ color: 'var(--text)' }}>ALT = rang de « vol idiosyncratique réalisée − coût d'exécution »</strong> parmi les titres de l'indice,{' '}
+            <strong style={{ color: 'var(--text)' }}>sans prime de corrélation</strong>. L'idée : privilégier les actions qui bougent
+            beaucoup <em>indépendamment</em> de l'indice (elles font payer le straddle long) et dont les options sont peu chères à trader.
+          </p>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: 0, lineHeight: 1.6 }}>
+            Pourquoi retirer la prime de corrélation ? Parce que, mesurée en <em>dollars</em> sur options réelles, elle prédit
+            bien la corrélation future mais <strong style={{ color: 'var(--text-soft)' }}>pas le gain</strong> — alors que « bouge beaucoup, pas cher »
+            le prédit mieux. Dans nos backtests, ALT bat le modèle par défaut de façon significative.
+          </p>
+        </div>
+
+        {/* LE point pratique — le hedge net sur l'indice, mis en avant */}
+        <div style={{ background: 'var(--pos-soft)', border: '1px solid var(--pos)', borderRadius: 'var(--radius-lg)', padding: 18, marginBottom: 14 }}>
+          <div style={{ font: 'var(--type-title)', color: 'var(--pos-bright)', marginBottom: 6 }}>À trader delta-hedgé NET sur l'indice — pas jambe par jambe</div>
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-soft)', margin: 0, lineHeight: 1.65 }}>
+            C'est le complément indispensable, et il change tout. Couvrir chaque action avec son propre titre retire justement
+            l'<em>idiosyncratique</em> — le rendement même de la dispersion — et coûte cher (~20 instruments à rééquilibrer). Il faut
+            neutraliser le <strong style={{ color: 'var(--text)' }}>delta-dollar NET de toute la position avec une seule position indice</strong>{' '}
+            (l'ETF SPY/QQQ) : on garde l'exposition idiosyncratique (le payoff), on ne couvre que le risque de marché, pour un coût
+            minime. Dans nos tests, c'est ce qui fait passer ALT de « bon signal » à réellement <strong style={{ color: 'var(--text)' }}>tradeable</strong>.
+          </p>
+        </div>
+
+        <div style={{ background: 'var(--warn-soft)', border: '1px solid var(--warn)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
+          <div style={{ font: 'var(--type-title)', color: 'var(--warn)', marginBottom: 6 }}>Ce que ce n'est PAS</div>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', margin: 0, lineHeight: 1.6 }}>
+            Pas une promesse de rendement. ALT est un <strong style={{ color: 'var(--text)' }}>facteur régime-sensible</strong> (long vol
+            idiosyncratique), fort quand cette vol est récompensée, tiède sinon. Son edge est réel dans nos backtests <em>in-sample</em>,
+            mais reste à confirmer en <strong style={{ color: 'var(--text-soft)' }}>forward</strong> — le seul vrai test hors-échantillon ; notre
+            univers a de plus un biais de survivance (les sociétés disparues n'y figurent pas). À manier comme une hypothèse, jamais comme un signal d'achat.
+          </p>
+        </div>
+      </section>
+
       {mode === 'Débutant' && (
         <BeginnerExplanationBox>
           La prime de corrélation (ρ_implicite − ρ̂_réalisée) est le cœur du signal de dispersion. Quand le marché price une corrélation plus forte que celle observée historiquement, il y a une opportunité : vendre la vol implicite de l'indice et acheter celle des composants.
