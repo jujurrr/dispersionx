@@ -8,16 +8,20 @@ function Docs({ mode }) {
     { title: 'ρ̂ réalisée (multi-fenêtre)', formula: 'ρ̂ = régime × Σₖ wₖ · ρₖ,₋ᵢ ,  k ∈ {20,60,120,252}j' },
     { title: 'Facteur de régime', formula: 'régime = 1 + sensibilité × (IV_actuel / IV_moy_1Y − 1)' },
     { title: 'Edge', formula: 'Edge = ρ_implicite,₋ᵢ − ρ̂_réalisée' },
-    { title: 'Score', formula: 'Score = Edge + (HV − IV) − coûts' },
+    { title: 'Score V1 — pondéré (0–100)', formula: 'V1 = 0,45·corr + 0,20·IV-rank + 0,15·events + 0,10·idio + 0,10·liquidité' },
+    { title: 'Score V2 — porte × qualité', formula: 'V2 = porte(corr) × [0,6·IV-rank + 0,4·idio]' },
+    { title: 'Score ALT — vol idio − coût (exp.)', formula: 'ALT = perc( z(vol idio réalisée) − z(coût) )' },
     { title: 'Dispersion (Cboe)', formula: 'D = Σ wᵢ σᵢ² − σ²_indice' },
     { title: 'ρ̄ moyen (Markowitz)', formula: 'ρ̄ = (σ²_idx − Σ wᵢ²σᵢ²) / (2 Σᵢ<ⱼ wᵢ wⱼ σᵢ σⱼ)' },
   ];
 
-  const thresholds = [
-    { range: 'Score > +10', label: 'FORT', desc: 'Signal long dispersion confirmé', color: 'var(--pos-bright)', bg: 'var(--pos-soft)' },
-    { range: '+4 à +10', label: 'MODÉRÉ', desc: 'Opportunité à surveiller', color: 'var(--accent-hover)', bg: 'var(--accent-soft)' },
-    { range: '0 à +4', label: 'FAIBLE', desc: 'Insuffisant pour initier', color: 'var(--warn)', bg: 'var(--warn-soft)' },
-    { range: '< 0', label: 'NÉGATIF', desc: 'Coûts > primes', color: 'var(--neg-bright)', bg: 'var(--neg-soft)' },
+  // Seuils de BADGE par modèle (0–100). Alignés sur js/store.js (ALT_TH / getScoreModel) et
+  // api/stocks/auto-score.js. Le COÛT d'exécution est délibérément HORS du score (l'y intégrer
+  // dégradait le classement — testé) : il est affiché à part, car c'est lui qui décide du P&L net.
+  const scoreModels = [
+    { model: 'V1 — pondéré (historique)', fort: '≥ 75', mod: '≥ 55', scale: 'Somme de 5 sous-scores (corrélation, IV-rank, events, idio, liquidité), 0–100.' },
+    { model: 'V2 — porte × qualité', fort: '≥ 62', mod: '≥ 19', scale: 'Porte de corrélation × qualité. Distribution basse (médiane ~5 vs ~46 en V1) → mêmes couleurs, cutoffs différents.' },
+    { model: 'ALT — vol idio − coût (exp.)', fort: '≥ 90', mod: '≥ 65', scale: 'Rang percentile de « vol idio réalisée − coût » dans l’indice (cross-sectionnel — cf. section ALT plus bas).' },
   ];
 
   const sources = [
@@ -75,21 +79,32 @@ function Docs({ mode }) {
         </div>
       </section>
 
-      {/* Thresholds */}
+      {/* Seuils de signal — par MODÈLE (0–100), coût EXCLU du score */}
       <section>
-        <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 14px' }}>Seuils de signal</h2>
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
-          {thresholds.map((t, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', borderBottom: i < thresholds.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', flexShrink: 0, background: t.color }} />
-              <div style={{ flex: 1 }}>
-                <span style={{ font: '600 13px/1 var(--font-mono)', color: t.color }}>{t.range}</span>
-                <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', marginLeft: 10 }}>— </span>
-                <span style={{ font: '600 12px/1 var(--font-sans)', color: t.color, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{t.label}</span>
-              </div>
-              <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', textAlign: 'right' }}>{t.desc}</div>
-            </div>
-          ))}
+        <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 6px' }}>Seuils de signal</h2>
+        <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', margin: '0 0 14px', maxWidth: 820 }}>
+          Le score est sur <strong style={{ color: 'var(--text-soft)' }}>0–100</strong> (plus haut = meilleur candidat de dispersion). Trois modèles coexistent, sélectionnables dans <strong style={{ color: 'var(--text-soft)' }}>Préférences → Modèle de score</strong> ; chacun a ses propres seuils de badge. Le <strong style={{ color: 'var(--text-soft)' }}>coût d'exécution est volontairement hors du score</strong> — l'y intégrer dégradait le classement dans nos tests ; on l'affiche à part, car c'est lui qui décide du P&L net.
+        </p>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflowX: 'auto' }}>
+          <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
+                {['Modèle', 'Badge FORT', 'MODÉRÉ', 'Échelle'].map(h => (
+                  <th key={h} style={{ padding: '10px 14px', textAlign: 'left', font: '600 9px/1 var(--font-mono)', color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {scoreModels.map((m, i) => (
+                <tr key={m.model} style={{ borderBottom: i < scoreModels.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                  <td style={{ padding: '11px 14px', font: 'var(--type-body-sm)', fontWeight: 600, color: 'var(--text)', verticalAlign: 'top', whiteSpace: 'nowrap' }}>{m.model}</td>
+                  <td style={{ padding: '11px 14px', font: '600 13px/1 var(--font-mono)', color: 'var(--pos-bright)', verticalAlign: 'top' }}>{m.fort}</td>
+                  <td style={{ padding: '11px 14px', font: '600 13px/1 var(--font-mono)', color: 'var(--accent-hover)', verticalAlign: 'top' }}>{m.mod}</td>
+                  <td style={{ padding: '11px 14px', font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 }}>{m.scale}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 

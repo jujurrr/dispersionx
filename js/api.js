@@ -404,7 +404,12 @@
   async function getCorrelation(list_id, tickers, index_symbol) {
     const body = { tickers: tickers || [], index: index_symbol || 'SPX', days: 60 };
     try { return await _post('/correlation/matrix', body); }
-    catch { return window.DXMock.correlation; }
+    catch {
+      // Repli HONNÊTE : corrélation de démo MARQUÉE is_fallback. Ses chiffres sont
+      // identiques sur tous les indices (ρ 0,52 / prime +7,0) — l'UI ne doit JAMAIS
+      // les présenter comme une mesure réelle (cf. le même patron sur autoScore).
+      return { ...window.DXMock.correlation, is_fallback: true };
+    }
   }
 
   /* ── Backtest dispersion (approché, prix historiques) ─────────── */

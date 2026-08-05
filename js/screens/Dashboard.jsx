@@ -80,9 +80,10 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   const _fx = window.useCurrency ? window.useCurrency() : null;   // re-render au changement de devise
   const { MetricCard, ScoreBadge, RiskBadge, Badge, BeginnerExplanationBox } = window.DispersionXDesignSystem_cb86be;
   const [mktData, setMktData] = React.useState(null);
-  const [oppPrime, setOppPrime] = React.useState({});  // prime ρ par indice (fond)
+  const [oppRho, setOppRho] = React.useState({});      // sym -> { impl, real, prime } (ancre Cboe du site)
   const [tick, setTick] = React.useState(0);           // re-render quand le store avance
-  const oppFetching = React.useRef({});                // garde : 1 calcul de prime par indice
+  const oppFetching = React.useRef({});                // garde : 1 fetch matrice par indice
+  const oppReal = React.useRef({});                    // ρ réalisée (Pearson) mémoïsée par indice
   const [activity, setActivity] = React.useState(null); // { account, shared, nameMap } — activité récente
   const [now, setNow] = React.useState(() => new Date());   // statut marché (même source que l'en-tête)
   const [ivByIndex, setIvByIndex] = React.useState({});     // IV ATM RÉELLE par indice (Cboe, /api/iv/:index)
@@ -123,11 +124,10 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
   }, [cloudOn, loadActivity]);
 
   React.useEffect(() => {
-    // Marché : vol SPX réelle + corrélation SPX
-    Promise.all([
-      fetch('/api/vol/spx').then(r => r.ok ? r.json() : null).catch(() => null),
-      DXApi.getCorrelation(null, ['AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN'], 'SPX').catch(() => null),
-    ]).then(([vol, corr]) => setMktData({ vol, corr }));
+    // Vol SPX réelle (IV ATM Cboe + HV). La ρ implicite / prime NE vient PLUS d'ici :
+    // elle est calculée dans l'effet ci-dessous à partir de l'ANCRE Cboe du store
+    // (même chiffre que le Lab / le score / le finder), pas d'un proxy VIX.
+    fetch('/api/vol/spx').then(r => r.ok ? r.json() : null).catch(() => null).then(vol => setMktData({ vol }));
     // S'assurer que le store charge/score les 5 indices ; re-render à l'avancement
     const onUpd = () => setTick(t => t + 1);
     window.addEventListener('dx-index-update', onUpd);
@@ -137,32 +137,71 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
     return () => { window.removeEventListener('dx-index-update', onUpd); window.removeEventListener('dx-strategies-changed', onUpd); };
   }, []);
 
-  // Prime de corrélation par indice (calcul de fond sur les top composants du store)
+  // Prime de corrélation par indice — MÊME ANCRE que le Lab / le score / le finder :
+  //  · ρ implicite = ancre Cboe vega-pondérée de l'INDICE (store, résolue par le scoring),
+  //  · ρ réalisée  = Pearson réel (endpoint matrice, top composants) — 1 seule fetch/indice.
+  // Remplace l'ancien proxy VIX + « ρ_réel + 0,08 » (qui fabriquait une prime ~+8 pts et
+  // affichait une ρ ≠ du reste du site). Le repli mock (is_fallback) n'est JAMAIS pris pour
+  // du réel → on laisse « ··· » tant qu'on n'a pas la vraie ancre ET une ρ réalisée mesurée.
   React.useEffect(() => {
     (window.DXMock?.indices || []).forEach(ix => {
-      if (oppPrime[ix.symbol] !== undefined || oppFetching.current[ix.symbol]) return;
-      const comps = ((window.DXStore?.getIndexData(ix.symbol) || {}).components || []).slice(0, 6).map(c => c.ticker).filter(Boolean);
-      if (comps.length < 2) return;
-      oppFetching.current[ix.symbol] = true;            // une seule tentative par indice
-      DXApi.getCorrelation(null, comps, ix.symbol).then(d => {
-        if (d && d.rho_impl != null && d.rho_real != null)
-          setOppPrime(prev => ({ ...prev, [ix.symbol]: Number(((d.rho_impl - d.rho_real) * 100).toFixed(1)) }));
-      }).catch(() => {});
+      const sym = ix.symbol;
+      if (oppRho[sym] !== undefined) return;
+      // ρ réalisée : fetch matrice une seule fois par indice (appel Yahoo, coûteux).
+      if (oppReal.current[sym] === undefined && !oppFetching.current[sym]) {
+        const comps = ((window.DXStore?.getIndexData(sym) || {}).components || []).slice(0, 12).map(c => c.ticker).filter(Boolean);
+        if (comps.length >= 2) {
+          oppFetching.current[sym] = true;
+          DXApi.getCorrelation(null, comps, sym)
+            .then(d => { oppReal.current[sym] = (d && !d.is_fallback && d.rho_real != null) ? d.rho_real : null; })
+            .catch(() => { oppReal.current[sym] = null; })
+            .finally(() => { oppFetching.current[sym] = false; setTick(t => t + 1); });
+        }
+      }
+      // ρ implicite = ancre canonique du store (lecture synchrone). Nudge de résolution si
+      // pas encore prête (idempotent, mémoïsé côté store) — sinon on attend le tick du scoring.
+      const anchor = (window.DXStore && window.DXStore.getRhoImpl) ? window.DXStore.getRhoImpl(sym, 30) : null;
+      if (anchor == null && window.DXStore && window.DXStore.resolveRhoImpl) {
+        window.DXStore.resolveRhoImpl(sym, 30).then(a => { if (a != null) setTick(t => t + 1); }).catch(() => {});
+      }
+      const real = oppReal.current[sym];
+      if (anchor != null && real != null) {
+        setOppRho(prev => (prev[sym] !== undefined ? prev : { ...prev, [sym]: { impl: anchor, real, prime: Number(((anchor - real) * 100).toFixed(1)) } }));
+      }
     });
-  }, [tick]);  // eslint-disable-line — oppPrime lu via garde, pas en dépendance
+  }, [tick]);  // eslint-disable-line — oppRho/refs lus via garde, pas en dépendances
 
-  const vol  = mktData?.vol;
-  const corr = mktData?.corr;
-  const ivAtm  = vol?.iv_atm ?? null;
-  const hv30d  = vol?.hv30   ?? null;
-  const rhoI   = corr?.rho_impl ?? null;
-  const rhoR   = corr?.rho_real ?? null;
-  const prime  = rhoI != null && rhoR != null ? Number(((rhoI - rhoR) * 100).toFixed(1)) : null;
+  const vol   = mktData?.vol;
+  const ivAtm = vol?.iv_atm ?? null;
+  const hv30d = vol?.hv30   ?? null;
+  // ρ implicite + prime du SPX = ANCRE Cboe du site (oppRho), pas un proxy VIX → exactement
+  // le même chiffre que le Correlation Lab, le score et le finder pour le SPX.
+  const spxRho = oppRho.SPX || null;
+  const rhoI   = spxRho ? spxRho.impl : null;
+  const prime  = spxRho ? spxRho.prime : null;
   const signal = prime != null ? (prime > 5 ? 'Favorable' : prime > 0 ? 'Neutre' : 'Défavorable') : '···';
   const sigAccent = prime != null ? (prime > 5 ? 'var(--pos)' : prime > 0 ? 'var(--warn)' : 'var(--neg)') : 'var(--text-muted)';
 
+  // Lecture du jour — DYNAMIQUE (la prime change de signe : jamais codée en dur).
+  const primeState = prime == null ? 'load' : prime > 0 ? 'pos' : prime < 0 ? 'neg' : 'flat';
+  const primeSigned = prime != null ? (prime >= 0 ? '+' : '') + prime + ' pts' : '';
+  const heroLine = primeState === 'load'
+    ? "Lecture du jour : la prime de corrélation du SPX se calcule… Un repère à analyser, pas une recommandation."
+    : primeState === 'pos'
+      ? `Lecture du jour : la prime de corrélation est positive sur le SPX (${primeSigned}). Un signal à analyser, pas une recommandation.`
+      : primeState === 'neg'
+        ? `Lecture du jour : la prime de corrélation est négative sur le SPX (${primeSigned}) — contexte peu favorable. Un repère à analyser, pas une recommandation.`
+        : "Lecture du jour : la prime de corrélation du SPX est ~nulle. Un repère à analyser, pas une recommandation.";
+  const beginnerLine = primeState === 'load'
+    ? "La prime de corrélation du SPX (ρ implicite − ρ réalisée) est en cours de calcul. C'est le cœur du signal de dispersion : quand le marché price une corrélation plus forte que celle observée, il y a une opportunité potentielle — à confirmer avec la liquidité, les earnings et le coût d'exécution."
+    : primeState === 'pos'
+      ? "La prime de corrélation est positive : le marché price une synchronisation plus forte que celle observée récemment sur les composants. C'est le contexte favorable à une dispersion classique — à confirmer avec la liquidité, les earnings et le coût d'exécution."
+      : primeState === 'neg'
+        ? "La prime de corrélation est négative : le marché price MOINS de synchronisation que celle observée récemment sur les composants. Peu favorable à une dispersion classique — mieux vaut attendre que la prime se reconstitue, ou réduire la taille."
+        : "La prime de corrélation est ~nulle : ni chère, ni bon marché. Rien ne justifie d'initier une dispersion sur ce seul chiffre.";
+
   const marketCards = [
-    { label: 'IV ATM SPX', value: ivAtm != null ? ivAtm.toFixed(1) : '···', unit: '%', accent: 'var(--warn)', hint: vol?.source === 'marketdata+yahoo' ? 'MarketData' : 'Est.' },
+    { label: 'IV ATM SPX', value: ivAtm != null ? ivAtm.toFixed(1) : '···', unit: '%', accent: 'var(--warn)', hint: vol?.source === 'cboe_delayed' ? 'Cboe' : 'Est.' },
     { label: 'ρ implicite SPX', value: rhoI != null ? rhoI.toFixed(2) : '···', accent: 'var(--accent)' },
     { label: 'Prime ρ', value: prime != null ? (prime >= 0 ? '+' : '') + prime : '···', unit: prime != null ? 'pts' : '', accent: prime != null && prime > 0 ? 'var(--pos)' : 'var(--neg)' },
     { label: 'HV 30j SPX', value: hv30d != null ? hv30d.toFixed(1) : '···', unit: '%', accent: 'var(--info)', hint: 'Yahoo Finance' },
@@ -192,7 +231,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
     }
     const snap = (window.DXStore?.getIndexData(ix.symbol) || {}).snap || (window.DXMock?.getSnapshot ? window.DXMock.getSnapshot(ix.symbol) : null);
     const risk = avgScore == null ? 'modéré' : avgScore >= 70 ? 'faible' : avgScore >= 55 ? 'modéré' : 'élevé';
-    return { idx: ix.symbol, dte: 30, iv: snap?.iv_est ?? null, score: avgScore, prime: oppPrime[ix.symbol], risk };
+    return { idx: ix.symbol, dte: 30, iv: snap?.iv_est ?? null, score: avgScore, prime: (oppRho[ix.symbol] || {}).prime ?? null, risk };
   }).sort((a, b) => (b.score || 0) - (a.score || 0));
 
   // Stratégies réellement construites (Builder / Construction)
@@ -217,7 +256,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
     const snap = (window.DXStore?.getIndexData(ix.symbol) || {}).snap || (window.DXMock?.getSnapshot ? window.DXMock.getSnapshot(ix.symbol) : null);
     const iv = ivByIndex[ix.symbol] != null ? ivByIndex[ix.symbol]
       : ((ix.symbol === 'SPX' && ivAtm != null) ? ivAtm : (snap?.iv_est ?? null));
-    const pr = oppPrime[ix.symbol] != null ? oppPrime[ix.symbol] : (ix.symbol === 'SPX' && prime != null ? prime : null);
+    const pr = (oppRho[ix.symbol] || {}).prime ?? null;   // ancre Cboe du site (null tant que non mesurée)
     return { symbol: ix.symbol, label: INDEX_LABELS[ix.symbol] || ix.symbol, iv, prime: pr };
   });
 
@@ -239,7 +278,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
           <Badge tone={marketOpen ? 'accent' : 'neutral'} dot={marketOpen}>{marketOpen ? 'Marché ouvert' : 'Marché fermé'}</Badge>
         </div>
         <p style={{ font: 'var(--type-body)', color: 'var(--text-muted)', margin: 0, maxWidth: 640 }}>
-          Lecture du jour : la prime de corrélation reste positive sur le SPX. Un signal à analyser, pas une recommandation.
+          {heroLine}
         </p>
       </div>
 
@@ -347,7 +386,7 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
         <section>
           <h2 style={{ font: 'var(--type-h2)', letterSpacing: 'var(--track-snug)', color: 'var(--text)', margin: '0 0 14px' }}>Comprendre le signal du jour</h2>
           <BeginnerExplanationBox>
-            La prime de corrélation est positive : le marché price une synchronisation plus forte que celle observée récemment sur les composants. C'est le contexte favorable à une dispersion classique — à confirmer avec la liquidité, les earnings et le coût d'exécution.
+            {beginnerLine}
           </BeginnerExplanationBox>
         </section>
       )}
