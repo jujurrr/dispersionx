@@ -169,11 +169,27 @@ function Dashboard({ onNav, lists, mode, moduleCtx, onModuleCtx }) {
     { label: 'Signal global', value: signal, accent: sigAccent },
   ];
 
-  // Opportunités : les 5 indices, classés par score moyen réel (store)
+  // Opportunités : les 5 indices, classés par attractivité.
+  //  · V1/V2 : score = MOYENNE des scores composants (des NIVEAUX absolus → la moyenne diffère par indice).
+  //  · ALT : le score composant est un rang INTRA-indice (percentile) → sa moyenne vaut ~50 pour TOUS les
+  //    indices (moyenne d'une loi uniforme), d'où « 50 partout ». On CLASSE plutôt les indices par leur
+  //    arête nette moyenne idio − coût (grandeur absolue, comparable entre indices) via altIndexRanks.
+  const _vm = (window.DXStore && window.DXStore.getViewModel) ? window.DXStore.getViewModel() : 'V2';
+  let altIdxScore = null;
+  if (_vm === 'ALT' && window.DXAltScore && window.DXAltScore.altIndexRanks && window.DXStore && window.DXStore.getAltMeans) {
+    const means = {};
+    (window.DXMock?.indices || []).forEach(ix => { const mm = window.DXStore.getAltMeans(ix.symbol, 30); if (mm) means[ix.symbol] = mm; });
+    altIdxScore = window.DXAltScore.altIndexRanks(means);
+  }
   const opportunities = (window.DXMock?.indices || []).map(ix => {
-    const scores = window.DXStore ? window.DXStore.getScores(ix.symbol, 30) : {};
-    const vals = Object.values(scores).filter(v => v != null);
-    const avgScore = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    let avgScore;
+    if (altIdxScore) {
+      avgScore = altIdxScore[ix.symbol] != null ? altIdxScore[ix.symbol] : null;   // rang-indice ALT (bande 40-90)
+    } else {
+      const scores = window.DXStore ? window.DXStore.getScores(ix.symbol, 30) : {};
+      const vals = Object.values(scores).filter(v => v != null);
+      avgScore = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+    }
     const snap = (window.DXStore?.getIndexData(ix.symbol) || {}).snap || (window.DXMock?.getSnapshot ? window.DXMock.getSnapshot(ix.symbol) : null);
     const risk = avgScore == null ? 'modéré' : avgScore >= 70 ? 'faible' : avgScore >= 55 ? 'modéré' : 'élevé';
     return { idx: ix.symbol, dte: 30, iv: snap?.iv_est ?? null, score: avgScore, prime: oppPrime[ix.symbol], risk };

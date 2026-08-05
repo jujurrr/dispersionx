@@ -37,5 +37,32 @@
     });
     return out;
   }
-  g.DXAltScore = { altScores };
+
+  /* ── Score-INDICE ALT (pour comparer des INDICES entre eux, ex. le tableau « Opportunités ») ──
+     Le score ALT d'un TITRE est un rang INTRA-indice (percentile parmi les composants du MÊME indice) :
+     sa MOYENNE sur tout un indice vaut donc mécaniquement ~50 pour N'IMPORTE quel indice (moyenne d'une
+     loi uniforme 0-100) → inutilisable pour dire quel indice est le plus attractif. On répond ici à une
+     autre question — « quel indice offre le plus de vol idio bon marché ? » — en classant les indices par
+     leur ARÊTE nette moyenne (idio − coût), une grandeur ABSOLUE comparable d'un indice à l'autre
+     (contrairement au percentile intra-indice). Le rang est étalé sur une bande FAIBLE→FORT [40,90] pour
+     l'affichage (ScoreBadge) : c'est un CLASSEMENT RELATIF des indices fournis, pas une mesure absolue de
+     rentabilité — cohérent avec la nature « rang » du modèle ALT.
+
+     means : { sym: { idio, cost } }  (moyennes d'indice des ingrédients bruts)
+     → { sym: score∈[40,90] }  (plus haut = plus de vol idio nette bon marché que les autres indices) */
+  function altIndexRanks(means) {
+    const LOW = 40, HIGH = 90;
+    const rows = Object.keys(means || {})
+      .filter(s => means[s] && Number.isFinite(means[s].idio) && Number.isFinite(means[s].cost))
+      .map(s => ({ sym: s, edge: means[s].idio - means[s].cost }));
+    const m = rows.length;
+    const out = {};
+    if (m === 0) return out;
+    if (m === 1) { out[rows[0].sym] = Math.round((LOW + HIGH) / 2); return out; }  // seul indice → milieu de bande
+    rows.sort((a, b) => (a.edge - b.edge) || (a.sym < b.sym ? -1 : 1));            // croissant, départage stable
+    rows.forEach((r, i) => { out[r.sym] = Math.round(LOW + (HIGH - LOW) * i / (m - 1)); });
+    return out;
+  }
+
+  g.DXAltScore = { altScores, altIndexRanks };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

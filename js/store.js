@@ -392,6 +392,20 @@
       const a = d && d.altDetail && d.altDetail[dur || PRELOAD_DUR];
       return (a && a[ticker]) || null;
     },
+    // Moyennes d'indice des ingrédients ALT BRUTS (idio réalisée, coût d'exécution), sur l'univers
+    // scoré de l'indice. Sert à COMPARER des indices entre eux (altIndexRanks) : le percentile ALT
+    // d'un titre est intra-indice → sa moyenne vaut ~50 pour tout indice, alors que l'arête brute
+    // (idio − coût) est absolue et comparable. null si l'indice n'a pas encore d'ingrédients ALT.
+    getAltMeans: (symbol, dur) => {
+      const d = state.data[symbol];
+      const parts = d && d.altParts && d.altParts[dur || PRELOAD_DUR];
+      if (!parts) return null;
+      const names = Object.keys(parts).filter(t => parts[t] && Number.isFinite(parts[t].idio) && Number.isFinite(parts[t].cost));
+      if (!names.length) return null;
+      let si = 0, sc = 0;
+      for (const t of names) { si += parts[t].idio; sc += parts[t].cost; }
+      return { idio: si / names.length, cost: sc / names.length, n: names.length };
+    },
     isScoring: (symbol, dur) => !!(state.data[symbol] && state.data[symbol].scoring[dur || PRELOAD_DUR]),
     getProgress: () => ({ queued: state.progress.queued, done: state.progress.done }),
     DEFAULT_DUR: PRELOAD_DUR,
