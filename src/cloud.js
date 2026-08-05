@@ -14,6 +14,18 @@ const KEY = ENV.VITE_SUPABASE_ANON_KEY;
 // que STRIPE_PRICE_ID_ANNUAL côté serveur). Exposé au client pour l'UI Tarifs.
 if (typeof window !== 'undefined') window.DX_PRO_ANNUAL = ENV.VITE_PRO_ANNUAL === '1';
 
+// ── Déverrouillage DÉMO (revue produit) ─────────────────────────────────────
+// VITE_PRO_UNLOCK=1 → l'accès Pro est accordé à TOUT LE MONDE, même sans compte
+// (pour montrer tous les modules à un relecteur). Variable ABSENTE = comportement
+// normal, paywall intact — c'est le défaut. ⚠️ N'affecte QUE le client : la RLS
+// serveur reste la seule vraie sécurité. Les modules d'ANALYSE (Opportunités,
+// Marché Pro, Risk Lab, Builder complet) s'ouvrent ; les données Pro CLOUD
+// (partage, journal, alertes, suivi cloud) restent vides sans compte authentifié,
+// mais leur UI s'affiche sans planter. Réversible à chaud : retirer la variable
+// d'env sur Vercel et redéployer.
+const PRO_UNLOCK = ENV.VITE_PRO_UNLOCK === '1';
+if (typeof window !== 'undefined') window.DX_PRO_UNLOCK = PRO_UNLOCK;
+
 // Retour du lien « mot de passe oublié » : on lit le hash (#…type=recovery) AVANT
 // que Supabase (detectSessionInUrl) ne le nettoie → l'app affiche le formulaire.
 if (typeof window !== 'undefined' && /(?:^|[#&])type=recovery/.test(window.location.hash || '')) {
@@ -26,7 +38,7 @@ try {
 } catch (e) { console.warn('[cloud] init Supabase échouée :', e?.message); supa = null; }
 
 let currentUser = null;
-let proAccess = false;      // accès au module « Opportunités Pro » (table pro_access)
+let proAccess = PRO_UNLOCK; // accès Pro (table pro_access) — forcé vrai en déverrouillage démo
 let proSubscribed = false;  // Pro issu d'un abonnement Stripe (a un customer) → portail dispo
 let proStatus = null;       // statut d'abonnement ('active', 'canceled', …) si connu
 let proPeriodEnd = null;    // fin de période en cours (ISO) si abonnement
@@ -38,6 +50,7 @@ let pendingMfa = null;      // { factorId } si un défi 2FA (AAL2) est en attent
 // role). Compat : les octrois manuels en SQL (sans statut) restent actifs.
 async function checkPro() {
   proSubscribed = false; proStatus = null; proPeriodEnd = null; proSince = null;
+  if (PRO_UNLOCK) return true;   // déverrouillage démo : Pro accordé à tous, sans compte
   if (!supa || !currentUser) return false;
   try {
     const { data, error } = await supa.from('pro_access')
@@ -904,8 +917,8 @@ if (supa) {
       try { localStorage.removeItem('dx-positions'); } catch {}
       try { localStorage.removeItem('dx-lists'); } catch {}
       try { localStorage.removeItem('dx-strat-owner'); } catch {}
-      proAccess = false;
-      window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: false }));
+      proAccess = PRO_UNLOCK;   // en démo, la déconnexion NE coupe PAS l'accès Pro
+      window.dispatchEvent(new CustomEvent('dx-pro-change', { detail: PRO_UNLOCK }));
       window.dispatchEvent(new CustomEvent('dx-strategies-changed'));
       window.dispatchEvent(new CustomEvent('dx-positions-changed'));
       window.dispatchEvent(new CustomEvent('dx-lists-changed'));
