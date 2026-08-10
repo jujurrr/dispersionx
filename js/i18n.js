@@ -153,15 +153,16 @@
       "Analyse de dispersion d'options": 'Options dispersion analysis',
       'Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.':
         'Build dispersion strategies with a clear reading of volatility and correlation.',
-      'Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.':
-        'Analyze an index, select its components, measure the correlation premium, build a vega-neutral strategy and stress-test your risk before execution.',
+      "Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, choisissez la structure adaptée au régime — vega, gamma, theta ou prime neutre — et testez vos risques avant exécution.":
+        'Analyze an index, select its components, measure the correlation premium, pick the structure that fits the regime — vega, gamma, theta or premium neutral — and stress-test your risk before execution.',
       'Comprendre la dispersion': 'Understand dispersion',
       'Mode Débutant & Avancé': 'Beginner & Advanced mode',
+      '4 structures de neutralité': '4 neutrality structures',
       'Les options ne pricent pas que la volatilité.': 'Options don’t price volatility alone.',
       'Pourquoi cette approche est utile': 'Why this approach helps',
       'Elle oblige à analyser sous plusieurs angles.': 'It forces analysis from several angles.',
       'Les risques, rendus visibles': 'Risks, made visible',
-      "Un portefeuille vega-neutre n'est pas sans risque.": 'A vega-neutral portfolio is not risk-free.',
+      'Neutraliser un grec ne supprime pas le risque.': 'Neutralizing a greek does not remove the risk.',
       'DispersionX Pro': 'DispersionX Pro',
       "Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel.":
         'Let the algorithm find your best strategies — and track them in real time.',
@@ -170,11 +171,14 @@
       'Comprendre': 'Understand',
       'Pourquoi': 'Why',
       'Workflow': 'Workflow',
+      'Structure': 'Structure',
       'Risques': 'Risks',
       'Exécution': 'Execution',
       'Comment ça fonctionne': 'How it works',
-      "De l'analyse à la stratégie, en sept étapes.": 'From analysis to strategy, in seven steps.',
+      "De l'analyse à la stratégie, en huit étapes.": 'From analysis to strategy, in eight steps.',
       'Lancer le Builder': 'Launch the Builder',
+      'Le Builder enchaîne ces huit étapes pour vous. Pour explorer librement, commencez par les indices.':
+        'The Builder chains these eight steps for you. To explore freely, start from the indices.',
       'Voir les formules': 'See the formulas',
       'Où exécuter la stratégie': 'Where to execute the strategy',
       "La construction ici, l'exécution sous votre contrôle.": 'Building here, execution under your control.',
@@ -217,7 +221,9 @@
       'Meilleure compréhension du risque': 'Better risk understanding',
       'Grecs, theta, scénarios de stress et coûts rendus visibles.':
         'Greeks, theta, stress scenarios and costs made visible.',
-      'Construction vega-neutre': 'Vega-neutral construction',
+      'Structure au choix': 'Structure of your choice',
+      'Vega, gamma, theta ou prime neutre : vous décidez du grec neutralisé, donc du profil.':
+        'Vega, gamma, theta or premium neutral: you decide which greek is neutralized, hence the profile.',
       'Équilibrage entre la jambe indice et le panier de composants.':
         'Balancing between the index leg and the basket of components.',
       'Scénarios de stress': 'Stress scenarios',
@@ -242,15 +248,52 @@
       'Mesurer la corrélation': 'Measure the correlation',
       'ρ implicite vs ρ̂ réalisée, prime, z-score et contributions.':
         'Implied ρ vs realized ρ̂, premium, z-score and contributions.',
+      'Régime & structure': 'Regime & structure',
+      'Situer la prime dans son historique, puis choisir le grec neutralisé : vega, gamma, theta ou prime.':
+        'Locate the premium within its own history, then choose the neutralized greek: vega, gamma, theta or premium.',
       'Construire la stratégie': 'Build the strategy',
-      'Sizing vega-neutre + couverture delta (ETF indice ou par jambe).':
-        'Vega-neutral sizing + delta hedge (index ETF or per leg).',
+      'Sizing selon la structure retenue + couverture delta (ETF indice ou par jambe).':
+        'Sizing based on the chosen structure + delta hedge (index ETF or per leg).',
       'Tester le risque': 'Test the risk',
       'Scénarios de stress, grecs, simulateur de P&L interactif.':
         'Stress scenarios, greeks, interactive P&L simulator.',
       'Checklist & suivi': 'Checklist & tracking',
       'Valider la checklist, committer la position et suivre grecs, DTE et alertes.':
         'Validate the checklist, commit the position and track greeks, DTE and alerts.',
+      // Régime & Structure (section Landing)
+      'Nouveau': 'New',
+      'Régime & Structure': 'Regime & Structure',
+      "La même prime, quatre façons de s'y exposer.": 'The same premium, four ways to take it on.',
+      "Vendre de la dispersion ne se fait pas d'une seule manière. Le module Régime & Structure situe la prime de corrélation du jour dans son propre historique — un percentile, donc un régime — et met en face la structure que la théorie y favorise. Selon le grec que vous neutralisez, vous captez la même prime avec un profil et une queue de risque différents.":
+        'Selling dispersion is not done in a single way. The Regime & Structure module locates today’s correlation premium within its own history — a percentile, therefore a regime — and puts in front of it the structure theory favors there. Depending on the greek you neutralize, you capture the same premium with a different profile and a different tail risk.',
+      'indice': 'index',
+      "Ce qu'elle capture": 'What it captures',
+      'Sa queue': 'Its tail',
+      'Vega-neutre': 'Vega-neutral',
+      'vega': 'vega',
+      'Calme, vol basse': 'Calm, low vol',
+      'La prime de corrélation, pure': 'The correlation premium, pure',
+      'Krach corrélé (standard)': 'Correlated crash (standard)',
+      'Gamma-flat': 'Gamma-flat',
+      'gamma': 'gamma',
+      'Range / récession': 'Range / recession',
+      'La dispersion statistique pure': 'Pure statistical dispersion',
+      'Corrélation basse qui persiste': 'Low correlation that persists',
+      'Theta-flat': 'Theta-flat',
+      'theta': 'theta',
+      'Haussier / tendance': 'Bullish / trending',
+      'Le portage positif (carry)': 'Positive carry',
+      'Krach + bleed si le marché range': 'Crash + bleed if the market ranges',
+      'Premium-neutral': 'Premium-neutral',
+      'prime': 'premium',
+      'Prime riche · covariance': 'Rich premium · covariance',
+      "Le réalisé contre l'implicite": 'Realized versus implied',
+      'Magnitude ∝ vol réalisée': 'Magnitude ∝ realized vol',
+      "Choisir une structure change comment vous vous exposez — jamais si vous gagnez. Aucune ne rend le P&L net positif par magie : en krach corrélé, chacune perd, et le résultat dépend surtout du coût d'exécution et de la taille. Le module affiche aussi la checklist pré-trade — 5 portes, dont 3 mesurées sur nos données, 2 qui vous reviennent.":
+        'Choosing a structure changes how you take on the exposure — never whether you win. None makes net P&L positive by magic: in a correlated crash every one of them loses, and the outcome depends above all on execution cost and size. The module also shows the pre-trade checklist — 5 gates, 3 of them measured from our data, 2 that are on you.',
+      'Ouvrir Régime & Structure': 'Open Regime & Structure',
+      'La structure retenue est pré-sélectionnée dans la Construction : le sizing se recalcule sur le grec choisi, en un clic.':
+        'The chosen structure is pre-selected in Construction: sizing recomputes on the selected greek, in one click.',
       // Risques
       'La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.':
         'The platform highlights the unfavorable scenarios before any validation. Understanding where the strategy can lose is as important as measuring its edge.',
@@ -863,15 +906,16 @@
       "Analyse de dispersion d'options": '期权离散度分析',
       'Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.':
         '在清晰解读波动率与相关性的基础上构建离散度策略。',
-      'Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.':
-        '分析指数、选择其成分股、衡量相关性溢价、构建 Vega 中性策略，并在执行前测试您的风险。',
+      "Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, choisissez la structure adaptée au régime — vega, gamma, theta ou prime neutre — et testez vos risques avant exécution.":
+        '分析指数、选择其成分股、衡量相关性溢价、选择契合当前状态的结构 — Vega、Gamma、Theta 或权利金中性 — 并在执行前测试您的风险。',
       'Comprendre la dispersion': '理解离散度',
       'Mode Débutant & Avancé': '新手与高级模式',
+      '4 structures de neutralité': '4 种中性结构',
       'Les options ne pricent pas que la volatilité.': '期权定价的不只是波动率。',
       'Pourquoi cette approche est utile': '为什么这种方法有用',
       'Elle oblige à analyser sous plusieurs angles.': '它促使你从多个角度分析。',
       'Les risques, rendus visibles': '让风险一目了然',
-      "Un portefeuille vega-neutre n'est pas sans risque.": 'Vega 中性的投资组合并非没有风险。',
+      'Neutraliser un grec ne supprime pas le risque.': '中性化某个希腊字母并不能消除风险。',
       'DispersionX Pro': 'DispersionX Pro',
       "Laissez l'algorithme trouver vos meilleures stratégies — et suivez-les en temps réel.":
         '让算法为您找到最佳策略 — 并实时跟踪它们。',
@@ -880,11 +924,14 @@
       'Comprendre': '理解',
       'Pourquoi': '为什么',
       'Workflow': '工作流程',
+      'Structure': '结构',
       'Risques': '风险',
       'Exécution': '执行',
       'Comment ça fonctionne': '运作方式',
-      "De l'analyse à la stratégie, en sept étapes.": '从分析到策略，七个步骤。',
+      "De l'analyse à la stratégie, en huit étapes.": '从分析到策略，八个步骤。',
       'Lancer le Builder': '启动构建器',
+      'Le Builder enchaîne ces huit étapes pour vous. Pour explorer librement, commencez par les indices.':
+        '构建器会为您串联这八个步骤。若想自由探索，请从指数开始。',
       'Voir les formules': '查看公式',
       'Où exécuter la stratégie': '在哪里执行策略',
       "La construction ici, l'exécution sous votre contrôle.": '在此构建，执行由您掌控。',
@@ -927,7 +974,9 @@
       'Meilleure compréhension du risque': '更好地理解风险',
       'Grecs, theta, scénarios de stress et coûts rendus visibles.':
         '将希腊值、Theta、压力情景与成本一览无遗。',
-      'Construction vega-neutre': 'Vega 中性构建',
+      'Structure au choix': '结构任您选择',
+      'Vega, gamma, theta ou prime neutre : vous décidez du grec neutralisé, donc du profil.':
+        'Vega、Gamma、Theta 或权利金中性：由您决定中性化哪个希腊字母，也就决定了风险特征。',
       'Équilibrage entre la jambe indice et le panier de composants.':
         '在指数腿与成分股组合之间进行平衡。',
       'Scénarios de stress': '压力情景',
@@ -952,15 +1001,52 @@
       'Mesurer la corrélation': '衡量相关性',
       'ρ implicite vs ρ̂ réalisée, prime, z-score et contributions.':
         '隐含 ρ 对比已实现 ρ̂、溢价、z 分数与贡献度。',
+      'Régime & structure': '状态与结构',
+      'Situer la prime dans son historique, puis choisir le grec neutralisé : vega, gamma, theta ou prime.':
+        '将溢价置于其自身历史中定位，再选择要中性化的希腊字母：Vega、Gamma、Theta 或权利金。',
       'Construire la stratégie': '构建策略',
-      'Sizing vega-neutre + couverture delta (ETF indice ou par jambe).':
-        'Vega 中性头寸规模 + Delta 对冲（指数 ETF 或按腿）。',
+      'Sizing selon la structure retenue + couverture delta (ETF indice ou par jambe).':
+        '按所选结构确定头寸规模 + Delta 对冲（指数 ETF 或按腿）。',
       'Tester le risque': '测试风险',
       'Scénarios de stress, grecs, simulateur de P&L interactif.':
         '压力情景、希腊值、交互式盈亏模拟器。',
       'Checklist & suivi': '检查清单与跟踪',
       'Valider la checklist, committer la position et suivre grecs, DTE et alertes.':
         '完成检查清单，提交持仓，并跟踪希腊值、DTE 与提醒。',
+      // Régime & Structure (section Landing)
+      'Nouveau': '新增',
+      'Régime & Structure': '状态与结构',
+      "La même prime, quatre façons de s'y exposer.": '同一笔溢价，四种承担方式。',
+      "Vendre de la dispersion ne se fait pas d'une seule manière. Le module Régime & Structure situe la prime de corrélation du jour dans son propre historique — un percentile, donc un régime — et met en face la structure que la théorie y favorise. Selon le grec que vous neutralisez, vous captez la même prime avec un profil et une queue de risque différents.":
+        '卖出离散度并非只有一种做法。「状态与结构」模块将当日的相关性溢价放回其自身历史中定位 — 得到一个百分位，也就是一种市场状态 — 并给出理论在该状态下更青睐的结构。中性化的希腊字母不同，捕捉同一笔溢价的风险特征和尾部风险也随之不同。',
+      'indice': '指数',
+      "Ce qu'elle capture": '它捕捉什么',
+      'Sa queue': '它的尾部风险',
+      'Vega-neutre': 'Vega 中性',
+      'vega': 'vega',
+      'Calme, vol basse': '平静、低波动',
+      'La prime de corrélation, pure': '纯粹的相关性溢价',
+      'Krach corrélé (standard)': '相关性崩盘（标准情形）',
+      'Gamma-flat': 'Gamma-flat',
+      'gamma': 'gamma',
+      'Range / récession': '震荡 / 衰退',
+      'La dispersion statistique pure': '纯统计意义上的离散度',
+      'Corrélation basse qui persiste': '低相关性持续不散',
+      'Theta-flat': 'Theta-flat',
+      'theta': 'theta',
+      'Haussier / tendance': '上涨 / 趋势',
+      'Le portage positif (carry)': '正的持有收益（carry）',
+      'Krach + bleed si le marché range': '崩盘，且市场震荡时持续失血',
+      'Premium-neutral': '权利金中性',
+      'prime': '权利金',
+      'Prime riche · covariance': '溢价丰厚 · 协方差',
+      "Le réalisé contre l'implicite": '已实现对比隐含',
+      'Magnitude ∝ vol réalisée': '幅度 ∝ 已实现波动率',
+      "Choisir une structure change comment vous vous exposez — jamais si vous gagnez. Aucune ne rend le P&L net positif par magie : en krach corrélé, chacune perd, et le résultat dépend surtout du coût d'exécution et de la taille. Le module affiche aussi la checklist pré-trade — 5 portes, dont 3 mesurées sur nos données, 2 qui vous reviennent.":
+        '选择结构改变的是您承担风险的方式 — 而不是您是否会赚钱。没有任何结构能凭空让净盈亏转正：在相关性崩盘中每一种都会亏损，结果主要取决于执行成本和头寸规模。该模块还会显示交易前检查清单 — 5 道关卡，其中 3 道由我们的数据衡量，另外 2 道由您自己把关。',
+      'Ouvrir Régime & Structure': '打开「状态与结构」',
+      'La structure retenue est pré-sélectionnée dans la Construction : le sizing se recalcule sur le grec choisi, en un clic.':
+        '所选结构会在「构建」中预先选定：头寸规模按所选希腊字母一键重新计算。',
       // Risques
       'La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.':
         '平台会在任何确认之前突出显示不利情景。理解策略可能亏损的地方，与衡量其优势同样重要。',

@@ -20,6 +20,7 @@ function Landing() {
     ['comprendre', 'Comprendre'],
     ['pourquoi', 'Pourquoi'],
     ['workflow', 'Workflow'],
+    ['structure', 'Structure'],
     ['risques', 'Risques'],
     ['execution', 'Exécution'],
     ['pro', 'Pro'],
@@ -27,6 +28,16 @@ function Landing() {
   function scrollTo(id) {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  // Entrée dans l'espace de création. Par défaut on arrive sur la page INDICES
+  // (`home`) : c'est le point de départ naturel du parcours (choisir un indice,
+  // regarder ses composants) et ça laisse le visiteur explorer plutôt que de le
+  // jeter dans un wizard. Seuls les boutons qui NOMMENT le Strategy Builder
+  // ouvrent le wizard (`builder`) — le nom du bouton doit dire où il mène.
+  function enter(screen = 'home') {
+    if (window.__dxGo) window.__dxGo(screen, 'Espace de création');
+    else if (window.__dxNav) window.__dxNav(screen);
   }
 
   // ════════════════════════════ NAV ════════════════════════════
@@ -50,7 +61,7 @@ function Landing() {
             {window.SectionToggle ? <window.SectionToggle to="app" /> : null}
             {window.ThemeToggle ? <window.ThemeToggle /> : null}
             <Button variant="ghost" size="md" onClick={() => window.__dxNav && window.__dxNav('login')}>{window.t ? window.t('Connexion') : 'Connexion'}</Button>
-            <Button variant="primary" size="md" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
+            <Button variant="primary" size="md" onClick={() => enter()}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
           </div>
         </div>
       </header>
@@ -69,14 +80,15 @@ function Landing() {
               {window.t ? window.t('Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.') : 'Construisez des stratégies de dispersion avec une lecture claire de la volatilité et de la corrélation.'}
             </h1>
             <p style={{ ...lede, fontSize: 19, marginTop: 22 }}>
-              {window.t ? window.t('Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.') : 'Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, construisez une stratégie vega-neutre et testez vos risques avant exécution.'}
+              {window.t ? window.t("Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, choisissez la structure adaptée au régime — vega, gamma, theta ou prime neutre — et testez vos risques avant exécution.") : "Analysez un indice, sélectionnez ses composants, mesurez la prime de corrélation, choisissez la structure adaptée au régime — vega, gamma, theta ou prime neutre — et testez vos risques avant exécution."}
             </p>
             <div style={{ display: 'flex', gap: 12, marginTop: 32, flexWrap: 'wrap' }}>
-              <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
+              <Button variant="primary" size="lg" onClick={() => enter()}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
               <Button variant="outline" size="lg" onClick={() => scrollTo('comprendre')}>{window.t ? window.t('Comprendre la dispersion') : 'Comprendre la dispersion'}</Button>
             </div>
             <div style={{ display: 'flex', gap: 24, marginTop: 30, font: 'var(--type-caption)', color: 'var(--text-muted)', flexWrap: 'wrap' }}>
               <span>{TR('5 indices · SPX, NDX, DJI, CAC 40, DAX 40')}</span>
+              <span>{TR('4 structures de neutralité')}</span>
               <span>{TR('Mode Débutant & Avancé')}</span>
             </div>
           </div>
@@ -182,7 +194,7 @@ function Landing() {
   const WHY = [
     ['Analyse structurée', 'La stratégie est examinée sous plusieurs angles avant toute décision.'],
     ['Meilleure compréhension du risque', 'Grecs, theta, scénarios de stress et coûts rendus visibles.'],
-    ['Construction vega-neutre', 'Équilibrage entre la jambe indice et le panier de composants.'],
+    ['Structure au choix', 'Vega, gamma, theta ou prime neutre : vous décidez du grec neutralisé, donc du profil.'],
     ['Scénarios de stress', 'Sell-off corrélé, vol crush, hausse IV — testés avant exécution.'],
     ['Lecture pédagogique', 'Explications « en clair » et tooltips pour les débutants sérieux.'],
     ['Outil avancé', 'Matrices, formules et exports pour les utilisateurs expérimentés.'],
@@ -208,21 +220,26 @@ function Landing() {
   }
 
   // ═══════════════════════ 3. WORKFLOW ═══════════════════════
+  // Ces étapes reflètent le parcours réel du Strategy Builder — l'étape 5
+  // « Régime & structure » y est un module à part entière (choix du grec
+  // neutralisé), pas un détail du sizing.
   const STEPS = [
     ['1', 'Choisir un indice et une échéance', 'SPX, NDX, DJI, CAC 40, DAX 40 — liquidité, caractéristiques, durée.'],
     ['2', 'Analyser les composants', 'Score décomposé, IV/HV, β, filtres et avertissements earnings.'],
     ['3', 'Construire la liste', 'Constituer le panier, suivre le score pondéré et l\'edge moyen.'],
     ['4', 'Mesurer la corrélation', 'ρ implicite vs ρ̂ réalisée, prime, z-score et contributions.'],
-    ['5', 'Construire la stratégie', 'Sizing vega-neutre + couverture delta (ETF indice ou par jambe).'],
-    ['6', 'Tester le risque', 'Scénarios de stress, grecs, simulateur de P&L interactif.'],
-    ['7', 'Checklist & suivi', 'Valider la checklist, committer la position et suivre grecs, DTE et alertes.'],
+    ['5', 'Régime & structure', 'Situer la prime dans son historique, puis choisir le grec neutralisé : vega, gamma, theta ou prime.'],
+    ['6', 'Construire la stratégie', 'Sizing selon la structure retenue + couverture delta (ETF indice ou par jambe).'],
+    ['7', 'Tester le risque', 'Scénarios de stress, grecs, simulateur de P&L interactif.'],
+    ['8', 'Checklist & suivi', 'Valider la checklist, committer la position et suivre grecs, DTE et alertes.'],
   ];
   function Workflow() {
     return (
       <section id="workflow" style={{ ...sectionPad, ...wrap }}>
         <div style={eyebrow}>{window.t ? window.t('Comment ça fonctionne') : 'Comment ça fonctionne'}</div>
-        <h2 style={{ ...h2, marginBottom: 36 }}>{window.t ? window.t("De l'analyse à la stratégie, en sept étapes.") : "De l'analyse à la stratégie, en sept étapes."}</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        <h2 style={{ ...h2, marginBottom: 36 }}>{window.t ? window.t("De l'analyse à la stratégie, en huit étapes.") : "De l'analyse à la stratégie, en huit étapes."}</h2>
+        {/* 8 étapes + la carte CTA = 9 cellules → grille 3×3 pleine. */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
           {STEPS.map(([n, t, d]) => (
             <div key={n} style={{ position: 'relative', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 18 }}>
               <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', font: '700 13px/1 var(--font-mono)', marginBottom: 14 }}>{n}</div>
@@ -230,16 +247,94 @@ function Landing() {
               <div style={{ font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 }}>{TR(d)}</div>
             </div>
           ))}
+          {/* Seul CTA de la page à ouvrir le wizard : c'est lui qui vient d'être
+              expliqué (ces 8 étapes SONT le Builder). Les autres mènent aux Indices. */}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 10, padding: 18 }}>
-            <Button variant="primary" size="md" full onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Lancer le Builder') : 'Lancer le Builder'}</Button>
+            <Button variant="primary" size="md" full onClick={() => enter('builder')}>{window.t ? window.t('Lancer le Builder') : 'Lancer le Builder'}</Button>
             <Button variant="outline" size="md" full onClick={() => window.__dxNav && window.__dxNav('docs')}>{window.t ? window.t('Voir les formules') : 'Voir les formules'}</Button>
+            <div style={{ font: 'var(--type-caption)', color: 'var(--text-dim)', lineHeight: 1.5, marginTop: 2 }}>
+              {TR('Le Builder enchaîne ces huit étapes pour vous. Pour explorer librement, commencez par les indices.')}
+            </div>
           </div>
         </div>
       </section>
     );
   }
 
-  // ═══════════════════════ 4. RISQUES ═══════════════════════
+  // ═══════════════ 4. RÉGIME & STRUCTURE (module A) ═══════════════
+  // Le site ne propose plus « la » construction vega-neutre mais QUATRE profils
+  // de neutralité. Libellés et régimes repris tels quels du module Régime &
+  // Structure (RegimePlaybook) et du sélecteur de sizing (Construction) — la
+  // présentation ne doit jamais décrire autre chose que ce que l'app fait.
+  const STRUCTURES = [
+    ['Vega-neutre', 'vega', 'Calme, vol basse', 'La prime de corrélation, pure', 'Krach corrélé (standard)'],
+    ['Gamma-flat', 'gamma', 'Range / récession', 'La dispersion statistique pure', 'Corrélation basse qui persiste'],
+    ['Theta-flat', 'theta', 'Haussier / tendance', 'Le portage positif (carry)', 'Krach + bleed si le marché range'],
+    ['Premium-neutral', 'prime', 'Prime riche · covariance', 'Le réalisé contre l\'implicite', 'Magnitude ∝ vol réalisée'],
+  ];
+  function Structure() {
+    const cell = { font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 };
+    const cellLabel = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 3 };
+    return (
+      <section id="structure" style={{ position: 'relative', overflow: 'hidden', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+        <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 70% 60% at 20% 0%, var(--accent-soft), transparent 65%)' }} />
+        <div style={{ ...sectionPad, ...wrap, position: 'relative' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <span style={{ font: '600 10px/1 var(--font-mono)', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '4px 9px', borderRadius: 999, background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)' }}>{TR('Nouveau')}</span>
+            <span style={{ ...eyebrow, marginBottom: 0 }}>{TR('Régime & Structure')}</span>
+          </div>
+          <h2 style={h2}>{window.t ? window.t("La même prime, quatre façons de s'y exposer.") : "La même prime, quatre façons de s'y exposer."}</h2>
+          <p style={{ ...lede, fontSize: 18, marginTop: 18 }}>
+            {L === 'fr'
+              ? <>Vendre de la dispersion ne se fait pas d'une seule manière. Le module <strong style={{ color: 'var(--text)' }}>Régime &amp; Structure</strong> situe la prime de corrélation du jour dans <strong style={{ color: 'var(--text)' }}>son propre historique</strong> — un percentile, donc un régime — et met en face la structure que la théorie y favorise. Selon le <strong style={{ color: 'var(--text)' }}>grec que vous neutralisez</strong>, vous captez la même prime avec un profil et une queue de risque différents.</>
+              : TR("Vendre de la dispersion ne se fait pas d'une seule manière. Le module Régime & Structure situe la prime de corrélation du jour dans son propre historique — un percentile, donc un régime — et met en face la structure que la théorie y favorise. Selon le grec que vous neutralisez, vous captez la même prime avec un profil et une queue de risque différents.")}
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 14, marginTop: 30 }}>
+            {STRUCTURES.map(([nom, grec, regime, capture, queue]) => (
+              <div key={nom} className="dx-lift" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: 22 }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 4 }}>
+                  <h3 style={{ font: 'var(--type-h3)', color: 'var(--text)', margin: 0 }}>{TR(nom)}</h3>
+                  <span style={{ font: 'var(--type-data-sm)', color: 'var(--accent-hover)' }}>Σ {TR(grec)} = {TR('indice')}</span>
+                </div>
+                <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', marginBottom: 14 }}>{TR(regime)}</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, borderTop: '1px solid var(--border-subtle)', paddingTop: 12 }}>
+                  <div>
+                    <div style={cellLabel}>{TR('Ce qu\'elle capture')}</div>
+                    <div style={cell}>{TR(capture)}</div>
+                  </div>
+                  <div>
+                    <div style={cellLabel}>{TR('Sa queue')}</div>
+                    <div style={cell}>{TR(queue)}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Honnêteté : même ton que le module lui-même — un choix d'exposition,
+              pas une recette qui gagne. Ne jamais laisser croire l'inverse. */}
+          <div style={{ marginTop: 16, display: 'flex', gap: 14, background: 'var(--bg-card)', border: '1px solid var(--border)', borderLeft: '3px solid var(--warn)', borderRadius: 'var(--radius)', padding: '16px 18px' }}>
+            <span style={{ color: 'var(--warn)', flexShrink: 0, marginTop: 2 }}><Icon d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" size={18} /></span>
+            <div style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+              {L === 'fr'
+                ? <>Choisir une structure change <strong style={{ color: 'var(--text-soft)' }}>comment</strong> vous vous exposez — jamais si vous gagnez. Aucune ne rend le P&amp;L net positif par magie : en <strong style={{ color: 'var(--text-soft)' }}>krach corrélé, chacune perd</strong>, et le résultat dépend surtout du coût d'exécution et de la taille. Le module affiche aussi la <strong style={{ color: 'var(--text-soft)' }}>checklist pré-trade</strong> — 5 portes, dont 3 mesurées sur nos données, 2 qui vous reviennent.</>
+                : TR("Choisir une structure change comment vous vous exposez — jamais si vous gagnez. Aucune ne rend le P&L net positif par magie : en krach corrélé, chacune perd, et le résultat dépend surtout du coût d'exécution et de la taille. Le module affiche aussi la checklist pré-trade — 5 portes, dont 3 mesurées sur nos données, 2 qui vous reviennent.")}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, marginTop: 26, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button variant="primary" size="lg" onClick={() => enter('regime')}>{window.t ? window.t('Ouvrir Régime & Structure') : 'Ouvrir Régime & Structure'}</Button>
+            <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-muted)', maxWidth: 460 }}>
+              {TR('La structure retenue est pré-sélectionnée dans la Construction : le sizing se recalcule sur le grec choisi, en un clic.')}
+            </span>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  // ═══════════════════════ 5. RISQUES ═══════════════════════
   const RISKS = [
     ['Sell-off corrélé', 'L\'indice baisse, sa volatilité monte et les composants suivent dans la même direction — le principal risque de la dispersion.'],
     ['Vol crush', 'La volatilité implicite des composants retombe (après earnings, par exemple) : les straddles longs perdent de la valeur même si l\'action ne bouge pas.'],
@@ -252,7 +347,7 @@ function Landing() {
       <section id="risques" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ ...sectionPad, ...wrap }}>
           <div style={eyebrow}>{window.t ? window.t('Les risques, rendus visibles') : 'Les risques, rendus visibles'}</div>
-          <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t("Un portefeuille vega-neutre n'est pas sans risque.") : "Un portefeuille vega-neutre n'est pas sans risque."}</h2>
+          <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t("Neutraliser un grec ne supprime pas le risque.") : "Neutraliser un grec ne supprime pas le risque."}</h2>
           <p style={{ ...lede, marginBottom: 32 }}>{TR('La plateforme met en avant les scénarios défavorables avant toute validation. Comprendre où la stratégie peut perdre est aussi important que mesurer son edge.')}</p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14 }}>
             {RISKS.map(([t, d]) => (
@@ -286,7 +381,7 @@ function Landing() {
     );
   }
 
-  // ═══════════════════════ 5. EXÉCUTION ═══════════════════════
+  // ═══════════════════════ 6. EXÉCUTION ═══════════════════════
   function Execution() {
     return (
       <section id="execution" style={{ ...sectionPad, ...wrap, textAlign: 'center' }}>
@@ -320,7 +415,7 @@ function Landing() {
     );
   }
 
-  // ═══════════════════════ 6. PRO (démo visuelle) ═══════════════════════
+  // ═══════════════════════ 7. PRO (démo visuelle) ═══════════════════════
   function ProSection() {
     return (
       <section id="pro" style={{ ...sectionPad, background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
@@ -347,7 +442,12 @@ function Landing() {
         <h2 style={{ font: 'var(--type-hero)', fontSize: 40, letterSpacing: 'var(--track-tight)', color: 'var(--text)', maxWidth: 760, margin: '0 auto 28px', textWrap: 'balance' }}>
           {window.t ? window.t("Passez d'une idée de volatilité à une stratégie construite et testée.") : "Passez d'une idée de volatilité à une stratégie construite et testée."}
         </h2>
-        <Button variant="primary" size="lg" onClick={() => window.__dxGo ? window.__dxGo('builder', 'Espace de création') : window.__dxNav && window.__dxNav('builder')}>{window.t ? window.t('Lancer le Strategy Builder') : 'Lancer le Strategy Builder'}</Button>
+        {/* Deux portes d'entrée assumées : explorer (Indices) ou se laisser guider
+            (Builder). Le libellé dit où mène chaque bouton. */}
+        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Button variant="primary" size="lg" onClick={() => enter()}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
+          <Button variant="outline" size="lg" onClick={() => enter('builder')}>{window.t ? window.t('Lancer le Strategy Builder') : 'Lancer le Strategy Builder'}</Button>
+        </div>
       </section>
     );
   }
@@ -379,6 +479,7 @@ function Landing() {
       <Comprendre />
       <Pourquoi />
       <Workflow />
+      <Structure />
       <Risques />
       <Execution />
       <ProSection />
