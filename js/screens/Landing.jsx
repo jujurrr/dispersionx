@@ -14,7 +14,11 @@ function Landing() {
   const eyebrow = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--accent-hover)', marginBottom: 14 };
   const h2 = { font: 'var(--type-hero)', fontSize: 34, letterSpacing: 'var(--track-tight)', color: 'var(--text)', margin: 0, textWrap: 'balance' };
   const lede = { font: 'var(--type-body)', fontSize: 17, lineHeight: 1.6, color: 'var(--text-muted)', maxWidth: 680, margin: 0 };
-  const sectionPad = { padding: '84px 32px', scrollMarginTop: 80 };
+  // Décalage d'ancre = hauteur de la barre collante (76) + un peu d'air. À porter
+  // par l'élément qui PORTE l'id : plusieurs sections l'ont sur leur <div> interne
+  // alors que l'ancre est sur le <section> → elles passaient sous la barre.
+  const anchor = { scrollMarginTop: 96 };
+  const sectionPad = { padding: '84px 32px', ...anchor };
 
   const LINKS = [
     ['comprendre', 'Comprendre'],
@@ -41,27 +45,52 @@ function Landing() {
   }
 
   // ════════════════════════════ NAV ════════════════════════════
+  // La barre porte trois blocs (logo · ancres · actions) qui, à la largeur du
+  // contenu (1140), totalisaient 1053 px : il ne restait que 11 px entre chaque
+  // bloc et l'ensemble se lisait comme une seule bande compacte. Deux leviers,
+  // sans rien retirer : la barre respire sur une largeur propre (1280) — c'est
+  // le seul élément de la page qui déborde du texte, comme sur la plupart des
+  // sites — et les actions sont groupées (réglages | compte) au lieu d'aligner
+  // cinq contrôles de même poids.
+  const headerWrap = { ...wrap, maxWidth: 1280 };
+  function NavLink({ id, label }) {
+    const [hover, setHover] = React.useState(false);
+    return (
+      <a onClick={() => scrollTo(id)}
+        onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+        style={{
+          font: 'var(--type-body-sm)', color: hover ? 'var(--text)' : 'var(--text-soft)',
+          cursor: 'pointer', whiteSpace: 'nowrap', padding: '8px 2px',
+          transition: 'color var(--dur-fast) var(--ease)',
+        }}>{window.t ? window.t(label) : label}</a>
+    );
+  }
   function Nav() {
     return (
       <header style={{ position: 'sticky', top: 0, zIndex: 20, background: 'color-mix(in srgb, var(--bg-base) 82%, transparent)', backdropFilter: 'blur(10px)', borderBottom: '1px solid var(--border-subtle)' }}>
-        <div style={{ ...wrap, display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: 64, padding: '0 32px' }}>
-          <span onClick={() => window.location.reload()} style={{ display: 'inline-flex', alignItems: 'center', gap: 11, cursor: 'pointer' }}>
+        <div style={{ ...headerWrap, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 32, height: 76, padding: '0 32px' }}>
+          <span onClick={() => window.location.reload()} style={{ display: 'inline-flex', alignItems: 'center', gap: 11, cursor: 'pointer', flexShrink: 0 }}>
             <window.Logo size={30} wordmark={false} />
             <span style={{ font: '800 16px/1 var(--font-sans)', letterSpacing: '-0.01em', color: 'var(--text)' }}>
               Dispersion<span style={{ color: 'var(--accent-hover)' }}>X</span>
             </span>
           </span>
-          <nav style={{ display: 'flex', gap: 26, alignItems: 'center' }} className="dx-landing-nav">
-            {LINKS.map(([id, label]) => (
-              <a key={id} onClick={() => scrollTo(id)} style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', cursor: 'pointer' }}>{window.t ? window.t(label) : label}</a>
-            ))}
+          <nav style={{ display: 'flex', gap: 28, alignItems: 'center' }} className="dx-landing-nav">
+            {LINKS.map(([id, label]) => <NavLink key={id} id={id} label={label} />)}
           </nav>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            {window.LangSwitcher ? <window.LangSwitcher /> : null}
-            {window.SectionToggle ? <window.SectionToggle to="app" /> : null}
-            {window.ThemeToggle ? <window.ThemeToggle /> : null}
-            <Button variant="ghost" size="md" onClick={() => window.__dxNav && window.__dxNav('login')}>{window.t ? window.t('Connexion') : 'Connexion'}</Button>
-            <Button variant="primary" size="md" onClick={() => enter()}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
+          {/* Réglages (langue, section, thème) | compte. Le filet sépare ce qui
+              paramètre la page de ce qui engage une action. */}
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ display: 'flex', gap: 7, alignItems: 'center' }}>
+              {window.LangSwitcher ? <window.LangSwitcher /> : null}
+              {window.SectionToggle ? <window.SectionToggle to="app" /> : null}
+              {window.ThemeToggle ? <window.ThemeToggle /> : null}
+            </div>
+            <span aria-hidden="true" style={{ width: 1, height: 22, background: 'var(--border-subtle)', flexShrink: 0 }} />
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <Button variant="ghost" size="md" onClick={() => window.__dxNav && window.__dxNav('login')}>{window.t ? window.t('Connexion') : 'Connexion'}</Button>
+              <Button variant="primary" size="md" onClick={() => enter()}>{window.t ? window.t('Créer une stratégie') : 'Créer une stratégie'}</Button>
+            </div>
           </div>
         </div>
       </header>
@@ -201,7 +230,7 @@ function Landing() {
   ];
   function Pourquoi() {
     return (
-      <section id="pourquoi" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+      <section id="pourquoi" style={{ ...anchor, background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ ...sectionPad, ...wrap }}>
           <div style={eyebrow}>{window.t ? window.t('Pourquoi cette approche est utile') : 'Pourquoi cette approche est utile'}</div>
           <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t('Elle oblige à analyser sous plusieurs angles.') : 'Elle oblige à analyser sous plusieurs angles.'}</h2>
@@ -276,7 +305,7 @@ function Landing() {
     const cell = { font: 'var(--type-caption)', color: 'var(--text-muted)', lineHeight: 1.5 };
     const cellLabel = { font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-dim)', marginBottom: 3 };
     return (
-      <section id="structure" style={{ position: 'relative', overflow: 'hidden', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+      <section id="structure" style={{ ...anchor, position: 'relative', overflow: 'hidden', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(ellipse 70% 60% at 20% 0%, var(--accent-soft), transparent 65%)' }} />
         <div style={{ ...sectionPad, ...wrap, position: 'relative' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -344,7 +373,7 @@ function Landing() {
   const BOUNDARIES = ['Ne donne pas de conseil financier', 'Ne garantit aucune performance', 'Ne remplace pas Risk Navigator ni une validation humaine', "N'exécute jamais automatiquement sans contrôle"];
   function Risques() {
     return (
-      <section id="risques" style={{ background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
+      <section id="risques" style={{ ...anchor, background: 'var(--bg-surface)', borderTop: '1px solid var(--border-subtle)', borderBottom: '1px solid var(--border-subtle)' }}>
         <div style={{ ...sectionPad, ...wrap }}>
           <div style={eyebrow}>{window.t ? window.t('Les risques, rendus visibles') : 'Les risques, rendus visibles'}</div>
           <h2 style={{ ...h2, marginBottom: 14 }}>{window.t ? window.t("Neutraliser un grec ne supprime pas le risque.") : "Neutraliser un grec ne supprime pas le risque."}</h2>

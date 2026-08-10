@@ -30,3 +30,14 @@
   /* Modales/dialogues : garder une marge sur petit écran. */
   main { scrollbar-width: thin; }
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   Barre du haut de la présentation (Landing). Elle porte trois blocs :
+   logo · ancres de sections · actions (réglages + compte). En dessous de
+   ~1180 px les trois ne tiennent plus sans se coller les uns aux autres :
+   on retire les ancres plutôt que de laisser la barre déborder. Les
+   sections restent atteignables au défilement.
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 1180px) {
+  .dx-landing-nav { display: none !important; }
+}
