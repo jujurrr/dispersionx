@@ -7,6 +7,18 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
   const [loading, setLoading] = React.useState(true);
   const [selectedList, setSelectedList] = React.useState('');
   const [adding, setAdding] = React.useState(false);
+  // ── Créer une liste SANS quitter cette fiche ──────────────────────
+  // Avant : « + Nouvelle » fermait la fiche puis émettait `dx-new-list`, que seul
+  // l'écran « Mes listes » écoutait — or il n'est PAS monté quand on arrive ici
+  // depuis un indice (ou le détail d'une liste, ou le Builder). L'événement
+  // tombait dans le vide : la fiche se fermait et AUCUNE liste n'était créée.
+  // La création se fait donc sur place, avec le même appel que le module Listes.
+  const [showCreate, setShowCreate] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+  const [newDesc, setNewDesc] = React.useState('');
+  const [addAfterCreate, setAddAfterCreate] = React.useState(true);
+  const [creating, setCreating] = React.useState(false);
+  const [createdLists, setCreatedLists] = React.useState([]);
 
   React.useEffect(() => {
     setLoading(true);
@@ -29,7 +41,12 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
     }).catch(() => setLoading(false));
   }, [indexSymbol, stockTicker, duration]);
 
-  const eligibleLists = (lists || []).filter(l => l.index_symbol === indexSymbol);
+  // Les listes créées ICI apparaissent tout de suite dans le sélecteur, sans
+  // attendre le rechargement asynchrone de `lists` par l'App. Dédoublonnage par
+  // id → aucune entrée en double quand ce rechargement arrive.
+  const knownLists = (lists || []).slice();
+  createdLists.forEach(l => { if (!knownLists.some(k => k.id === l.id)) knownLists.push(l); });
+  const eligibleLists = knownLists.filter(l => l.index_symbol === indexSymbol);
 
   async function handleAdd() {
     if (!selectedList) return;
@@ -45,6 +62,45 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
       setAdding(false);
     }
   }
+
+  // Crée une liste sur l'indice de l'action affichée. Même appel DXApi.createList
+  // que « + Nouvelle liste » du module Listes → mêmes effets, cloud comme invité.
+  // `dx-lists-changed` est l'événement que TOUT le site écoute (App → toutes les
+  // pages, Dashboard, Activité, Notifications, cloud) : la liste est donc partout
+  // dès sa création, exactement comme si elle venait du module Listes.
+  async function handleCreateList(e) {
+    e.preventDefault();
+    const name = newName.trim();
+    if (!name || creating) return;
+    setCreating(true);
+    try {
+      // L'indice n'est pas un choix : une liste sur un AUTRE indice serait
+      // aussitôt invisible dans ce sélecteur (filtré sur `indexSymbol`).
+      const created = await DXApi.createList(name, indexSymbol, newDesc.trim());
+      if (!created || !created.id) throw new Error('liste créée sans identifiant');
+      if (addAfterCreate) await DXApi.addListItem(created.id, stockTicker, data?.scoring || null, '');
+      setCreatedLists(prev => [...prev, created]);
+      setSelectedList(created.id);
+      setShowCreate(false); setNewName(''); setNewDesc('');
+      // Émis APRÈS l'ajout de l'action, pour que le rechargement voie la liste
+      // complète. Seul signal nécessaire : l'App y réagit déjà par le même
+      // rechargement que `onAddedToList` — les deux feraient une requête en
+      // double. C'est aussi ce que fait l'auto-chercheur d'opportunités.
+      window.dispatchEvent(new CustomEvent('dx-lists-changed'));
+      addToast && addToast(addAfterCreate
+        ? `Liste « ${name} » créée — ${stockTicker} ajouté.`
+        : `Liste « ${name} » créée.`);
+    } catch (err) {
+      addToast && addToast('Création impossible : ' + ((err && err.message) || 'erreur inconnue'), 'error');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  const createInputStyle = {
+    width: '100%', background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+    color: 'var(--text)', font: 'var(--type-body-sm)', padding: '9px 12px', outline: 'none', boxSizing: 'border-box',
+  };
 
   const sigColor = { green: 'var(--pos-bright)', lime: 'var(--lime)', amber: 'var(--warn)', red: 'var(--neg-bright)', muted: 'var(--text-muted)' };
 
@@ -376,24 +432,55 @@ function ScoreModal({ indexSymbol, stockTicker, duration, lists, onClose, onAdde
                 </BeginnerExplanationBox>
               )}
 
-              {/* Add to list */}
-              <div style={{ padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', flex: '0 0 auto' }}>Ajouter à une liste :</span>
-                <select value={selectedList} onChange={e => setSelectedList(e.target.value)} style={{
-                  flex: 1, minWidth: 160, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
-                  color: 'var(--text)', font: 'var(--type-body-sm)', padding: '7px 10px', cursor: 'pointer', outline: 'none',
-                }}>
-                  <option value="">— Choisir une liste —</option>
-                  {eligibleLists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.index_symbol})</option>)}
-                </select>
-                <button onClick={handleAdd} disabled={!selectedList || adding}
-                  style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: selectedList && !adding ? 'var(--accent)' : 'var(--bg-hover)', color: selectedList && !adding ? '#fff' : 'var(--text-muted)', cursor: selectedList && !adding ? 'pointer' : 'not-allowed', transition: 'all var(--dur-fast) var(--ease)' }}>
-                  {adding ? '…' : 'Ajouter'}
-                </button>
-                <button onClick={() => { onClose(); window.dispatchEvent(new CustomEvent('dx-new-list', { detail: { indexSymbol, ticker: stockTicker } })); }}
-                  style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>
-                  + Nouvelle
-                </button>
+              {/* Add to list — et création d'une liste sur place (sans quitter la fiche) */}
+              <div style={{ padding: '14px 16px', background: 'var(--bg-elevated)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-soft)', flex: '0 0 auto' }}>Ajouter à une liste :</span>
+                  <select value={selectedList} onChange={e => setSelectedList(e.target.value)} style={{
+                    flex: 1, minWidth: 160, background: 'var(--bg-input)', border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+                    color: 'var(--text)', font: 'var(--type-body-sm)', padding: '7px 10px', cursor: 'pointer', outline: 'none',
+                  }}>
+                    {/* Sans liste sur cet indice, « — Choisir — » laissait croire à un bug :
+                        on nomme l'indice concerné et « + Nouvelle » devient la porte de sortie. */}
+                    <option value="">{eligibleLists.length ? '— Choisir une liste —' : `— Aucune liste ${indexSymbol} —`}</option>
+                    {eligibleLists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.index_symbol})</option>)}
+                  </select>
+                  <button type="button" onClick={handleAdd} disabled={!selectedList || adding}
+                    style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: 'none', background: selectedList && !adding ? 'var(--accent)' : 'var(--bg-hover)', color: selectedList && !adding ? '#fff' : 'var(--text-muted)', cursor: selectedList && !adding ? 'pointer' : 'not-allowed', transition: 'all var(--dur-fast) var(--ease)' }}>
+                    {adding ? '…' : 'Ajouter'}
+                  </button>
+                  <button type="button" onClick={() => { setShowCreate(v => !v); setNewName(''); setNewDesc(''); }}
+                    style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 14px', borderRadius: 'var(--radius)', border: `1px solid ${showCreate ? 'var(--accent)' : 'var(--border)'}`, background: 'transparent', color: showCreate ? 'var(--accent-hover)' : 'var(--text-soft)', cursor: 'pointer' }}>
+                    {showCreate ? 'Annuler' : '+ Nouvelle'}
+                  </button>
+                </div>
+
+                {showCreate && (
+                  <form onSubmit={handleCreateList} style={{ display: 'flex', flexDirection: 'column', gap: 11, paddingTop: 12, borderTop: '1px solid var(--border-subtle)' }}>
+                    <div style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)' }}>Nouvelle liste</div>
+                    <input value={newName} onChange={e => setNewName(e.target.value)} autoFocus required maxLength={80}
+                      placeholder={`Nom — ex : Dispersion ${indexSymbol} core`} style={createInputStyle} />
+                    <input value={newDesc} onChange={e => setNewDesc(e.target.value)} maxLength={200}
+                      placeholder="Note (optionnel)" style={createInputStyle} />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ font: 'var(--type-label)', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>Indice</span>
+                      <span style={{ font: '700 11px/1 var(--font-mono)', padding: '5px 9px', borderRadius: 'var(--radius-pill)', background: 'var(--accent-soft)', color: 'var(--accent-hover)', border: '1px solid var(--accent-border)' }}>{indexSymbol}</span>
+                      <span style={{ font: 'var(--type-caption)', color: 'var(--text-dim)' }}>l'indice de {stockTicker}</span>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-body-sm)', color: 'var(--text-soft)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={addAfterCreate} onChange={e => setAddAfterCreate(e.target.checked)} style={{ cursor: 'pointer' }} />
+                      Ajouter {stockTicker} à cette liste
+                    </label>
+                    <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      <button type="button" onClick={() => setShowCreate(false)}
+                        style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-soft)', cursor: 'pointer' }}>Annuler</button>
+                      <button type="submit" disabled={!newName.trim() || creating}
+                        style={{ font: '600 12px/1 var(--font-sans)', padding: '8px 20px', borderRadius: 'var(--radius)', border: 'none', background: newName.trim() && !creating ? 'var(--accent)' : 'var(--bg-hover)', color: newName.trim() && !creating ? '#fff' : 'var(--text-muted)', cursor: newName.trim() && !creating ? 'pointer' : 'not-allowed' }}>
+                        {creating ? '…' : 'Créer'}
+                      </button>
+                    </div>
+                  </form>
+                )}
               </div>
 
               {/* IV source */}

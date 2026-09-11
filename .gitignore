@@ -16,3 +16,7 @@ __pycache__/
 
 # Recherche dispersion (données lourdes + scripts) — ne pas versionner
 backtest/
+scripts/lse_smoke.mjs
+
+# Réglages locaux de Claude Code
+.claude/

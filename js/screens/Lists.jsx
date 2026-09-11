@@ -34,12 +34,10 @@ function Lists({ onNav, onListsChange, addToast }) {
 
   React.useEffect(() => { load(); }, []);
 
-  // Listen for new-list events from score modal
-  React.useEffect(() => {
-    const h = (e) => { setNewIndex(e.detail?.indexSymbol || 'SPX'); setShowCreate(true); };
-    window.addEventListener('dx-new-list', h);
-    return () => window.removeEventListener('dx-new-list', h);
-  }, []);
+  // (Plus d'écouteur `dx-new-list` : la fiche de score créait son événement alors
+  //  que cet écran n'est pas monté quand on vient d'un indice — il ne créait donc
+  //  jamais rien. La fiche de score crée désormais la liste elle-même et prévient
+  //  le site via `dx-lists-changed`. Voir js/screens/ScoreModal.jsx.)
 
   async function handleCreate(e) {
     e.preventDefault();
